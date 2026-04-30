@@ -41,12 +41,14 @@ interface LiffContextType {
   isReady: boolean;
   isAuthenticated: boolean;
   userEmail: string | null;
+  lineUserId: string | null;
 }
 
 const LiffContext = createContext<LiffContextType>({
   isReady: false,
   isAuthenticated: false,
   userEmail: null,
+  lineUserId: null,
 });
 
 export const useLiff = () => useContext(LiffContext);
@@ -303,6 +305,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [lineUserId, setLineUserId] = useState<string | null>(null);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -319,6 +322,8 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       // Dev bypass: localhost always passes
       if (isLocalhost()) {
         console.log("[v0] Localhost detected - bypassing LIFF auth");
+        setLineUserId("dev_user_localhost");
+        setUserEmail("dev@stust.edu.tw");
         setIsAuthenticated(true);
         setIsReady(true);
         setIsLoading(false);
@@ -348,11 +353,14 @@ export function LiffProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Get user email from decoded ID token
+        // Get user email and LINE user ID from decoded ID token
         const decodedToken = liff.getDecodedIDToken();
         const email = decodedToken?.email;
+        const userId = decodedToken?.sub || null;
         console.log("[v0] User email:", email);
+        console.log("[v0] LINE User ID:", userId);
         setUserEmail(email || null);
+        setLineUserId(userId);
 
         // Verify email domain
         if (isEmailAllowed(email)) {
@@ -393,7 +401,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <LiffContext.Provider value={{ isReady, isAuthenticated, userEmail }}>
+    <LiffContext.Provider value={{ isReady, isAuthenticated, userEmail, lineUserId }}>
       {children}
     </LiffContext.Provider>
   );

@@ -26,12 +26,12 @@ const CATEGORIES = [
 ];
 
 export function ListingForm() {
-  const { isAuthenticated, userEmail } = useLiff();
+  const { isAuthenticated, userEmail, lineUserId } = useLiff();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [formData, setFormData] = useState({
-    title: "",
+    name: "",
     category: "",
     price: "",
     description: "",
@@ -47,46 +47,79 @@ export function ListingForm() {
     if (!isAuthenticated) {
       setSubmitStatus("error");
       setErrorMessage("請先完成信箱驗證後再送出商品");
+      alert("錯誤：請先完成信箱驗證後再送出商品");
+      return;
+    }
+
+    if (!userEmail) {
+      setSubmitStatus("error");
+      setErrorMessage("無法取得已驗證的信箱，請重新驗證");
+      alert("錯誤：無法取得已驗證的信箱，請重新驗證");
+      return;
+    }
+
+    if (!lineUserId) {
+      setSubmitStatus("error");
+      setErrorMessage("無法取得 LINE 使用者 ID，請重新登入");
+      alert("錯誤：無法取得 LINE 使用者 ID，請重新登入");
       return;
     }
 
     // Validate required fields
-    if (!formData.title || !formData.category || !formData.price || !formData.contact) {
+    if (!formData.name || !formData.category || !formData.price || !formData.contact) {
       setSubmitStatus("error");
       setErrorMessage("請填寫所有必填欄位");
+      alert("錯誤：請填寫所有必填欄位");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from("products").insert({
-        title: formData.title,
-        category: formData.category,
+      // Insert data with correct column names matching your Supabase schema
+      const insertData = {
+        name: formData.name,
         price: parseInt(formData.price, 10),
+        category: formData.category,
         description: formData.description || null,
         contact: formData.contact,
-        user_email: userEmail,
-        status: "pending",
-        created_at: new Date().toISOString(),
-      });
+        line_user_id: lineUserId,
+        verified_email: userEmail,
+      };
+
+      console.log("[v0] Attempting to insert data:", insertData);
+
+      const { data, error } = await supabase.from("products").insert(insertData).select();
 
       if (error) {
-        throw error;
+        console.error("[v0] Supabase insert error:", error);
+        console.error("[v0] Error code:", error.code);
+        console.error("[v0] Error message:", error.message);
+        console.error("[v0] Error details:", error.details);
+        console.error("[v0] Error hint:", error.hint);
+        
+        const fullErrorMessage = `Supabase 錯誤: ${error.message}${error.hint ? ` (提示: ${error.hint})` : ""}`;
+        setSubmitStatus("error");
+        setErrorMessage(fullErrorMessage);
+        alert(`送出失敗！\n\n錯誤碼: ${error.code}\n錯誤訊息: ${error.message}\n${error.hint ? `提示: ${error.hint}` : ""}`);
+        return;
       }
 
+      console.log("[v0] Insert successful, returned data:", data);
       setSubmitStatus("success");
       setFormData({
-        title: "",
+        name: "",
         category: "",
         price: "",
         description: "",
         contact: "",
       });
     } catch (error) {
-      console.error("Error submitting product:", error);
+      console.error("[v0] Unexpected error:", error);
+      const errorMsg = error instanceof Error ? error.message : "未知錯誤";
       setSubmitStatus("error");
-      setErrorMessage("送出失敗，請稍後再試");
+      setErrorMessage(`送出失敗：${errorMsg}`);
+      alert(`送出失敗！\n\n錯誤：${errorMsg}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -98,27 +131,27 @@ export function ListingForm() {
       {submitStatus === "success" && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 text-primary border border-primary/20">
           <CheckCircle className="w-5 h-5 shrink-0" />
-          <p className="text-sm font-medium">商品已送出審核！</p>
+          <p className="text-sm font-medium">商品已成功上架！</p>
         </div>
       )}
 
       {submitStatus === "error" && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <p className="text-sm font-medium">{errorMessage}</p>
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <p className="text-sm font-medium break-all">{errorMessage}</p>
         </div>
       )}
 
-      {/* Title */}
+      {/* Name */}
       <div className="space-y-2">
-        <Label htmlFor="title" className="text-foreground">
+        <Label htmlFor="name" className="text-foreground">
           商品名稱 <span className="text-destructive">*</span>
         </Label>
         <Input
-          id="title"
+          id="name"
           placeholder="例：微積分課本 第八版"
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           className="bg-card border-border"
           required
         />
@@ -219,7 +252,7 @@ export function ListingForm() {
         ) : (
           <>
             <Send className="w-4 h-4 mr-2" />
-            送出審核
+            送出上架
           </>
         )}
       </Button>
