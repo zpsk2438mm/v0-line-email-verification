@@ -159,8 +159,8 @@ function VerificationForm({
       <div className="w-full max-w-sm">
         {/* Logo & Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
-            <GraduationCap className="w-8 h-8 text-primary" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-primary mb-4">
+            <GraduationCap className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-xl font-bold text-foreground mb-2">
             南台二手物平台
@@ -171,7 +171,7 @@ function VerificationForm({
         </div>
 
         {/* Verification Card */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
@@ -289,7 +289,7 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center space-y-4">
-        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+        <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
         <p className="text-muted-foreground text-sm">驗證身分中...</p>
       </div>
     </div>
