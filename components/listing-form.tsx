@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,12 +33,14 @@ interface ImagePreview {
 }
 
 export function ListingForm() {
-  const { isAuthenticated, userEmail, lineUserId } = useLiff();
+  const { isAuthenticated, userEmail, lineUserId, sendLineMessage, closeWindow } = useLiff();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [countdown, setCountdown] = useState(3);
   const [images, setImages] = useState<ImagePreview[]>([]);
+  const [uploadProgress, setUploadProgress] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -47,6 +49,18 @@ export function ListingForm() {
     description: "",
     contact: "",
   });
+
+  // Countdown timer for auto close
+  useEffect(() => {
+    if (showSuccessModal && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (showSuccessModal && countdown === 0) {
+      closeWindow();
+    }
+  }, [showSuccessModal, countdown, closeWindow]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -80,27 +94,37 @@ export function ListingForm() {
   const uploadImages = async (): Promise<string[]> => {
     const uploadedUrls: string[] = [];
 
-    for (const image of images) {
-      const fileExt = image.file.name.split(".").pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `${lineUserId}/${fileName}`;
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i];
+      setUploadProgress(`上傳圖片中 (${i + 1}/${images.length})...`);
+      
+      const fileExt = image.file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+      const filePath = `${lineUserId || "anonymous"}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("product-images")
-        .upload(filePath, image.file);
+        .upload(filePath, image.file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
 
       if (uploadError) {
         console.error("[v0] Image upload error:", uploadError);
         throw new Error(`圖片上傳失敗: ${uploadError.message}`);
       }
 
+      // Get the full public URL
       const { data: urlData } = supabase.storage
         .from("product-images")
         .getPublicUrl(filePath);
 
-      uploadedUrls.push(urlData.publicUrl);
+      if (urlData?.publicUrl) {
+        uploadedUrls.push(urlData.publicUrl);
+      }
     }
 
+    setUploadProgress("");
     return uploadedUrls;
   };
 
@@ -113,21 +137,18 @@ export function ListingForm() {
     if (!isAuthenticated) {
       setSubmitStatus("error");
       setErrorMessage("請先完成信箱驗證後再送出商品");
-      alert("錯誤：請先完成信箱驗證後再送出商品");
       return;
     }
 
     if (!userEmail) {
       setSubmitStatus("error");
       setErrorMessage("無法取得已驗證的信箱，請重新驗證");
-      alert("錯誤：無法取得已驗證的信箱，請重新驗證");
       return;
     }
 
     if (!lineUserId) {
       setSubmitStatus("error");
       setErrorMessage("無法取得 LINE 使用者 ID，請重新登入");
-      alert("錯誤：無法取得 LINE 使用者 ID，請重新登入");
       return;
     }
 
@@ -135,7 +156,6 @@ export function ListingForm() {
     if (!formData.name || !formData.category || !formData.price || !formData.contact) {
       setSubmitStatus("error");
       setErrorMessage("請填寫所有必填欄位");
-      alert("錯誤：請填寫所有必填欄位");
       return;
     }
 
@@ -145,8 +165,11 @@ export function ListingForm() {
       // Upload images first
       let imageUrls: string[] = [];
       if (images.length > 0) {
+        setUploadProgress("準備上傳圖片...");
         imageUrls = await uploadImages();
       }
+
+      setUploadProgress("儲存商品資料...");
 
       // Insert data with correct column names matching your Supabase schema
       const insertData = {
@@ -160,27 +183,28 @@ export function ListingForm() {
         verified_email: userEmail,
       };
 
-      console.log("[v0] Attempting to insert data:", insertData);
-
       const { data, error } = await supabase.from("products").insert(insertData).select();
 
       if (error) {
         console.error("[v0] Supabase insert error:", error);
-        console.error("[v0] Error code:", error.code);
-        console.error("[v0] Error message:", error.message);
-        console.error("[v0] Error details:", error.details);
-        console.error("[v0] Error hint:", error.hint);
-        
-        const fullErrorMessage = `Supabase 錯誤: ${error.message}${error.hint ? ` (提示: ${error.hint})` : ""}`;
+        const fullErrorMessage = `資料庫錯誤: ${error.message}${error.hint ? ` (${error.hint})` : ""}`;
         setSubmitStatus("error");
         setErrorMessage(fullErrorMessage);
-        alert(`送出失敗！\n\n錯誤碼: ${error.code}\n錯誤訊息: ${error.message}\n${error.hint ? `提示: ${error.hint}` : ""}`);
+        setUploadProgress("");
         return;
       }
 
-      console.log("[v0] Insert successful, returned data:", data);
+      // Send LINE message
+      setUploadProgress("發送 LINE 通知...");
+      const price = parseInt(formData.price, 10);
+      const firstImageUrl = imageUrls.length > 0 ? imageUrls[0] : undefined;
+      
+      await sendLineMessage(formData.name, price, firstImageUrl);
+
+      setUploadProgress("");
       setSubmitStatus("success");
       setShowSuccessModal(true);
+      setCountdown(3);
       
       // Reset form
       setFormData({
@@ -199,10 +223,15 @@ export function ListingForm() {
       const errorMsg = error instanceof Error ? error.message : "未知錯誤";
       setSubmitStatus("error");
       setErrorMessage(`送出失敗：${errorMsg}`);
-      alert(`送出失敗！\n\n錯誤：${errorMsg}`);
+      setUploadProgress("");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleCloseSuccess = () => {
+    setShowSuccessModal(false);
+    closeWindow();
   };
 
   return (
@@ -215,15 +244,20 @@ export function ListingForm() {
               <CheckCircle className="w-12 h-12 text-green-600" />
             </div>
             <h3 className="text-xl font-bold text-foreground mb-2">上架成功</h3>
-            <p className="text-muted-foreground mb-6">
-              您的商品已送出，目前正在審核中。<br />
+            <p className="text-muted-foreground mb-2">
+              您的商品已送出，目前正在審核中。
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
               審核通過後將會上架顯示。
             </p>
+            <p className="text-xs text-muted-foreground mb-4">
+              {countdown > 0 ? `${countdown} 秒後自動關閉...` : "正在關閉..."}
+            </p>
             <Button
-              onClick={() => setShowSuccessModal(false)}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+              onClick={handleCloseSuccess}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
             >
-              確定
+              立即關閉
             </Button>
           </div>
         </div>
@@ -301,6 +335,7 @@ export function ListingForm() {
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             className="bg-card border-border"
             required
+            disabled={isSubmitting}
           />
         </div>
 
@@ -314,6 +349,7 @@ export function ListingForm() {
             onValueChange={(value) =>
               setFormData({ ...formData, category: value })
             }
+            disabled={isSubmitting}
             required
           >
             <SelectTrigger className="bg-card border-border">
@@ -347,6 +383,7 @@ export function ListingForm() {
               onChange={(e) => setFormData({ ...formData, price: e.target.value })}
               required
               min="0"
+              disabled={isSubmitting}
             />
           </div>
         </div>
@@ -365,6 +402,7 @@ export function ListingForm() {
             onChange={(e) =>
               setFormData({ ...formData, description: e.target.value })
             }
+            disabled={isSubmitting}
           />
         </div>
 
@@ -382,6 +420,7 @@ export function ListingForm() {
               setFormData({ ...formData, contact: e.target.value })
             }
             required
+            disabled={isSubmitting}
           />
         </div>
 
@@ -394,7 +433,7 @@ export function ListingForm() {
           {isSubmitting ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              上傳中...
+              {uploadProgress || "處理中..."}
             </>
           ) : (
             <>
@@ -410,6 +449,13 @@ export function ListingForm() {
             已驗證信箱：{userEmail}
           </p>
         )}
+
+        {/* Hidden Debug Mode - shows first 4 chars of LINE ID */}
+        <div className="pt-4 border-t border-border/30">
+          <p className="text-[10px] text-muted-foreground/50 text-center select-none">
+            Debug: {lineUserId ? `${lineUserId.substring(0, 4)}****` : "N/A"}
+          </p>
+        </div>
       </form>
     </>
   );
