@@ -35,18 +35,25 @@ interface AuthData {
   verified: boolean;
   timestamp: number;
   email?: string;
+  lineUserId?: string;
 }
 
 interface LiffContextType {
   isReady: boolean;
   isAuthenticated: boolean;
   userEmail: string | null;
+  lineUserId: string | null;
+  sendLineMessage: (productName: string, price: number, imageUrl?: string) => Promise<boolean>;
+  closeWindow: () => void;
 }
 
 const LiffContext = createContext<LiffContextType>({
   isReady: false,
   isAuthenticated: false,
   userEmail: null,
+  lineUserId: null,
+  sendLineMessage: async () => false,
+  closeWindow: () => {},
 });
 
 export const useLiff = () => useContext(LiffContext);
@@ -73,12 +80,13 @@ function getStoredAuth(): AuthData | null {
   }
 }
 
-function setStoredAuth(email?: string): void {
+function setStoredAuth(email?: string, lineUserId?: string): void {
   if (typeof window === "undefined") return;
   const authData: AuthData = {
     verified: true,
     timestamp: Date.now(),
     email,
+    lineUserId,
   };
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
 }
@@ -88,19 +96,19 @@ function clearStoredAuth(): void {
   localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
-function isAuthValid(): boolean {
+function isAuthValid(): { valid: boolean; data: AuthData | null } {
   const authData = getStoredAuth();
-  if (!authData || !authData.verified) return false;
+  if (!authData || !authData.verified) return { valid: false, data: null };
 
   const expiryMs = AUTH_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
   const isExpired = Date.now() - authData.timestamp > expiryMs;
 
   if (isExpired) {
     clearStoredAuth();
-    return false;
+    return { valid: false, data: null };
   }
 
-  return true;
+  return { valid: true, data: authData };
 }
 
 function isEmailAllowed(email: string | null | undefined): boolean {
@@ -136,13 +144,11 @@ function VerificationForm({
     }
     setError("");
     setShowOtpDialog(true);
-    // Simulate sending verification code
     alert(`驗證碼已發送至 ${schoolEmail}\n\n（模擬驗證碼：${VERIFICATION_CODE}）`);
   };
 
   const handleVerifyOtp = () => {
     setIsVerifying(true);
-    // Simulate verification delay
     setTimeout(() => {
       if (otpValue === VERIFICATION_CODE) {
         onVerified(schoolEmail);
@@ -159,8 +165,8 @@ function VerificationForm({
       <div className="w-full max-w-sm">
         {/* Logo & Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
-            <GraduationCap className="w-8 h-8 text-primary" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-primary mb-4">
+            <GraduationCap className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-xl font-bold text-foreground mb-2">
             南台二手物平台
@@ -171,7 +177,7 @@ function VerificationForm({
         </div>
 
         {/* Verification Card */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
@@ -289,7 +295,7 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center space-y-4">
-        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+        <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
         <p className="text-muted-foreground text-sm">驗證身分中...</p>
       </div>
     </div>
@@ -303,15 +309,145 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [lineUserId, setLineUserId] = useState<string | null>(null);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [initRetryCount, setInitRetryCount] = useState(0);
 
   const handleManualVerification = (email: string) => {
-    setStoredAuth(email);
+    setStoredAuth(email, lineUserId || undefined);
     setUserEmail(email);
     setIsAuthenticated(true);
     setNeedsVerification(false);
     setIsReady(true);
+  };
+
+  // Send LINE message function
+  const sendLineMessage = async (productName: string, price: number, imageUrl?: string): Promise<boolean> => {
+    if (isLocalhost()) {
+      console.log("[v0] Localhost - simulating LINE message send");
+      return true;
+    }
+
+    try {
+      // Check if we can send messages
+      if (!liff.isInClient()) {
+        console.log("[v0] Not in LINE client, cannot send message");
+        return false;
+      }
+
+      // Create Flex Message
+      const flexMessage: liff.LiffMessage = {
+        type: "flex",
+        altText: `上架成功！${productName} - NT$${price}`,
+        contents: {
+          type: "bubble",
+          hero: imageUrl ? {
+            type: "image",
+            url: imageUrl,
+            size: "full",
+            aspectRatio: "4:3",
+            aspectMode: "cover",
+          } : undefined,
+          body: {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "text",
+                text: "上架成功！",
+                weight: "bold",
+                size: "xl",
+                color: "#22c55e",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "sm",
+                contents: [
+                  {
+                    type: "box",
+                    layout: "baseline",
+                    spacing: "sm",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "商品",
+                        color: "#aaaaaa",
+                        size: "sm",
+                        flex: 1,
+                      },
+                      {
+                        type: "text",
+                        text: productName,
+                        wrap: true,
+                        color: "#666666",
+                        size: "sm",
+                        flex: 4,
+                      },
+                    ],
+                  },
+                  {
+                    type: "box",
+                    layout: "baseline",
+                    spacing: "sm",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "價格",
+                        color: "#aaaaaa",
+                        size: "sm",
+                        flex: 1,
+                      },
+                      {
+                        type: "text",
+                        text: `NT$${price.toLocaleString()}`,
+                        wrap: true,
+                        color: "#1a73e8",
+                        size: "sm",
+                        weight: "bold",
+                        flex: 4,
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "text",
+                text: "請靜待管理員審核",
+                size: "xs",
+                color: "#888888",
+                margin: "lg",
+              },
+            ],
+          },
+        } as liff.FlexBubble,
+      };
+
+      await liff.sendMessages([flexMessage]);
+      console.log("[v0] LINE message sent successfully");
+      return true;
+    } catch (error) {
+      console.error("[v0] Failed to send LINE message:", error);
+      return false;
+    }
+  };
+
+  // Close LIFF window
+  const closeWindow = () => {
+    if (isLocalhost()) {
+      console.log("[v0] Localhost - simulating window close");
+      return;
+    }
+
+    try {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      }
+    } catch (error) {
+      console.error("[v0] Failed to close window:", error);
+    }
   };
 
   useEffect(() => {
@@ -319,6 +455,8 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       // Dev bypass: localhost always passes
       if (isLocalhost()) {
         console.log("[v0] Localhost detected - bypassing LIFF auth");
+        setLineUserId("dev_user_localhost");
+        setUserEmail("dev@stust.edu.tw");
         setIsAuthenticated(true);
         setIsReady(true);
         setIsLoading(false);
@@ -326,20 +464,25 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       }
 
       // Check persistent login first (7-day cache)
-      if (isAuthValid()) {
+      const authCheck = isAuthValid();
+      if (authCheck.valid && authCheck.data) {
         console.log("[v0] Valid auth cache found - skipping LIFF init");
-        const stored = getStoredAuth();
-        setUserEmail(stored?.email || null);
+        setUserEmail(authCheck.data.email || null);
+        setLineUserId(authCheck.data.lineUserId || null);
         setIsAuthenticated(true);
         setIsReady(true);
         setIsLoading(false);
         return;
       }
 
-      // Initialize LIFF
+      // Initialize LIFF with retry logic
       try {
+        console.log("[v0] Initializing LIFF...");
         await liff.init({ liffId: LIFF_ID });
-        console.log("[v0] LIFF initialized successfully");
+        
+        // Wait for LIFF to be fully ready
+        await liff.ready;
+        console.log("[v0] LIFF initialized and ready");
 
         // Check if user is logged in
         if (!liff.isLoggedIn()) {
@@ -348,16 +491,39 @@ export function LiffProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Get user email from decoded ID token
-        const decodedToken = liff.getDecodedIDToken();
-        const email = decodedToken?.email;
-        console.log("[v0] User email:", email);
-        setUserEmail(email || null);
+        // Get user profile and info
+        let userId: string | null = null;
+        let email: string | null = null;
+
+        try {
+          // Get LINE User ID from profile
+          const profile = await liff.getProfile();
+          userId = profile.userId;
+          console.log("[v0] LINE User ID from profile:", userId);
+        } catch (profileError) {
+          console.error("[v0] Failed to get profile:", profileError);
+        }
+
+        // Get email from decoded ID token
+        try {
+          const decodedToken = liff.getDecodedIDToken();
+          email = decodedToken?.email || null;
+          // Fallback to get userId from token if profile failed
+          if (!userId && decodedToken?.sub) {
+            userId = decodedToken.sub;
+          }
+          console.log("[v0] User email:", email);
+        } catch (tokenError) {
+          console.error("[v0] Failed to get decoded token:", tokenError);
+        }
+
+        setUserEmail(email);
+        setLineUserId(userId);
 
         // Verify email domain
         if (isEmailAllowed(email)) {
           console.log("[v0] Email verified - access granted");
-          setStoredAuth(email || undefined);
+          setStoredAuth(email || undefined, userId || undefined);
           setIsAuthenticated(true);
           setIsReady(true);
         } else {
@@ -367,7 +533,20 @@ export function LiffProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("[v0] LIFF initialization failed:", error);
-        // On error in production, show verification form as fallback
+        
+        // Retry logic - max 2 retries
+        if (initRetryCount < 2) {
+          console.log(`[v0] Retrying LIFF init (attempt ${initRetryCount + 2}/3)...`);
+          setInitRetryCount((prev) => prev + 1);
+          
+          // Clear LIFF cache and retry after delay
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+          return;
+        }
+        
+        // After max retries, show verification form as fallback
         setNeedsVerification(true);
       }
 
@@ -375,7 +554,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
 
     initializeLiff();
-  }, []);
+  }, [initRetryCount]);
 
   // Show loading screen
   if (isLoading && !needsVerification) {
@@ -393,7 +572,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <LiffContext.Provider value={{ isReady, isAuthenticated, userEmail }}>
+    <LiffContext.Provider value={{ isReady, isAuthenticated, userEmail, lineUserId, sendLineMessage, closeWindow }}>
       {children}
     </LiffContext.Provider>
   );
