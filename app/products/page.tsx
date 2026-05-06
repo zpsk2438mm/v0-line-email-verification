@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
