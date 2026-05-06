@@ -3,8 +3,6 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
@@ -19,7 +17,6 @@ import {
   ShoppingBag,
   Tag,
   Calendar,
-  AlertCircle,
   LogIn,
   Flame,
   Sparkles,
@@ -31,7 +28,7 @@ interface Product {
   price: number;
   category: string;
   description?: string;
-  status?: string;
+  is_approved: boolean; // 👈 完美對應你資料表的 is_approved 欄位
   created_at: string;
   image_url?: any;
   images?: any;
@@ -75,12 +72,12 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setIsLoading(true);
-        // 撈取審核通過的公開商品
-const { data, error } = await supabase
-  .from("products")
-  .select("*")
-  .eq("is_approved", true) // 👈 改成這樣！只撈出已經被你審核通過（TRUE）的商品
-  .order("created_at", { ascending: false });
+        // 🔒 撈取審核通過（is_approved = true）的公開商品
+        const { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .eq("is_approved", true)
+          .order("created_at", { ascending: false });
 
         if (error) {
           console.error("載入商品失敗:", error);
@@ -119,7 +116,7 @@ const { data, error } = await supabase
     setFilteredProducts(result);
   }, [searchQuery, selectedCategory, products]);
 
-  // 💡 終極防污染圖片路徑解析器
+  // 💡 圖片路徑解析器
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
     if (!raw) return "";
@@ -178,7 +175,7 @@ const { data, error } = await supabase
     });
   };
 
-  // 🔒 守門員畫面：未登入時卡片 (高質感設計)
+  // 🔒 守門員畫面：未登入時
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-slate-50 flex flex-col justify-between pb-12">
@@ -192,7 +189,6 @@ const { data, error } = await supabase
 
         <div className="flex-1 flex items-center justify-center p-4">
           <Card className="w-full max-w-sm border-none shadow-xl bg-white overflow-hidden rounded-2xl">
-            {/* 卡片上方漸層 Banner */}
             <div className="bg-gradient-to-tr from-blue-600 to-indigo-500 py-8 px-6 text-center text-white space-y-2">
               <Sparkles className="h-10 w-10 mx-auto text-yellow-300 animate-pulse" />
               <h2 className="text-xl font-extrabold tracking-wide">
@@ -227,7 +223,7 @@ const { data, error } = await supabase
     );
   }
 
-  // ✅ 已登入市集主畫面 (完美復刻範例之高質感版)
+  // ✅ 已登入市集主畫面
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
@@ -263,7 +259,7 @@ const { data, error } = await supabase
       <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
         {/* Search Input */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
             type="search"
             placeholder="輸入商品名稱、課本、電子產品..."
