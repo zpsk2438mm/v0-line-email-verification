@@ -22,8 +22,8 @@ type Product = {
   category: string;
   description?: string;
   created_at: string;
-  image_url?: string | string[]; // 相容字串與陣列
-  images?: string | string[];    // 相容字串與陣列
+  image_url?: any; // 放寬型態，防止任何不期而遇的資料結構
+  images?: any;    // 放寬型態，防止任何不期而遇的資料結構
 };
 
 type ProductCardProps = {
@@ -42,34 +42,50 @@ const categoryLabels: Record<string, string> = {
 export function ProductCard({ product }: ProductCardProps) {
   const categoryLabel = categoryLabels[product.category] || product.category;
 
-  // 💡 核心：完美解析並去除 [" "] 污染的網址提取器
+  // 💡 終極無敵防呆解析
   const getCleanImageUrl = () => {
-    // 1. 取得原始欄位值 (優先拿 image_url，因為你的資料表欄位叫 image_url)
+    // 1. 抓取所有可能存圖片的欄位
     let raw = product.image_url || product.images;
     if (!raw) return "";
 
     let urlString = "";
 
-    // 2. 如果本身就是陣列，取第一個
+    // 2. 如果是陣列，取第一個值
     if (Array.isArray(raw)) {
       urlString = raw[0] || "";
     } else if (typeof raw === "string") {
-      urlString = raw;
+      // 3. 如果是字串，但看起來像 JSON 陣列 (例如以 [ 開頭)
+      if (raw.trim().startsWith("[")) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            urlString = parsed[0] || "";
+          } else {
+            urlString = parsed;
+          }
+        } catch (e) {
+          urlString = raw; // 解析失敗就直接用原字串
+        }
+      } else {
+        urlString = raw;
+      }
+    } else {
+      urlString = String(raw);
     }
 
     if (!urlString) return "";
 
-    // 3. 終極去污染：去除可能殘留的 [" ] [ ] \ 等 JSON 格式字串字元
+    // 4. 清除前後所有可能殘留的引號、中括號、反斜線
     let clean = urlString
       .trim()
       .replace(/^\[['"]?/, "")  // 去除開頭的 [" 或 ['
       .replace(/['"]?\]$/, "")  // 去除結尾的 "] 或 ']
-      .replace(/\\/g, "")       // 去除斜線轉義字元
-      .replace(/^['"]/, "")     // 去除前後多餘引號
+      .replace(/\\/g, "")       // 去除反斜線
+      .replace(/^['"]/, "")     // 去除最外層多餘引號
       .replace(/['"]$/, "")
       .trim();
 
-    // 4. 補全 Supabase 域名邏輯
+    // 5. 輸出完整合法的網址
     if (clean.startsWith("http://") || clean.startsWith("https://")) {
       return clean;
     } else {
@@ -84,6 +100,13 @@ export function ProductCard({ product }: ProductCardProps) {
 
   const imageUrl = getCleanImageUrl();
 
+  // 方便開發者在主控台檢查到底傳入了什麼怪資料
+  console.log(`[ProductCard] 商品: ${product.name} | 原始資料:`, {
+    image_url: product.image_url,
+    images: product.images,
+    最終解析網址: imageUrl
+  });
+
   return (
     <div className="bg-card rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       {/* Image */}
@@ -94,7 +117,7 @@ export function ProductCard({ product }: ProductCardProps) {
             alt={product.name}
             className="w-full h-full object-contain"
             onError={(e) => {
-              console.error("圖片加載失敗，解析出的網址為:", imageUrl);
+              console.error("[ProductCard] 圖片載入失敗，網址:", imageUrl);
               e.currentTarget.style.display = "none";
               const parent = e.currentTarget.parentElement;
               if (parent) {
