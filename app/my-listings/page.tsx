@@ -29,8 +29,8 @@ interface Product {
   contact: string;
   status?: string;
   created_at: string;
-  image_url?: string[];
-  images?: string[];
+  image_url?: string | string[];
+  images?: string | string[];
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -207,18 +207,42 @@ export default function MyListingsPage() {
               const StatusIcon = statusConfig.icon;
               const isDeleting = deletingId === product.id;
 
-              // 💡 修正：防重疊、防拆分的 Supabase 圖片拼接邏輯
-              const rawImage = product.images?.[0] || product.image_url?.[0];
-              let imageUrl = null;
-              if (rawImage) {
-                if (rawImage.startsWith("http")) {
-                  imageUrl = rawImage;
-                } else if (rawImage.startsWith("product-images/")) {
-                  imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${rawImage}`;
-                } else {
-                  imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${rawImage}`;
+              // 💡 核心：完美解析並去除 [" "] 污染的網址提取器
+              const getCleanImageUrl = () => {
+                let raw = product.image_url || product.images;
+                if (!raw) return "";
+
+                let urlString = "";
+                if (Array.isArray(raw)) {
+                  urlString = raw[0] || "";
+                } else if (typeof raw === "string") {
+                  urlString = raw;
                 }
-              }
+
+                if (!urlString) return "";
+
+                let clean = urlString
+                  .trim()
+                  .replace(/^\[['"]?/, "")
+                  .replace(/['"]?\]$/, "")
+                  .replace(/\\/g, "")
+                  .replace(/^['"]/, "")
+                  .replace(/['"]$/, "")
+                  .trim();
+
+                if (clean.startsWith("http://") || clean.startsWith("https://")) {
+                  return clean;
+                } else {
+                  const cleanPath = clean.replace(/^\//, "");
+                  if (cleanPath.startsWith("product-images/")) {
+                    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${cleanPath}`;
+                  } else {
+                    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
+                  }
+                }
+              };
+
+              const imageUrl = getCleanImageUrl();
 
               return (
                 <Card key={product.id} className={isDeleting ? "opacity-50" : ""}>
@@ -232,6 +256,7 @@ export default function MyListingsPage() {
                             alt={product.name}
                             className="h-full w-full object-contain"
                             onError={(e) => {
+                              console.error("我的商品圖片載入失敗，網址為:", imageUrl);
                               e.currentTarget.style.display = "none";
                               const parent = e.currentTarget.parentElement;
                               if (parent) {
