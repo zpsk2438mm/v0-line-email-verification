@@ -1,8 +1,31 @@
 "use client";
 
 import { Tag, Package } from "lucide-react";
-import { formatPrice, formatDate } from "@/lib/utils";
-import type { Product } from "@/lib/supabase";
+
+// 自定義簡單的價格與日期格式化函數，避免外部 import 錯誤
+function formatPrice(price: number) {
+  return `NT$${price.toLocaleString()}`;
+}
+
+function formatDate(dateString: string) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("zh-TW", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  description?: string;
+  created_at: string;
+  image_url?: string[];
+  images?: string[];
+};
 
 type ProductCardProps = {
   product: Product;
@@ -18,10 +41,11 @@ const categoryLabels: Record<string, string> = {
 };
 
 export function ProductCard({ product }: ProductCardProps) {
+  // 相容不同的資料庫欄位命名 (images 或 image_url)
   const rawImageUrl = product.images?.[0] || product.image_url?.[0];
   const categoryLabel = categoryLabels[product.category] || product.category;
 
-  // 💡 修正：防重疊、防拆分的 Supabase 圖片拼接邏輯
+  // 💡 正確的 Supabase 圖片網址拼湊邏輯（防重複拼接）
   let imageUrl = "";
   if (rawImageUrl) {
     if (rawImageUrl.startsWith("http://") || rawImageUrl.startsWith("https://")) {
@@ -36,24 +60,24 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <div className="bg-card rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       {/* Image */}
-      <div className="aspect-square bg-secondary relative flex items-center justify-center">
+      <div className="aspect-square bg-secondary relative flex items-center justify-center overflow-hidden">
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={product.name}
             className="w-full h-full object-contain"
             onError={(e) => {
-              // 載入失敗時改為灰色預設圖示，避免胡亂加載其他網路圖片
+              // 萬一圖片加載失敗，顯示乾淨的灰色包裹圖示，不加載任何奇怪的 Unsplash 網圖
               e.currentTarget.style.display = "none";
               const parent = e.currentTarget.parentElement;
               if (parent) {
-                parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="h-16 w-16 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
+                parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="h-12 w-12 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
               }
             }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Package className="h-16 w-16 text-muted-foreground/30" />
+            <Package className="h-12 w-12 text-muted-foreground/30" />
           </div>
         )}
       </div>
