@@ -45,7 +45,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 // 🔒 💡 管理員 LINE ID 白名單 (請在下方陣列中加入你跟其他管理員的 LINE User ID)
 // 你可以在「個人中心」的最下方看到你自己的 LINE ID (前六碼)，或者在資料庫裡找。
 const ADMIN_LINE_IDS = [
-  "U1234567890abcdef1234567890abcdef", // 👈 替換成你真正的 LINE User ID (極重要！)
+  "Ued7dfd77b63273d497cebc62f1a7b1df", // 👈 替換成你真正的 LINE User ID (極重要！)
   "YOUR_LINE_USER_ID_HERE",           // 👈 可以放入第二個管理員的 ID
 ];
 
