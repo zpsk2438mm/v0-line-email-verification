@@ -18,14 +18,16 @@ const categoryLabels: Record<string, string> = {
 };
 
 export function ProductCard({ product }: ProductCardProps) {
-  const rawImageUrl = product.images?.[0];
+  const rawImageUrl = product.images?.[0] || product.image_url?.[0];
   const categoryLabel = categoryLabels[product.category] || product.category;
 
-  // 💡 精準指向你的 product-images 儲存桶
+  // 💡 修正：防重疊、防拆分的 Supabase 圖片拼接邏輯
   let imageUrl = "";
   if (rawImageUrl) {
     if (rawImageUrl.startsWith("http://") || rawImageUrl.startsWith("https://")) {
       imageUrl = rawImageUrl;
+    } else if (rawImageUrl.startsWith("product-images/")) {
+      imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${rawImageUrl}`;
     } else {
       imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${rawImageUrl}`;
     }
@@ -34,15 +36,19 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <div className="bg-card rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       {/* Image */}
-      <div className="aspect-square bg-secondary relative">
+      <div className="aspect-square bg-secondary relative flex items-center justify-center">
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={product.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
             onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src =
-                "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=600&auto=format&fit=crop&q=60";
+              // 載入失敗時改為灰色預設圖示，避免胡亂加載其他網路圖片
+              e.currentTarget.style.display = "none";
+              const parent = e.currentTarget.parentElement;
+              if (parent) {
+                parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="h-16 w-16 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
+              }
             }}
           />
         ) : (
