@@ -19,12 +19,14 @@ import {
   User,
   Package,
   LogOut,
-  ShoppingBag,
+  ShoppingBag, // 👈 引入市集小包包圖標
   GraduationCap,
 } from "lucide-react";
 
+// 💡 秘訣：在這裡直接把「市集瀏覽」加入選單清單中！
 const NAV_ITEMS = [
   { href: "/", label: "首頁", icon: Home },
+  { href: "/products", label: "市集瀏覽", icon: ShoppingBag }, // 👈 新增這一行！
   { href: "/profile", label: "個人中心", icon: User },
   { href: "/my-listings", label: "我的商品", icon: Package },
 ];
@@ -134,9 +136,3 @@ export function Navigation() {
     </Sheet>
   );
 }
-<Link href="/products">
-  <Button variant="ghost" className="w-full justify-start gap-2">
-    <ShoppingBag className="h-4 w-4" />
-    <span>市集瀏覽</span>
-  </Button>
-</Link>
