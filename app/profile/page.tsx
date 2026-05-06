@@ -15,7 +15,6 @@ import {
   Package,
   CheckCircle,
   Clock,
-  XCircle,
   LogIn,
   ShieldCheck,
 } from "lucide-react";
@@ -25,17 +24,11 @@ interface Product {
   id: string;
   name: string;
   price: number;
-  status: string;
+  is_approved: boolean; // 👈 修正為正確的 is_approved 欄位
   created_at: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
-  approved: { label: "已上架", icon: CheckCircle, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
-  pending: { label: "審核中", icon: Clock, color: "text-amber-600 bg-amber-50 border-amber-200" },
-  rejected: { label: "未通過", icon: XCircle, color: "text-rose-600 bg-rose-50 border-rose-200" },
-};
-
-// 🔒 💡 已經填入你專屬的 LINE ID 白名單！
+// 🔒 填入你的 LINE ID 白名單
 const ADMIN_LINE_IDS = [
   "Ued7dfd77b63273d497cebc62f1a7b1df", 
 ];
@@ -63,9 +56,10 @@ export default function ProfilePage() {
     async function fetchMyProducts() {
       try {
         setIsLoadingProducts(true);
+        // 🔒 修正 Select，撈取 is_approved 替代 status
         const { data, error } = await supabase
           .from("products")
-          .select("id, name, price, status, created_at")
+          .select("id, name, price, is_approved, created_at")
           .eq("line_user_id", lineUserId)
           .order("created_at", { ascending: false });
 
@@ -155,11 +149,10 @@ export default function ProfilePage() {
               <Calendar className="h-3.5 w-3.5 text-slate-400" />
               <span>註冊時間：已成功通過南台信箱驗證</span>
             </div>
-            {/* 💡 LINE ID UI 顯示區塊已在此處安全移除！ */}
           </CardContent>
         </Card>
 
-        {/* 🌟 2. 管理員專屬傳送門 (現在只有你點進去才看得見這個按鈕了！) */}
+        {/* 2. 管理員專屬傳送門 */}
         {isAdmin && (
           <Link href="/admin" className="block">
             <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-6 rounded-2xl shadow-md shadow-amber-100 flex items-center justify-center gap-2">
@@ -196,19 +189,26 @@ export default function ProfilePage() {
           ) : (
             <div className="space-y-3">
               {myProducts.map((product) => {
-                const statusInfo = STATUS_CONFIG[product.status] || STATUS_CONFIG.pending;
-                const StatusIcon = statusInfo.icon;
-
+                // 🔒 動態判斷狀態：若 is_approved 為 true 則顯示「已上架」，否則為「審核中」
+                const isApproved = product.is_approved;
+                
                 return (
                   <div key={product.id} className="flex items-center justify-between p-3 border rounded-xl border-slate-100 hover:bg-slate-50/50 transition-colors">
                     <div className="space-y-1">
                       <h4 className="font-bold text-sm text-slate-800">{product.name}</h4>
-                      <p className="text-xs font-extrabold text-rose-500">NT$ {product.price}</p>
+                      <p className="text-xs font-extrabold text-rose-500">NT$ {product.price.toLocaleString()}</p>
                     </div>
-                    <Badge className={`text-[10px] font-bold border flex items-center gap-1 shadow-none ${statusInfo.color}`}>
-                      <StatusIcon className="h-3 w-3" />
-                      {statusInfo.label}
-                    </Badge>
+                    {isApproved ? (
+                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-emerald-600 bg-emerald-50 border-emerald-200">
+                        <CheckCircle className="h-3 w-3" />
+                        已上架
+                      </Badge>
+                    ) : (
+                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-amber-600 bg-amber-50 border-amber-200">
+                        <Clock className="h-3 w-3" />
+                        審核中
+                      </Badge>
+                    )}
                   </div>
                 );
               })}
