@@ -207,13 +207,18 @@ export default function MyListingsPage() {
               const StatusIcon = statusConfig.icon;
               const isDeleting = deletingId === product.id;
 
-              // 💡 這裡幫你寫好防呆拼接 Supabase product-images 儲存桶的網址！
+              // 💡 修正：防重疊、防拆分的 Supabase 圖片拼接邏輯
               const rawImage = product.image_url?.[0];
-              const imageUrl = rawImage
-                ? rawImage.startsWith("http")
-                  ? rawImage
-                  : `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${rawImage}`
-                : null;
+              let imageUrl = null;
+              if (rawImage) {
+                if (rawImage.startsWith("http")) {
+                  imageUrl = rawImage;
+                } else if (rawImage.startsWith("product-images/")) {
+                  imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${rawImage}`;
+                } else {
+                  imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${rawImage}`;
+                }
+              }
 
               return (
                 <Card key={product.id} className={isDeleting ? "opacity-50" : ""}>
@@ -225,10 +230,14 @@ export default function MyListingsPage() {
                           <img
                             src={imageUrl}
                             alt={product.name}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain"
                             onError={(e) => {
-                              // 如果萬一載入失敗，顯示預設占位圖
-                              e.currentTarget.src = "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=600&auto=format&fit=crop&q=60";
+                              // 萬一圖片載入錯誤，改為顯示灰色圖示，而不顯示奇怪的圖
+                              e.currentTarget.style.display = "none";
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="h-8 w-8 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
+                              }
                             }}
                           />
                         ) : (
