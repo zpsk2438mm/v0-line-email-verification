@@ -207,17 +207,29 @@ export default function MyListingsPage() {
               const StatusIcon = statusConfig.icon;
               const isDeleting = deletingId === product.id;
 
+              // 💡 這裡幫你寫好防呆拼接 Supabase product-images 儲存桶的網址！
+              const rawImage = product.image_url?.[0];
+              const imageUrl = rawImage
+                ? rawImage.startsWith("http")
+                  ? rawImage
+                  : `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${rawImage}`
+                : null;
+
               return (
                 <Card key={product.id} className={isDeleting ? "opacity-50" : ""}>
                   <CardContent className="p-4">
                     <div className="flex gap-4">
                       {/* Product Image */}
                       <div className="h-24 w-24 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                        {product.image_url && product.image_url.length > 0 ? (
+                        {imageUrl ? (
                           <img
-                            src={product.image_url[0]}
+                            src={imageUrl}
                             alt={product.name}
                             className="h-full w-full object-cover"
+                            onError={(e) => {
+                              // 如果萬一載入失敗，顯示預設占位圖
+                              e.currentTarget.src = "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=600&auto=format&fit=crop&q=60";
+                            }}
                           />
                         ) : (
                           <Package className="h-8 w-8 text-muted-foreground" />
