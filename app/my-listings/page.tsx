@@ -4,314 +4,194 @@ import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Package,
-  Clock,
   CheckCircle,
-  XCircle,
-  AlertCircle,
-  ArrowLeft,
-  ShoppingBag,
+  Clock,
   Trash2,
+  ChevronLeft
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 interface Product {
   id: string;
   name: string;
   price: number;
+  description: string;
   category: string;
-  description?: string;
-  contact: string;
-  status?: string;
+  image_url: string | null;
+  is_approved: boolean; // 👈 統一使用正確的 is_approved 欄位
   created_at: string;
-  image_url?: string | string[];
-  images?: string | string[];
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  electronics: "電子產品",
-  books: "書籍教材",
-  clothing: "服飾配件",
-  furniture: "家具家電",
-  sports: "運動用品",
-  other: "其他",
-};
+export default function MyProductsPage() {
+  const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
+  const [myProducts, setMyProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-const STATUS_CONFIG: Record<
-  string,
-  { label: string; icon: typeof CheckCircle; variant: "default" | "secondary" | "destructive" | "outline" }
-> = {
-  approved: { label: "已上架", icon: CheckCircle, variant: "default" },
-  pending: { label: "審核中", icon: Clock, variant: "secondary" },
-  rejected: { label: "已拒絕", icon: XCircle, variant: "destructive" },
-};
-
-export default function MyListingsPage() {
-  const { lineUserId, isAuthenticated } = useLiff();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
+  // 獲取使用者自己上架的商品
   useEffect(() => {
-    async function fetchProducts() {
-      if (!lineUserId) {
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error: fetchError } = await supabase
-          .from("products")
-          .select("*")
-          .eq("line_user_id", lineUserId)
-          .order("created_at", { ascending: false });
-
-        if (fetchError) {
-          console.error("[v0] Failed to fetch products:", fetchError);
-          setError("無法載入商品資料");
-          return;
-        }
-
-        setProducts(data || []);
-      } catch (err) {
-        console.error("[v0] Unexpected error:", err);
-        setError("發生未預期的錯誤");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    fetchProducts();
-  }, [lineUserId]);
-
-  const handleDelete = async (productId: string) => {
-    if (!confirm("確定要刪除這個商品嗎？此操作無法復原。")) {
+    if (!isAuthenticated || !lineUserId) {
+      setIsLoadingProducts(false);
       return;
     }
 
-    setDeletingId(productId);
+    async function fetchMyProducts() {
+      try {
+        setIsLoadingProducts(true);
+        // 🔒 查詢正確的 is_approved 欄位
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, price, description, category, image_url, is_approved, created_at")
+          .eq("line_user_id", lineUserId)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("讀取商品失敗:", error);
+          return;
+        }
+        setMyProducts(data || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    }
+
+    fetchMyProducts();
+  }, [isAuthenticated, lineUserId]);
+
+  // 刪除商品功能
+  const handleDelete = async (productId: string) => {
+    if (!confirm("確定要刪除這項商品嗎？此動作無法復原。")) return;
 
     try {
-      const { error: deleteError } = await supabase
+      const { error } = await supabase
         .from("products")
         .delete()
-        .eq("id", productId)
-        .eq("line_user_id", lineUserId);
+        .eq("id", productId);
 
-      if (deleteError) {
-        console.error("[v0] Failed to delete product:", deleteError);
-        alert("刪除失敗，請稍後再試");
+      if (error) {
+        alert("刪除失敗：" + error.message);
         return;
       }
 
-      setProducts((prev) => prev.filter((p) => p.id !== productId));
+      // 重新整理網頁清單
+      setMyProducts(myProducts.filter((p) => p.id !== productId));
+      alert("商品已成功刪除！");
     } catch (err) {
-      console.error("[v0] Unexpected error:", err);
-      alert("發生未預期的錯誤");
-    } finally {
-      setDeletingId(null);
+      console.error(err);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("zh-TW", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  if (!isAuthenticated) {
+  if (liffLoading || isLoadingProducts) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-sm">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-foreground font-medium">請先登入</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              您需要登入才能查看我的商品
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <main className="min-h-screen bg-slate-50">
+        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+          <Link href="/profile">
+            <ChevronLeft className="h-6 w-6 text-slate-600" />
+          </Link>
+          <h1 className="text-lg font-bold">我的商品</h1>
+        </header>
+        <div className="p-4 space-y-4 max-w-md mx-auto">
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
+        </div>
+      </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-card px-4 py-4 shadow-sm">
-        <Navigation />
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-          <Package className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <h1 className="text-lg font-bold">我的商品</h1>
+    <main className="min-h-screen bg-slate-50 pb-12">
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+        <Link href="/profile">
+          <ChevronLeft className="h-6 w-6 text-slate-600" />
+        </Link>
+        <h1 className="text-lg font-bold text-slate-800">我的商品</h1>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 py-6 space-y-4">
-        {isLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex gap-4">
-                    <Skeleton className="h-24 w-24 rounded-lg" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-5 w-3/4" />
-                      <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-4 w-1/3" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+      <div className="p-4 space-y-4 max-w-md mx-auto">
+        {myProducts.length === 0 ? (
+          <div className="text-center py-20 space-y-3 bg-white rounded-2xl p-6 shadow-sm">
+            <Package className="h-12 w-12 mx-auto text-slate-300" />
+            <p className="text-sm font-medium text-slate-400">目前沒有刊登中的商品喔</p>
+            <Link href="/" className="inline-block pt-2">
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-6">
+                前往上架商品
+              </Button>
+            </Link>
           </div>
-        ) : error ? (
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-              <p className="text-destructive font-medium">{error}</p>
-            </CardContent>
-          </Card>
-        ) : products.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <p className="text-lg font-medium text-foreground mb-2">
-                還沒有上架任何商品
-              </p>
-              <p className="text-sm text-muted-foreground mb-6">
-                開始上架您的二手商品吧！
-              </p>
-              <Link href="/">
-                <Button>
-                  <ShoppingBag className="h-4 w-4 mr-2" />
-                  立即上架
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
         ) : (
           <div className="space-y-4">
-            {products.map((product) => {
-              const status = product.status || "pending";
-              const statusConfig =
-                STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-              const StatusIcon = statusConfig.icon;
-              const isDeleting = deletingId === product.id;
-
-              // 💡 核心：完美解析並去除 [" "] 污染的網址提取器
-              const getCleanImageUrl = () => {
-                let raw = product.image_url || product.images;
-                if (!raw) return "";
-
-                let urlString = "";
-                if (Array.isArray(raw)) {
-                  urlString = raw[0] || "";
-                } else if (typeof raw === "string") {
-                  urlString = raw;
-                }
-
-                if (!urlString) return "";
-
-                let clean = urlString
-                  .trim()
-                  .replace(/^\[['"]?/, "")
-                  .replace(/['"]?\]$/, "")
-                  .replace(/\\/g, "")
-                  .replace(/^['"]/, "")
-                  .replace(/['"]$/, "")
-                  .trim();
-
-                if (clean.startsWith("http://") || clean.startsWith("https://")) {
-                  return clean;
-                } else {
-                  const cleanPath = clean.replace(/^\//, "");
-                  if (cleanPath.startsWith("product-images/")) {
-                    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${cleanPath}`;
-                  } else {
-                    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
-                  }
-                }
-              };
-
-              const imageUrl = getCleanImageUrl();
+            {myProducts.map((product) => {
+              // 🔒 精準狀態判定
+              const isApproved =
+                product.is_approved === true ||
+                String(product.is_approved).toLowerCase() === "true";
 
               return (
-                <Card key={product.id} className={isDeleting ? "opacity-50" : ""}>
-                  <CardContent className="p-4">
-                    <div className="flex gap-4">
-                      {/* Product Image */}
-                      <div className="h-24 w-24 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                        {imageUrl ? (
-                          <img
-                            src={imageUrl}
-                            alt={product.name}
-                            className="h-full w-full object-contain"
-                            onError={(e) => {
-                              console.error("我的商品圖片載入失敗，網址為:", imageUrl);
-                              e.currentTarget.style.display = "none";
-                              const parent = e.currentTarget.parentElement;
-                              if (parent) {
-                                parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="h-8 w-8 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
-                              }
-                            }}
-                          />
-                        ) : (
-                          <Package className="h-8 w-8 text-muted-foreground" />
-                        )}
-                      </div>
+                <Card key={product.id} className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
+                  <CardContent className="p-4 flex gap-4">
+                    {/* 商品圖片 */}
+                    <div className="relative h-24 w-24 flex-shrink-0 bg-slate-100 rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center">
+                      {product.image_url ? (
+                        <img
+                          src={product.image_url}
+                          alt={product.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Package className="h-8 w-8 text-slate-300" />
+                      )}
+                    </div>
 
-                      {/* Product Info */}
-                      <div className="flex-1 min-w-0">
+                    {/* 商品資訊與狀態 */}
+                    <div className="flex-1 flex flex-col justify-between min-w-0">
+                      <div>
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-medium text-foreground truncate">
+                          <h3 className="font-bold text-sm text-slate-800 truncate pr-2">
                             {product.name}
                           </h3>
-                          <Badge variant={statusConfig.variant} className="shrink-0">
-                            <StatusIcon className="h-3 w-3 mr-1" />
-                            {statusConfig.label}
-                          </Badge>
+                          {/* 狀態標籤根據 is_approved 動態轉換 */}
+                          {isApproved ? (
+                            <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-emerald-600 bg-emerald-50 border-emerald-200 flex-shrink-0">
+                              <CheckCircle className="h-3 w-3" />
+                              已上架
+                            </Badge>
+                          ) : (
+                            <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-blue-600 bg-blue-50 border-blue-200 flex-shrink-0">
+                              <Clock className="h-3 w-3" />
+                              審核中
+                            </Badge>
+                          )}
                         </div>
-
-                        <p className="text-lg font-bold text-primary mt-1">
+                        <p className="text-sm font-black text-blue-600 mt-1">
                           NT${product.price.toLocaleString()}
                         </p>
-
-                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                          <span>
-                            {CATEGORY_LABELS[product.category] || product.category}
-                          </span>
-                          <span>-</span>
-                          <span>{formatDate(product.created_at)}</span>
-                        </div>
-
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {product.category} - {new Date(product.created_at).toLocaleDateString()}
+                        </p>
                         {product.description && (
-                          <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                          <p className="text-xs text-slate-500 mt-1 line-clamp-1">
                             {product.description}
                           </p>
                         )}
+                      </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 mt-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDelete(product.id)}
-                            disabled={isDeleting}
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            刪除
-                          </Button>
-                        </div>
+                      {/* 刪除按鈕 */}
+                      <div className="flex justify-start mt-2 border-t pt-2">
+                        <button
+                          onClick={() => handleDelete(product.id)}
+                          className="text-xs text-red-500 hover:text-red-600 font-bold flex items-center gap-1 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          刪除
+                        </button>
                       </div>
                     </div>
                   </CardContent>
@@ -320,14 +200,6 @@ export default function MyListingsPage() {
             })}
           </div>
         )}
-
-        {/* Back to Home */}
-        <Link href="/" className="block pt-4">
-          <Button variant="outline" className="w-full">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            返回首頁
-          </Button>
-        </Link>
       </div>
     </main>
   );
