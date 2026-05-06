@@ -30,6 +30,7 @@ interface Product {
   status?: string;
   created_at: string;
   image_url?: string[];
+  images?: string[];
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -156,7 +157,6 @@ export default function MyListingsPage() {
 
       <div className="mx-auto max-w-lg px-4 py-6 space-y-4">
         {isLoading ? (
-          // Loading skeletons
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
               <Card key={i}>
@@ -208,7 +208,7 @@ export default function MyListingsPage() {
               const isDeleting = deletingId === product.id;
 
               // 💡 修正：防重疊、防拆分的 Supabase 圖片拼接邏輯
-              const rawImage = product.image_url?.[0];
+              const rawImage = product.images?.[0] || product.image_url?.[0];
               let imageUrl = null;
               if (rawImage) {
                 if (rawImage.startsWith("http")) {
@@ -232,7 +232,6 @@ export default function MyListingsPage() {
                             alt={product.name}
                             className="h-full w-full object-contain"
                             onError={(e) => {
-                              // 萬一圖片載入錯誤，改為顯示灰色圖示，而不顯示奇怪的圖
                               e.currentTarget.style.display = "none";
                               const parent = e.currentTarget.parentElement;
                               if (parent) {
