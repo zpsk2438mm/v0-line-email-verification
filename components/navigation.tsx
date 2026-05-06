@@ -134,3 +134,9 @@ export function Navigation() {
     </Sheet>
   );
 }
+<Link href="/products">
+  <Button variant="ghost" className="w-full justify-start gap-2">
+    <ShoppingBag className="h-4 w-4" />
+    <span>市集瀏覽</span>
+  </Button>
+</Link>
