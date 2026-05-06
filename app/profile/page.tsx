@@ -17,7 +17,7 @@ import {
   Clock,
   XCircle,
   LogIn,
-  ShieldCheck, // 👈 引入盾牌圖標
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -29,16 +29,15 @@ interface Product {
   created_at: string;
 }
 
-// 💡 這裡就是你原本寫錯的地方，我們幫你補上引號並完美修復了！
 const STATUS_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
   approved: { label: "已上架", icon: CheckCircle, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   pending: { label: "審核中", icon: Clock, color: "text-amber-600 bg-amber-50 border-amber-200" },
   rejected: { label: "未通過", icon: XCircle, color: "text-rose-600 bg-rose-50 border-rose-200" },
 };
 
-// 🔒 暫時的管理員 LINE ID 白名單 (等看到自己 ID 後可以填入)
+// 🔒 💡 已經填入你專屬的 LINE ID 白名單！
 const ADMIN_LINE_IDS = [
-  "U1234567890abcdef1234567890abcdef", // 👈 稍後可以把你的 ID 填在這裡
+  "Ued7dfd77b63273d497cebc62f1a7b1df", 
 ];
 
 export default function ProfilePage() {
@@ -156,18 +155,11 @@ export default function ProfilePage() {
               <Calendar className="h-3.5 w-3.5 text-slate-400" />
               <span>註冊時間：已成功通過南台信箱驗證</span>
             </div>
-            {lineUserId && (
-              <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1">
-                <span className="text-[10px] text-slate-400">您的 LINE ID (複製此欄填入 admin 白名單)：</span>
-                <code className="bg-slate-50 p-2 rounded text-[11px] text-slate-700 select-all font-mono break-all border border-slate-100">
-                  {lineUserId}
-                </code>
-              </div>
-            )}
+            {/* 💡 LINE ID UI 顯示區塊已在此處安全移除！ */}
           </CardContent>
         </Card>
 
-        {/* 🌟 2. 管理員專屬傳送門 (如果是管理員，直接亮起這個按鈕) */}
+        {/* 🌟 2. 管理員專屬傳送門 (現在只有你點進去才看得見這個按鈕了！) */}
         {isAdmin && (
           <Link href="/admin" className="block">
             <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-6 rounded-2xl shadow-md shadow-amber-100 flex items-center justify-center gap-2">
