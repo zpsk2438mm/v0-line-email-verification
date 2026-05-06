@@ -4,20 +4,20 @@ import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ShoppingBag,
   User,
   Mail,
+  Calendar,
   Package,
-  Clock,
   CheckCircle,
+  Clock,
   XCircle,
-  AlertCircle,
-  ArrowLeft,
+  LogIn,
+  ShieldCheck, // 👈 引入盾牌圖標
 } from "lucide-react";
 import Link from "next/link";
 
@@ -25,358 +25,204 @@ interface Product {
   id: string;
   name: string;
   price: number;
-  category: string;
-  status?: string;
+  status: string;
   created_at: string;
-  image_url?: any; // 放寬型態以相容字串與陣列
-  images?: any;
 }
 
-interface UserStats {
-  totalListings: number;
-  pendingListings: number;
-  approvedListings: number;
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  electronics: "電子產品",
-  books: "書籍教材",
-  clothing: "服飾配件",
-  furniture: "家具家電",
-  sports: "運動用品",
-  other: "其他",
+// 💡 這裡就是你原本寫錯的地方，我們幫你補上引號並完美修復了！
+const STATUS_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
+  approved: { label: "已上架", icon: CheckCircle, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+  pending: { label: "審核中", icon: Clock, color: "text-amber-600 bg-amber-50 border-amber-200" },
+  rejected: { label: "未通過", icon: XCircle, color: "text-rose-600 bg-rose-50 border-rose-200" },
 };
 
-// 💡 修正完畢：完整的狀態配置物件
-const STATUS_CONFIG: Record<string, { label: string; icon: typeof CheckCircle; color: string }> = {
-  approved: { label: "已上架", icon: CheckCircle, color: "text-green-600" },
-  pending: { label: "審核中", icon: Clock, color: "text-yellow-600" },
-  rejected: { label: "已拒絕", icon: XCircle, color: "text-red-600" },
-};
+// 🔒 暫時的管理員 LINE ID 白名單 (等看到自己 ID 後可以填入)
+const ADMIN_LINE_IDS = [
+  "U1234567890abcdef1234567890abcdef", // 👈 稍後可以把你的 ID 填在這裡
+];
 
 export default function ProfilePage() {
-  const { userEmail, lineUserId, isAuthenticated } = useLiff();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [stats, setStats] = useState<UserStats>({
-    totalListings: 0,
-    pendingListings: 0,
-    approvedListings: 0,
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { lineUserId, userEmail, isAuthenticated, login, isLoading: liffLoading } = useLiff();
+  const [myProducts, setMyProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
+  // 1. 檢查是否為管理員
   useEffect(() => {
-    async function fetchUserData() {
-      if (!lineUserId) {
-        setIsLoading(false);
-        return;
-      }
+    if (lineUserId && ADMIN_LINE_IDS.includes(lineUserId)) {
+      setIsAdmin(true);
+    }
+  }, [lineUserId]);
 
+  // 2. 獲取使用者自己上架的商品
+  useEffect(() => {
+    if (!isAuthenticated || !lineUserId) {
+      setIsLoadingProducts(false);
+      return;
+    }
+
+    async function fetchMyProducts() {
       try {
-        // Fetch user's products from Supabase
-        const { data, error: fetchError } = await supabase
+        setIsLoadingProducts(true);
+        const { data, error } = await supabase
           .from("products")
-          .select("*")
+          .select("id, name, price, status, created_at")
           .eq("line_user_id", lineUserId)
           .order("created_at", { ascending: false });
 
-        if (fetchError) {
-          console.error("[v0] Failed to fetch products:", fetchError);
-          setError("無法載入商品資料");
+        if (error) {
+          console.error("讀取商品失敗:", error);
           return;
         }
-
-        const productList = data || [];
-        setProducts(productList);
-
-        // Calculate stats
-        const pending = productList.filter(
-          (p) => !p.status || p.status === "pending"
-        ).length;
-        const approved = productList.filter(
-          (p) => p.status === "approved"
-        ).length;
-
-        setStats({
-          totalListings: productList.length,
-          pendingListings: pending,
-          approvedListings: approved,
-        });
+        setMyProducts(data || []);
       } catch (err) {
-        console.error("[v0] Unexpected error:", err);
-        setError("發生未預期的錯誤");
+        console.error(err);
       } finally {
-        setIsLoading(false);
+        setIsLoadingProducts(false);
       }
     }
 
-    fetchUserData();
-  }, [lineUserId]);
+    fetchMyProducts();
+  }, [isAuthenticated, lineUserId]);
 
-  // 💡 核心：個人中心專用的安全圖片路徑解析器
-  const getCleanImageUrl = (product: Product) => {
-    let raw = product.image_url || product.images;
-    if (!raw) return "";
-
-    let urlString = "";
-
-    if (Array.isArray(raw)) {
-      urlString = raw[0] || "";
-    } else if (typeof raw === "string") {
-      if (raw.trim().startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            urlString = parsed[0] || "";
-          } else {
-            urlString = parsed;
-          }
-        } catch (e) {
-          urlString = raw;
-        }
-      } else {
-        urlString = raw;
-      }
-    } else {
-      urlString = String(raw);
-    }
-
-    if (!urlString) return "";
-
-    let clean = urlString
-      .trim()
-      .replace(/^\[['"]?/, "")
-      .replace(/['"]?\]$/, "")
-      .replace(/\\/g, "")
-      .replace(/^['"]/, "")
-      .replace(/['"]$/, "")
-      .trim();
-
-    if (clean.startsWith("http://") || clean.startsWith("https://")) {
-      return clean;
-    } else {
-      const cleanPath = clean.replace(/^\//, "");
-      if (cleanPath.startsWith("product-images/")) {
-        return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${cleanPath}`;
-      } else {
-        return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
-      }
-    }
-  };
+  if (liffLoading) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+          <Navigation />
+          <h1 className="text-lg font-bold">個人中心</h1>
+        </header>
+        <div className="p-4 space-y-4 max-w-md mx-auto">
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-60 w-full rounded-2xl" />
+        </div>
+      </main>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-sm">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-foreground font-medium">請先登入</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              您需要登入才能查看個人中心
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <main className="min-h-screen bg-slate-50">
+        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+          <Navigation />
+          <h1 className="text-lg font-bold">個人中心</h1>
+        </header>
+        <div className="min-h-[70vh] flex items-center justify-center p-4">
+          <Card className="w-full max-w-sm border-none shadow-md rounded-2xl bg-white text-center p-6 space-y-4">
+            <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto">
+              <User className="h-6 w-6 text-slate-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg text-slate-800">歡迎來到個人中心</h2>
+              <p className="text-xs text-slate-500 mt-1">請登入以查看您的個人資料與上架商品</p>
+            </div>
+            <Button onClick={() => login?.()} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-xl">
+              <LogIn className="h-4 w-4 mr-2" />
+              使用 LINE 登入
+            </Button>
+          </Card>
+        </div>
+      </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-card px-4 py-4 shadow-sm">
+    <main className="min-h-screen bg-slate-50 pb-12">
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-          <User className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <h1 className="text-lg font-bold">個人中心</h1>
+        <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 py-6 space-y-6">
-        {/* User Profile Card */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">帳號資訊</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <div className="p-4 space-y-4 max-w-md mx-auto">
+        {/* 1. 用戶資訊卡 */}
+        <Card className="border-none shadow-sm rounded-2xl bg-white overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6">
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                <User className="h-8 w-8 text-primary" />
+              <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                <User className="h-7 w-7 text-white" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-foreground">南台科大用戶</p>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Mail className="h-3.5 w-3.5" />
-                  <span className="truncate">{userEmail || "未驗證"}</span>
-                </div>
+              <div>
+                <h2 className="font-black text-lg">已驗證南台用戶</h2>
+                <p className="text-xs text-blue-100 mt-0.5">{userEmail}</p>
               </div>
-            </div>
-
-            {userEmail && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm text-green-700">學校信箱已驗證</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-3 gap-3">
-          <Card>
-            <CardContent className="p-4 text-center">
-              {isLoading ? (
-                <Skeleton className="h-8 w-8 mx-auto mb-1" />
-              ) : (
-                <p className="text-2xl font-bold text-foreground">
-                  {stats.totalListings}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">總上架數</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              {isLoading ? (
-                <Skeleton className="h-8 w-8 mx-auto mb-1" />
-              ) : (
-                <p className="text-2xl font-bold text-yellow-600">
-                  {stats.pendingListings}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">審核中</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              {isLoading ? (
-                <Skeleton className="h-8 w-8 mx-auto mb-1" />
-              ) : (
-                <p className="text-2xl font-bold text-green-600">
-                  {stats.approvedListings}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">已上架</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Recent Listings */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">最近上架商品</CardTitle>
-              <Link href="/my-listings">
-                <Button variant="ghost" size="sm" className="text-xs">
-                  查看全部
-                </Button>
-              </Link>
             </div>
           </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <Skeleton className="h-12 w-12 rounded-lg" />
-                    <div className="flex-1">
-                      <Skeleton className="h-4 w-32 mb-1" />
-                      <Skeleton className="h-3 w-20" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : error ? (
-              <div className="text-center py-6">
-                <AlertCircle className="h-8 w-8 mx-auto text-destructive mb-2" />
-                <p className="text-sm text-destructive">{error}</p>
-              </div>
-            ) : products.length === 0 ? (
-              <div className="text-center py-6">
-                <Package className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground mb-3">
-                  您還沒有上架任何商品
-                </p>
-                <Link href="/">
-                  <Button size="sm">
-                    <ShoppingBag className="h-4 w-4 mr-2" />
-                    立即上架
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {products.slice(0, 5).map((product) => {
-                  const status = product.status || "pending";
-                  const statusConfig =
-                    STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-                  const StatusIcon = statusConfig.icon;
-                  
-                  // 使用去污染解析器獲取安全的網址
-                  const imageUrl = getCleanImageUrl(product);
-
-                  return (
-                    <div
-                      key={product.id}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors"
-                    >
-                      {/* Product Image */}
-                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                        {imageUrl ? (
-                          <img
-                            src={imageUrl}
-                            alt={product.name}
-                            className="h-full w-full object-cover"
-                            onError={(e) => {
-                              console.error("個人中心縮圖載入失敗，網址:", imageUrl);
-                              e.currentTarget.style.display = "none";
-                              const parent = e.currentTarget.parentElement;
-                              if (parent) {
-                                parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="h-5 w-5 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
-                              }
-                            }}
-                          />
-                        ) : (
-                          <Package className="h-5 w-5 text-muted-foreground" />
-                        )}
-                      </div>
-
-                      {/* Product Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {product.name}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-primary font-medium">
-                            NT${product.price.toLocaleString()}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {CATEGORY_LABELS[product.category] || product.category}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Status */}
-                      <div
-                        className={`flex items-center gap-1 shrink-0 ${statusConfig.color}`}
-                      >
-                        <StatusIcon className="h-3.5 w-3.5" />
-                        <span className="text-xs">{statusConfig.label}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+          <CardContent className="p-4 space-y-2.5 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <Mail className="h-3.5 w-3.5 text-slate-400" />
+              <span>學校信箱：{userEmail}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" />
+              <span>註冊時間：已成功通過南台信箱驗證</span>
+            </div>
+            {lineUserId && (
+              <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1">
+                <span className="text-[10px] text-slate-400">您的 LINE ID (複製此欄填入 admin 白名單)：</span>
+                <code className="bg-slate-50 p-2 rounded text-[11px] text-slate-700 select-all font-mono break-all border border-slate-100">
+                  {lineUserId}
+                </code>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Back to Home */}
-        <Link href="/" className="block">
-          <Button variant="outline" className="w-full">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            返回首頁
-          </Button>
-        </Link>
+        {/* 🌟 2. 管理員專屬傳送門 (如果是管理員，直接亮起這個按鈕) */}
+        {isAdmin && (
+          <Link href="/admin" className="block">
+            <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-6 rounded-2xl shadow-md shadow-amber-100 flex items-center justify-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              進入「商品審核管理後台」
+            </Button>
+          </Link>
+        )}
+
+        {/* 3. 我的商品清單 */}
+        <Card className="border-none shadow-sm rounded-2xl bg-white p-4 space-y-4">
+          <div className="flex items-center justify-between border-b pb-3">
+            <h3 className="font-bold text-slate-800 flex items-center gap-1.5">
+              <Package className="h-4.5 w-4.5 text-blue-600" />
+              我刊登的商品 ({myProducts.length})
+            </h3>
+            <Link href="/">
+              <Button size="sm" variant="outline" className="text-xs rounded-lg">
+                + 我要上架
+              </Button>
+            </Link>
+          </div>
+
+          {isLoadingProducts ? (
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-full rounded-lg" />
+              <Skeleton className="h-12 w-full rounded-lg" />
+            </div>
+          ) : myProducts.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <Package className="h-10 w-10 mx-auto text-slate-300" />
+              <p className="text-xs font-medium text-slate-400">您還沒有上架過任何商品喔</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {myProducts.map((product) => {
+                const statusInfo = STATUS_CONFIG[product.status] || STATUS_CONFIG.pending;
+                const StatusIcon = statusInfo.icon;
+
+                return (
+                  <div key={product.id} className="flex items-center justify-between p-3 border rounded-xl border-slate-100 hover:bg-slate-50/50 transition-colors">
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-sm text-slate-800">{product.name}</h4>
+                      <p className="text-xs font-extrabold text-rose-500">NT$ {product.price}</p>
+                    </div>
+                    <Badge className={`text-[10px] font-bold border flex items-center gap-1 shadow-none ${statusInfo.color}`}>
+                      <StatusIcon className="h-3 w-3" />
+                      {statusInfo.label}
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
       </div>
     </main>
   );
