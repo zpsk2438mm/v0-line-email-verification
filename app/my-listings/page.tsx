@@ -36,8 +36,8 @@ export default function MyProductsPage() {
 
   // 獲取使用者自己上架的商品
   useEffect(() => {
-    if (!isAuthenticated || !lineUserId) {
-      setIsLoadingProducts(false);
+    // 🔒 關鍵修復：LIFF 還在載入，或者尚未取得 lineUserId 時，絕對不執行查詢，避免查出空資料
+    if (liffLoading || !isAuthenticated || !lineUserId) {
       return;
     }
 
@@ -63,7 +63,7 @@ export default function MyProductsPage() {
     }
 
     fetchMyProducts();
-  }, [isAuthenticated, lineUserId]);
+  }, [liffLoading, isAuthenticated, lineUserId]); // 🔒 把 liffLoading 加進 dependency，確保狀態改變時能重新嘗試撈取
 
   // 刪除商品功能
   const handleDelete = async (productId: string) => {
@@ -138,7 +138,8 @@ export default function MyProductsPage() {
     }
   };
 
-  if (liffLoading || isLoadingProducts) {
+  // 🔒 只有在 LIFF 或產品兩者都在讀取時才顯示骨架屏
+  if (liffLoading || (isLoadingProducts && myProducts.length === 0)) {
     return (
       <main className="min-h-screen bg-slate-50">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -165,7 +166,7 @@ export default function MyProductsPage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {myProducts.length === 0 ? (
+        {!isLoadingProducts && myProducts.length === 0 ? (
           <div className="text-center py-20 space-y-3 bg-white rounded-2xl p-6 shadow-sm">
             <Package className="h-12 w-12 mx-auto text-slate-300" />
             <p className="text-sm font-medium text-slate-400">目前沒有刊登中的商品喔</p>
@@ -187,7 +188,7 @@ export default function MyProductsPage() {
               return (
                 <Card key={product.id} className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
                   <CardContent className="p-4 flex gap-4">
-                    {/* 📷 修正後的商品圖片容器：完美鎖定 96x96 像素比例，並防止圖片變形 */}
+                    {/* 📷 完美鎖定 96x96 圓角圖片，防跑版 */}
                     <div className="relative h-24 w-24 flex-shrink-0 bg-slate-50 rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center">
                       {imageUrl ? (
                         <img
