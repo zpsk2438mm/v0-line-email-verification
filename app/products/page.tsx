@@ -28,7 +28,7 @@ interface Product {
   price: number;
   category: string;
   description?: string;
-  is_approved: boolean; // 👈 完美對應你資料表的 is_approved 欄位
+  is_approved: boolean;
   created_at: string;
   image_url?: any;
   images?: any;
@@ -59,7 +59,6 @@ export default function ExploreProductsPage() {
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // 搜尋與篩選狀態
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
@@ -72,12 +71,11 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setIsLoading(true);
-        // 🔒 撈取審核通過（is_approved = true）的公開商品
         const { data, error } = await supabase
-  .from("products")
-  .select("*")
-  .eq("line_user_id", lineUserId) // 👈 只要 LINE ID 對得上一律撈出來
-  .order("created_at", { ascending: false });
+          .from("products")
+          .select("*")
+          .eq("is_approved", true) // 👈 只撈出審核通過的
+          .order("created_at", { ascending: false });
 
         if (error) {
           console.error("載入商品失敗:", error);
@@ -96,7 +94,6 @@ export default function ExploreProductsPage() {
     fetchAllApprovedProducts();
   }, [isAuthenticated]);
 
-  // 即時篩選
   useEffect(() => {
     let result = products;
 
@@ -116,7 +113,6 @@ export default function ExploreProductsPage() {
     setFilteredProducts(result);
   }, [searchQuery, selectedCategory, products]);
 
-  // 💡 圖片路徑解析器
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
     if (!raw) return "";
@@ -175,7 +171,6 @@ export default function ExploreProductsPage() {
     });
   };
 
-  // 🔒 守門員畫面：未登入時
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-slate-50 flex flex-col justify-between pb-12">
@@ -223,10 +218,8 @@ export default function ExploreProductsPage() {
     );
   }
 
-  // ✅ 已登入市集主畫面
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
-      {/* Header */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 shadow-md shadow-blue-100">
@@ -235,7 +228,6 @@ export default function ExploreProductsPage() {
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
 
-      {/* 頂部精美 Banner */}
       <div className="mx-auto max-w-lg px-4 pt-4">
         <div className="relative bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg overflow-hidden">
           <div className="absolute -right-6 -bottom-6 opacity-10">
@@ -255,9 +247,7 @@ export default function ExploreProductsPage() {
         </div>
       </div>
 
-      {/* 搜尋與篩選列 */}
       <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
-        {/* Search Input */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
@@ -269,7 +259,6 @@ export default function ExploreProductsPage() {
           />
         </div>
 
-        {/* 橫向滾動分類標籤 */}
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
           {CATEGORIES.map((cat) => (
             <button
@@ -287,7 +276,6 @@ export default function ExploreProductsPage() {
         </div>
       </div>
 
-      {/* 商品格柵 */}
       <div className="mx-auto max-w-lg px-4 mt-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
@@ -298,7 +286,6 @@ export default function ExploreProductsPage() {
         </div>
 
         {isLoading ? (
-          /* 載入中骨架 */
           <div className="grid grid-cols-2 gap-4">
             {[1, 2, 3, 4].map((i) => (
               <Card key={i} className="overflow-hidden border-none shadow-sm rounded-xl">
@@ -311,7 +298,6 @@ export default function ExploreProductsPage() {
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          /* 無商品狀態 */
           <Card className="py-16 text-center border-2 border-dashed border-slate-200 bg-white rounded-2xl">
             <CardContent className="space-y-3">
               <Package className="h-14 w-14 mx-auto text-slate-300" />
@@ -324,7 +310,6 @@ export default function ExploreProductsPage() {
             </CardContent>
           </Card>
         ) : (
-          /* 商品雙欄高質感卡片 */
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => {
               const imageUrl = getCleanImageUrl(product);
@@ -334,7 +319,6 @@ export default function ExploreProductsPage() {
                   key={product.id} 
                   className="overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col justify-between group hover:shadow-md transition-all duration-300"
                 >
-                  {/* 圖片容器 */}
                   <div className="aspect-square bg-slate-100 relative overflow-hidden flex items-center justify-center">
                     {imageUrl ? (
                       <img
@@ -354,7 +338,6 @@ export default function ExploreProductsPage() {
                         <Package className="h-8 w-8 text-slate-300" />
                       </div>
                     )}
-                    {/* 分類標籤 Badge */}
                     <div className="absolute top-2.5 left-2.5">
                       <Badge variant="secondary" className="text-[9px] bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded-md font-bold text-slate-700 shadow-sm border-none">
                         {CATEGORY_LABELS[product.category] || product.category}
@@ -362,7 +345,6 @@ export default function ExploreProductsPage() {
                     </div>
                   </div>
 
-                  {/* 資訊區域 */}
                   <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
                     <div>
                       <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors">
