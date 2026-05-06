@@ -74,10 +74,10 @@ export default function ExploreProductsPage() {
         setIsLoading(true);
         // 🔒 撈取審核通過（is_approved = true）的公開商品
         const { data, error } = await supabase
-          .from("products")
-          .select("*")
-          .eq("is_approved", true)
-          .order("created_at", { ascending: false });
+  .from("products")
+  .select("*")
+  .eq("line_user_id", lineUserId) // 👈 只要 LINE ID 對得上一律撈出來
+  .order("created_at", { ascending: false });
 
         if (error) {
           console.error("載入商品失敗:", error);
