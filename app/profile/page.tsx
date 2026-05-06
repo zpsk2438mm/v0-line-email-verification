@@ -189,8 +189,10 @@ export default function ProfilePage() {
           ) : (
             <div className="space-y-3">
               {myProducts.map((product) => {
-                // 🔒 動態判斷狀態：若 is_approved 為 true 則顯示「已上架」，否則為「審核中」
-                const isApproved = product.is_approved;
+                // 🔒 安全判斷狀態：相容處理布林值與字串 "true"/"TRUE"
+                const isApproved = 
+                  product.is_approved === true || 
+                  String(product.is_approved).toLowerCase() === "true";
                 
                 return (
                   <div key={product.id} className="flex items-center justify-between p-3 border rounded-xl border-slate-100 hover:bg-slate-50/50 transition-colors">
