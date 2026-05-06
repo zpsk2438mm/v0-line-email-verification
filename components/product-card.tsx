@@ -2,7 +2,6 @@
 
 import { Tag, Package } from "lucide-react";
 
-// 自定義簡單的價格與日期格式化函數，避免外部 import 錯誤
 function formatPrice(price: number) {
   return `NT$${price.toLocaleString()}`;
 }
@@ -23,8 +22,8 @@ type Product = {
   category: string;
   description?: string;
   created_at: string;
-  image_url?: string[];
-  images?: string[];
+  image_url?: string | string[]; // 相容字串與陣列
+  images?: string | string[];    // 相容字串與陣列
 };
 
 type ProductCardProps = {
@@ -41,21 +40,49 @@ const categoryLabels: Record<string, string> = {
 };
 
 export function ProductCard({ product }: ProductCardProps) {
-  // 相容不同的資料庫欄位命名 (images 或 image_url)
-  const rawImageUrl = product.images?.[0] || product.image_url?.[0];
   const categoryLabel = categoryLabels[product.category] || product.category;
 
-  // 💡 正確的 Supabase 圖片網址拼湊邏輯（防重複拼接）
-  let imageUrl = "";
-  if (rawImageUrl) {
-    if (rawImageUrl.startsWith("http://") || rawImageUrl.startsWith("https://")) {
-      imageUrl = rawImageUrl;
-    } else if (rawImageUrl.startsWith("product-images/")) {
-      imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${rawImageUrl}`;
-    } else {
-      imageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${rawImageUrl}`;
+  // 💡 核心：完美解析並去除 [" "] 污染的網址提取器
+  const getCleanImageUrl = () => {
+    // 1. 取得原始欄位值 (優先拿 image_url，因為你的資料表欄位叫 image_url)
+    let raw = product.image_url || product.images;
+    if (!raw) return "";
+
+    let urlString = "";
+
+    // 2. 如果本身就是陣列，取第一個
+    if (Array.isArray(raw)) {
+      urlString = raw[0] || "";
+    } else if (typeof raw === "string") {
+      urlString = raw;
     }
-  }
+
+    if (!urlString) return "";
+
+    // 3. 終極去污染：去除可能殘留的 [" ] [ ] \ 等 JSON 格式字串字元
+    let clean = urlString
+      .trim()
+      .replace(/^\[['"]?/, "")  // 去除開頭的 [" 或 ['
+      .replace(/['"]?\]$/, "")  // 去除結尾的 "] 或 ']
+      .replace(/\\/g, "")       // 去除斜線轉義字元
+      .replace(/^['"]/, "")     // 去除前後多餘引號
+      .replace(/['"]$/, "")
+      .trim();
+
+    // 4. 補全 Supabase 域名邏輯
+    if (clean.startsWith("http://") || clean.startsWith("https://")) {
+      return clean;
+    } else {
+      const cleanPath = clean.replace(/^\//, "");
+      if (cleanPath.startsWith("product-images/")) {
+        return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${cleanPath}`;
+      } else {
+        return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
+      }
+    }
+  };
+
+  const imageUrl = getCleanImageUrl();
 
   return (
     <div className="bg-card rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -67,7 +94,7 @@ export function ProductCard({ product }: ProductCardProps) {
             alt={product.name}
             className="w-full h-full object-contain"
             onError={(e) => {
-              // 萬一圖片加載失敗，顯示乾淨的灰色包裹圖示，不加載任何奇怪的 Unsplash 網圖
+              console.error("圖片加載失敗，解析出的網址為:", imageUrl);
               e.currentTarget.style.display = "none";
               const parent = e.currentTarget.parentElement;
               if (parent) {
