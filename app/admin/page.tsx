@@ -5,10 +5,9 @@ import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast"; // 如果沒有這個 hook，我們會用普通的 alert 代替
 import {
   CheckCircle,
   XCircle,
@@ -16,8 +15,6 @@ import {
   ShieldAlert,
   Package,
   Calendar,
-  Mail,
-  User,
 } from "lucide-react";
 
 interface Product {
@@ -26,11 +23,10 @@ interface Product {
   price: number;
   category: string;
   description?: string;
-  status?: string;
+  is_approved: boolean; // 👈 完美對接你的資料表欄位
   created_at: string;
   image_url?: any;
   images?: any;
-  line_user_id?: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -42,11 +38,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "其他",
 };
 
-// 🔒 💡 管理員 LINE ID 白名單 (請在下方陣列中加入你跟其他管理員的 LINE User ID)
-// 你可以在「個人中心」的最下方看到你自己的 LINE ID (前六碼)，或者在資料庫裡找。
+// 🔒 管理員 LINE ID 白名單
 const ADMIN_LINE_IDS = [
-  "Ued7dfd77b63273d497cebc62f1a7b1df", // 👈 替換成你真正的 LINE User ID (極重要！)
-  "YOUR_LINE_USER_ID_HERE",           // 👈 可以放入第二個管理員的 ID
+  "Ued7dfd77b63273d497cebc62f1a7b1df", // 👈 你的專屬管理員 ID
 ];
 
 export default function AdminReviewPage() {
@@ -58,7 +52,6 @@ export default function AdminReviewPage() {
   // 1. 驗證管理員身份
   useEffect(() => {
     if (!liffLoading && isAuthenticated && lineUserId) {
-      // 檢查目前的 LINE ID 是否在白名單中
       if (ADMIN_LINE_IDS.includes(lineUserId)) {
         setIsAdmin(true);
       } else {
@@ -67,7 +60,7 @@ export default function AdminReviewPage() {
     }
   }, [lineUserId, isAuthenticated, liffLoading]);
 
-  // 2. 獲取所有待審核商品
+  // 2. 獲取所有「待審核」商品 (也就是 is_approved 為 false 的商品)
   useEffect(() => {
     if (!isAdmin) {
       setIsLoading(false);
@@ -77,12 +70,11 @@ export default function AdminReviewPage() {
     async function fetchPendingProducts() {
       try {
         setIsLoading(true);
-        // 抓取狀態為 pending 或者是 status 為 null 的待審核商品
         const { data, error } = await supabase
           .from("products")
           .select("*")
-          .or("status.eq.pending,status.is.null")
-          .order("created_at", { ascending: true }); // 先刊登的先審核
+          .eq("is_approved", false) // 👈 撈出所有尚未審核通過的商品
+          .order("created_at", { ascending: true });
 
         if (error) {
           console.error("獲取待審核商品失敗:", error);
@@ -100,29 +92,37 @@ export default function AdminReviewPage() {
     fetchPendingProducts();
   }, [isAdmin]);
 
-  // 💡 審核動作：更新 Supabase 中的 status
-  const handleReview = async (productId: string, action: "approved" | "rejected") => {
+  // 💡 審核動作：更新 is_approved 狀態
+  const handleReview = async (productId: string, action: "approve" | "reject") => {
     try {
-      const { error } = await supabase
-        .from("products")
-        .update({ status: action })
-        .eq("id", productId);
+      if (action === "approve") {
+        // 核准：將 is_approved 改為 true
+        const { error } = await supabase
+          .from("products")
+          .update({ is_approved: true })
+          .eq("id", productId);
 
-      if (error) {
-        alert("操作失敗，請重試！");
-        console.error(error);
-        return;
+        if (error) throw error;
+        alert("🎉 商品已成功核准上架！");
+      } else {
+        // 拒絕：直接從資料表刪除該商品，或你可以選擇保留（此處設為直接刪除，避免佔空間）
+        const { error } = await supabase
+          .from("products")
+          .delete()
+          .eq("id", productId);
+
+        if (error) throw error;
+        alert("❌ 已拒絕並刪除該商品上架申請。");
       }
 
-      // 從畫面上移除已被審核的商品
+      // 從畫面上移除該筆已處理的資料
       setPendingProducts((prev) => prev.filter((p) => p.id !== productId));
-      alert(action === "approved" ? "🎉 商品已核准上架！" : "❌ 已拒絕該商品上架。");
     } catch (err) {
       console.error("更新審核狀態出錯:", err);
+      alert("操作失敗，請重試！");
     }
   };
 
-  // 💡 終極防污染圖片路徑解析器
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
     if (!raw) return "";
@@ -183,7 +183,6 @@ export default function AdminReviewPage() {
     });
   };
 
-  // 門神 1：載入中
   if (liffLoading || (isAuthenticated && isLoading && isAdmin)) {
     return (
       <main className="min-h-screen bg-slate-50">
@@ -199,7 +198,6 @@ export default function AdminReviewPage() {
     );
   }
 
-  // 門神 2：非管理員（權限不足）
   if (!isAuthenticated || !isAdmin) {
     return (
       <main className="min-h-screen bg-slate-50">
@@ -214,18 +212,11 @@ export default function AdminReviewPage() {
                 <ShieldAlert className="h-8 w-8 text-red-500" />
               </div>
               <div className="space-y-1.5">
-                <h2 className="text-base font-bold text-slate-800">
-                  ⚠️ 存取權限不足
-                </h2>
+                <h2 className="text-base font-bold text-slate-800">⚠️ 存取權限不足</h2>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  本頁面僅限系統管理員進入。若您是開發人員，請確認您的 LINE User ID 已加入程式碼中的白名單中。
+                  本頁面僅限系統管理員進入。
                 </p>
               </div>
-              {lineUserId && (
-                <div className="bg-slate-100 p-2.5 rounded-lg text-[10px] text-slate-500 select-all font-mono">
-                  您的 ID: {lineUserId}
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
@@ -233,10 +224,8 @@ export default function AdminReviewPage() {
     );
   }
 
-  // ✅ 已通過身份驗證：顯示待審核列表
   return (
     <main className="min-h-screen bg-slate-50 pb-12">
-      {/* Header */}
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 shadow-md shadow-indigo-100">
@@ -248,7 +237,6 @@ export default function AdminReviewPage() {
         </div>
       </header>
 
-      {/* 待審核列表 */}
       <div className="mx-auto max-w-lg px-4 pt-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -272,7 +260,6 @@ export default function AdminReviewPage() {
 
               return (
                 <Card key={product.id} className="overflow-hidden bg-white border-none shadow-sm rounded-2xl">
-                  {/* 商品圖片與分類標記 */}
                   <div className="aspect-[16/10] bg-slate-100 relative overflow-hidden flex items-center justify-center">
                     {imageUrl ? (
                       <img
@@ -297,7 +284,6 @@ export default function AdminReviewPage() {
                     </div>
                   </div>
 
-                  {/* 商品詳細資訊 */}
                   <CardContent className="p-4 space-y-3">
                     <div className="space-y-1">
                       <div className="flex items-start justify-between gap-2">
@@ -315,7 +301,6 @@ export default function AdminReviewPage() {
                       )}
                     </div>
 
-                    {/* 上架時間與上架人 (如果有) */}
                     <div className="flex flex-col gap-1 text-[10px] text-slate-400 border-t pt-2.5 border-dashed border-slate-100">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
@@ -323,10 +308,9 @@ export default function AdminReviewPage() {
                       </span>
                     </div>
 
-                    {/* 審核操作按鈕 (打勾與打叉) */}
                     <div className="grid grid-cols-2 gap-3 pt-2">
                       <Button
-                        onClick={() => handleReview(product.id, "rejected")}
+                        onClick={() => handleReview(product.id, "reject")}
                         variant="outline"
                         className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-bold rounded-xl h-11"
                       >
@@ -334,7 +318,7 @@ export default function AdminReviewPage() {
                         拒絕上架
                       </Button>
                       <Button
-                        onClick={() => handleReview(product.id, "approved")}
+                        onClick={() => handleReview(product.id, "approve")}
                         className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl h-11 shadow-sm shadow-emerald-100"
                       >
                         <CheckCircle className="h-4 w-4 mr-1.5" />
