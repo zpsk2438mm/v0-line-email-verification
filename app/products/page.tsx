@@ -72,11 +72,11 @@ export default function ExploreProductsPage() {
       try {
         setIsLoading(true);
         // 撈取審核通過的公開商品
-        const { data, error } = await supabase
-          .from("products")
-          .select("*")
-          .or("status.eq.approved,status.is.null")
-          .order("created_at", { ascending: false });
+const { data, error } = await supabase
+  .from("products")
+  .select("*")
+  .eq("is_approved", true) // 👈 改成這樣！只撈出已經被你審核通過（TRUE）的商品
+  .order("created_at", { ascending: false });
 
         if (error) {
           console.error("載入商品失敗:", error);
