@@ -19,14 +19,14 @@ import {
   User,
   Package,
   LogOut,
-  ShoppingBag, // 👈 引入市集小包包圖標
+  ShoppingBag,
   GraduationCap,
 } from "lucide-react";
 
-// 💡 秘訣：在這裡直接把「市集瀏覽」加入選單清單中！
+// 選單清單保持原樣
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
-  { href: "/products", label: "市集瀏覽", icon: ShoppingBag }, // 👈 新增這一行！
+  { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
   { href: "/my-listings", label: "我的商品", icon: Package },
 ];
@@ -34,14 +34,14 @@ const NAV_ITEMS = [
 export function Navigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { userEmail, lineUserId, closeWindow } = useLiff();
+  
+  // 核心改動：解構出 userProfile 以便顯示 LINE 名稱與頭像
+  const { userEmail, lineUserId, userProfile, closeWindow } = useLiff();
 
   const handleLogout = () => {
-    // Clear local storage auth
     if (typeof window !== "undefined") {
       localStorage.removeItem("stust_authenticated");
     }
-    // Close LIFF window or reload
     closeWindow();
   };
 
@@ -67,16 +67,28 @@ export function Navigation() {
           </div>
         </SheetHeader>
 
-        {/* User Info Section */}
+        {/* User Info Section - 已整合 LINE 驗證資訊 */}
         {userEmail && (
           <div className="border-b border-border p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                <User className="h-5 w-5 text-primary" />
+              {/* 改為顯示動態頭像 */}
+              <div className="flex h-10 w-10 items-center justify-center rounded-full overflow-hidden bg-primary/10 border border-border">
+                {userProfile?.pictureUrl ? (
+                  <img 
+                    src={userProfile.pictureUrl} 
+                    alt="Avatar" 
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User className="h-5 w-5 text-primary" />
+                )}
               </div>
+              
               <div className="flex-1 min-w-0">
+                {/* 改為顯示 LINE 名稱 */}
                 <p className="text-sm font-medium text-foreground truncate">
-                  已驗證用戶
+                  {userProfile?.displayName || "已驗證用戶"}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
                   {userEmail}
@@ -86,7 +98,7 @@ export function Navigation() {
           </div>
         )}
 
-        {/* Navigation Links */}
+        {/* Navigation Links - 保持原樣 */}
         <nav className="flex-1 p-4">
           <ul className="space-y-1">
             {NAV_ITEMS.map((item) => {
@@ -114,7 +126,7 @@ export function Navigation() {
 
         <Separator />
 
-        {/* Footer Actions */}
+        {/* Footer Actions - 保持原樣 */}
         <div className="p-4 space-y-2">
           <Button
             variant="outline"
@@ -125,7 +137,6 @@ export function Navigation() {
             登出
           </Button>
           
-          {/* Debug info */}
           {lineUserId && (
             <p className="text-[10px] text-muted-foreground/50 text-center pt-2">
               ID: {lineUserId.substring(0, 6)}...
