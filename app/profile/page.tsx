@@ -176,7 +176,7 @@ export default function ProfilePage() {
                 className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg flex items-center gap-1 font-bold"
               >
                 <PlusCircle className="h-3.5 w-3.5" />
-                回到首頁
+                + 我要上架
               </Button>
             </Link>
           </div>
