@@ -72,10 +72,11 @@ export default function ProfilePage() {
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6">
             <div className="flex items-center gap-4">
               <div className="h-16 w-16 rounded-full border-2 border-white/30 overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
+                {/* 【核心修正】加入 referrerPolicy 以顯示 LINE 頭像 */}
                 {userProfile?.pictureUrl ? (
                   <img 
                     src={userProfile.pictureUrl} 
-                    alt="LINE" 
+                    alt="LINE Profile" 
                     className="h-full w-full object-cover" 
                     referrerPolicy="no-referrer" 
                   />
@@ -94,7 +95,6 @@ export default function ProfilePage() {
         <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b pb-3 mb-4">
             <h3 className="font-bold text-slate-800 flex items-center gap-2"><Package className="h-4 w-4 text-blue-600" /> 我刊登的商品</h3>
-            {/* 【修改】上架按鈕連接到根目錄 / (對應 app/page.tsx) */}
             <Link href="/">
               <Button size="sm" variant="outline">+ 上架</Button>
             </Link>
