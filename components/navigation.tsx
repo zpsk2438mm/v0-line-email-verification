@@ -3,146 +3,64 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { useLiff } from "@/components/liff-provider";
-import {
-  Menu,
-  Home,
-  User,
-  Package,
-  LogOut,
-  ShoppingBag,
-  GraduationCap,
-} from "lucide-react";
-
-// 選單清單保持原樣
-const NAV_ITEMS = [
-  { href: "/", label: "刊登商品", icon: Home },
-  { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
-  { href: "/profile", label: "個人中心", icon: User },
-  { href: "/my-listings", label: "我的商品", icon: Package },
-];
+import { Menu, Home, User, Package, ShoppingBag, GraduationCap } from "lucide-react";
 
 export function Navigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  
-  // 核心改動：解構出 userProfile 以便顯示 LINE 名稱與頭像
-  const { userEmail, lineUserId, userProfile, closeWindow } = useLiff();
-
-  const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("stust_authenticated");
-    }
-    closeWindow();
-  };
+  // 關鍵：從這裡拿到 userProfile
+  const { userProfile, userEmail } = useLiff();
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-10 w-10"
-          aria-label="開啟選單"
-        >
+        <Button variant="ghost" size="icon" className="h-10 w-10">
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-72 p-0">
-        <SheetHeader className="border-b border-border p-4">
+        <SheetHeader className="border-b p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <GraduationCap className="h-5 w-5 text-primary-foreground" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
+              <GraduationCap className="h-5 w-5 text-white" />
             </div>
-            <SheetTitle className="text-left">南台二手物平台</SheetTitle>
+            <SheetTitle className="text-left text-base">南台二手物平台</SheetTitle>
           </div>
         </SheetHeader>
 
-        {/* User Info Section - 已整合 LINE 驗證資訊 */}
-        {userEmail && (
-          <div className="border-b border-border p-4">
-            <div className="flex items-center gap-3">
-              {/* 改為顯示動態頭像 */}
-              <div className="flex h-10 w-10 items-center justify-center rounded-full overflow-hidden bg-primary/10 border border-border">
-                {userProfile?.pictureUrl ? (
-                  <img 
-                    src={userProfile.pictureUrl} 
-                    alt="Avatar" 
-                    className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <User className="h-5 w-5 text-primary" />
-                )}
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                {/* 改為顯示 LINE 名稱 */}
-                <p className="text-sm font-medium text-foreground truncate">
-                  {userProfile?.displayName || "已驗證用戶"}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {userEmail}
-                </p>
-              </div>
+        {/* 用戶資訊區塊 */}
+        <div className="border-b p-4 bg-slate-50/50">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full overflow-hidden border bg-white flex items-center justify-center shrink-0">
+              {userProfile?.pictureUrl ? (
+                <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <User className="h-5 w-5 text-slate-400" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900 truncate">
+                {userProfile?.displayName || "未登入"}
+              </p>
+              <p className="text-[10px] text-slate-500 truncate font-medium">
+                {userEmail || "請完成驗證"}
+              </p>
             </div>
           </div>
-        )}
-
-        {/* Navigation Links - 保持原樣 */}
-        <nav className="flex-1 p-4">
-          <ul className="space-y-1">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href;
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    onClick={() => setOpen(false)}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-foreground hover:bg-accent"
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        <Separator />
-
-        {/* Footer Actions - 保持原樣 */}
-        <div className="p-4 space-y-2">
-          <Button
-            variant="outline"
-            className="w-full justify-start gap-3"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4" />
-            登出
-          </Button>
-          
-          {lineUserId && (
-            <p className="text-[10px] text-muted-foreground/50 text-center pt-2">
-              ID: {lineUserId.substring(0, 6)}...
-            </p>
-          )}
         </div>
+
+        {/* 選單連結 */}
+        <nav className="p-4 space-y-1">
+          <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-3 px-3 py-2 text-sm font-medium hover:bg-slate-100 rounded-lg">
+            <Home className="h-5 w-5" /> 刊登商品
+          </Link>
+          <Link href="/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 px-3 py-2 text-sm font-medium hover:bg-slate-100 rounded-lg">
+            <User className="h-5 w-5" /> 個人中心
+          </Link>
+        </nav>
       </SheetContent>
     </Sheet>
   );
