@@ -1,83 +1,145 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChevronLeft, MessageCircle, Share2 } from "lucide-react";
 import Link from "next/link";
 
-export default function HomePage() {
-  const [products, setProducts] = useState<any[]>([]);
+export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const id = resolvedParams.id;
+
+  const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchProducts() {
+    async function fetchProduct() {
+      if (!id) return;
       try {
         setLoading(true);
-        // 只抓取已核准 (is_approved: true) 的商品
         const { data, error } = await supabase
           .from("products")
           .select("*")
-          .eq("is_approved", true)
-          .order("created_at", { ascending: false });
+          .eq("id", id)
+          .maybeSingle();
 
         if (error) throw error;
-        setProducts(data || []);
+        setProduct(data);
       } catch (err) {
-        console.error("抓取列表失敗:", err);
+        console.error("抓取失敗:", err);
       } finally {
         setLoading(false);
       }
     }
-    fetchProducts();
-  }, []);
+    fetchProduct();
+  }, [id]);
 
-  // 解析圖片 (針對你的 age_url 欄位修正)
+  // 🖼️ 圖片解析邏輯 (適配你的 age_url 欄位)
   const getImageUrl = (item: any) => {
-    const url = item.age_url || item.image_url;
+    const url = item?.age_url || item?.image_url;
     if (!url) return "/placeholder-logo.png";
-    if (typeof url === "string" && url.startsWith("[")) {
-      try { return JSON.parse(url)[0]; } catch { return url; }
+    try {
+      const parsed = (typeof url === "string" && url.startsWith("[")) ? JSON.parse(url) : url;
+      return Array.isArray(parsed) ? parsed[0] : url;
+    } catch {
+      return url;
     }
-    return url;
   };
 
-  if (loading) return <div className="p-10 text-center">載入中...</div>;
+  if (loading) return (
+    <div className="p-6 max-w-md mx-auto space-y-4">
+      <Skeleton className="h-8 w-24" />
+      <Skeleton className="h-80 w-full rounded-3xl" />
+      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-20 w-full" />
+    </div>
+  );
+
+  if (!product) return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-10 text-center">
+      <p className="text-slate-400 mb-4">找不到該商品資訊</p>
+      <Link href="/"><Button variant="outline">回首頁</Button></Link>
+    </div>
+  );
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4">
-      <header className="max-w-5xl mx-auto mb-8 flex justify-between items-center">
-        <h1 className="text-2xl font-black text-slate-800">STUST 二手市場</h1>
-        <Link href="/upload"><Button>我要上架</Button></Link>
+    <main className="min-h-screen bg-white pb-24">
+      {/* 頂部導覽 */}
+      <header className="p-4 flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-50">
+        <Link href="/">
+          <Button variant="ghost" size="icon" className="rounded-full bg-slate-100">
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+        </Link>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="icon" className="rounded-full bg-slate-100">
+            <Share2 className="w-4 h-4" />
+          </Button>
+        </div>
       </header>
 
-      <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {products.map((product) => (
-          /* ✨ 重點：使用 Link 包裹整個卡片或是按鈕 */
-          <div key={product.id} className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition">
-            <div className="aspect-square bg-slate-100">
-              <img src={getImageUrl(product)} alt={product.name} className="w-full h-full object-cover" />
-            </div>
-            
-            <div className="p-4">
-              <Badge variant="outline" className="mb-1 text-[10px]">{product.category}</Badge>
-              <h2 className="font-bold text-slate-800 truncate">{product.name}</h2>
-              <p className="text-rose-500 font-black mt-1">NT$ {product.price}</p>
-              
-              {/* ✨ 重點：Link 的 href 必須指向 /products/ID */}
-              <Link href={`/products/${product.id}`}>
-                <Button className="w-full mt-3 bg-slate-800 hover:bg-slate-700 rounded-xl">
-                  查看詳情
-                </Button>
-              </Link>
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className="max-w-md mx-auto px-4 space-y-6">
+        {/* 商品大圖 */}
+        <div className="aspect-square rounded-[2.5rem] overflow-hidden shadow-2xl shadow-slate-200 border border-slate-50">
+          <img 
+            src={getImageUrl(product)} 
+            className="w-full h-full object-cover" 
+            alt={product.name} 
+          />
+        </div>
 
-      {products.length === 0 && (
-        <div className="text-center py-20 text-slate-400">目前還沒有商品上架喔！</div>
-      )}
+        {/* 商品主資訊 */}
+        <div className="space-y-3 px-2">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-slate-900 text-white hover:bg-slate-900 rounded-lg px-3">
+              {product.category || "二手精品"}
+            </Badge>
+            {product.is_approved && (
+              <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">
+                已認證
+              </Badge>
+            )}
+          </div>
+          
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+            {product.name}
+          </h1>
+          
+          <div className="flex items-baseline gap-1">
+            <span className="text-sm font-bold text-rose-500">NT$</span>
+            <span className="text-4xl font-black text-rose-500">
+              {product.price?.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        {/* 商品描述區塊 */}
+        <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+          <h3 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-widest">商品描述</h3>
+          <p className="text-slate-600 leading-relaxed text-sm">
+            {product.description || "賣家暫時沒有提供詳細描述喔！如果有興趣歡迎直接私訊詢問。"}
+          </p>
+        </div>
+
+        {/* 底部固定聯絡按鈕 */}
+        <div className="fixed bottom-6 left-0 right-0 px-6 max-w-md mx-auto">
+          <div className="bg-slate-900 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-slate-400 font-bold uppercase ml-1 mb-0.5">聯絡賣家</p>
+              <p className="text-white font-mono text-sm truncate ml-1">
+                {product.contact || product.verified_email || "私訊了解更多"}
+              </p>
+            </div>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl px-6 py-6 h-auto font-bold shrink-0">
+              <MessageCircle className="w-5 h-5 mr-2" />
+              立即私訊
+            </Button>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
