@@ -38,7 +38,7 @@ interface ImagePreview {
 }
 
 export function ListingForm() {
-  const { isAuthenticated, userEmail, lineUserId } = useLiff(); // 移除 closeWindow 呼叫
+  const { isAuthenticated, userEmail, lineUserId } = useLiff();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -54,8 +54,6 @@ export function ListingForm() {
     description: "",
     contact: "",
   });
-
-  // --- 自動關閉邏輯已完全移除 ---
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -133,7 +131,6 @@ export function ListingForm() {
 
       setUploadProgress("傳送管理員通知...");
 
-      // 呼叫後端 API
       try {
         await fetch("/api/notify", {
           method: "POST",
@@ -151,8 +148,6 @@ export function ListingForm() {
 
       setSubmitStatus("success");
       setShowSuccessModal(true);
-      
-      // 清空表單
       setFormData({ name: "", category: "", price: "", description: "", contact: "" });
       setImages([]);
     } catch (err: any) {
@@ -167,21 +162,21 @@ export function ListingForm() {
 
   return (
     <>
-      {/* 成功彈窗 - 移除自動關閉 */}
+      {/* 成功彈窗 - 改為南臺橘風格按鈕 */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-10 h-10 text-green-600" />
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-12 h-12 text-[#D95300]" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">上架成功！</h3>
-            <p className="text-gray-500 mb-8">
+            <h3 className="text-2xl font-black text-gray-900 mb-2">上架成功！</h3>
+            <p className="text-sm text-gray-500 mb-8 leading-relaxed">
               您的商品已經成功刊登。<br />
-              請至您的手機 LINE 確認通知。
+              管理員審核通過後即會公開顯示。
             </p>
             <Button 
               onClick={() => setShowSuccessModal(false)} 
-              className="w-full bg-blue-600 hover:bg-blue-700 h-12 text-lg font-bold rounded-xl"
+              className="w-full bg-[#D95300] hover:bg-[#B84600] h-14 text-lg font-bold rounded-2xl shadow-lg shadow-orange-100 transition-all"
             >
               太棒了！
             </Button>
@@ -189,31 +184,33 @@ export function ListingForm() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="p-6 space-y-6 max-w-md mx-auto bg-white min-h-screen">
-        <header className="flex items-center gap-3 border-b pb-4 mb-6">
-          <div className="w-2 h-8 bg-blue-600 rounded-full" />
+      {/* 表單主體 - 背景改為米白 */}
+      <form onSubmit={handleSubmit} className="p-6 space-y-6 max-w-md mx-auto bg-[#F9F8F6] min-h-screen">
+        <header className="flex items-center gap-3 border-b border-orange-100 pb-4 mb-6">
+          {/* ✅ 裝飾條改為橘色 */}
+          <div className="w-2 h-8 bg-[#D95300] rounded-full" />
           <h2 className="text-2xl font-black text-gray-800">刊登二手物品</h2>
         </header>
 
         {submitStatus === "error" && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-600 flex items-start gap-3 animate-in slide-in-from-top-2">
+          <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-3 animate-in slide-in-from-top-2">
             <AlertCircle className="w-5 h-5 mt-0.5" />
             <div className="text-sm font-semibold">{errorMessage}</div>
           </div>
         )}
 
         <div className="space-y-5">
-          {/* 照片上傳 */}
+          {/* 照片上傳 - 橘色焦點優化 */}
           <section className="space-y-3">
             <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES})</Label>
             <div className="grid grid-cols-3 gap-3">
               {images.map((img, i) => (
-                <div key={i} className="relative aspect-square rounded-xl border-2 border-gray-100 bg-gray-50 overflow-hidden group">
+                <div key={i} className="relative aspect-square rounded-2xl border-2 border-gray-100 bg-white overflow-hidden group shadow-sm">
                   <img src={img.preview} className="w-full h-full object-cover" />
                   <button 
                     type="button" 
                     onClick={() => removeImage(i)} 
-                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1.5 opacity-80 hover:opacity-100"
+                    className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -223,58 +220,64 @@ export function ListingForm() {
                 <button 
                   type="button" 
                   onClick={() => fileInputRef.current?.click()} 
-                  className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                  className="aspect-square rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-[#D95300] hover:bg-orange-50 hover:text-[#D95300] transition-all"
                 >
                   <ImagePlus className="w-8 h-8 mb-1" />
-                  <span className="text-xs font-medium">新增</span>
+                  <span className="text-xs font-bold">新增照片</span>
                 </button>
               )}
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
           </section>
 
-          {/* 欄位 */}
+          {/* 欄位 - 焦點顏色優化 */}
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="name" className="font-bold">商品名稱 *</Label>
-              <Input id="name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="例：大一英文課本" className="rounded-lg h-11" />
+              <Label htmlFor="name" className="font-bold text-gray-600">商品名稱 *</Label>
+              <Input id="name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="例：大一英文課本" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
             </div>
 
             <div className="space-y-1.5">
-              <Label className="font-bold">分類 *</Label>
+              <Label className="font-bold text-gray-600">分類 *</Label>
               <Select required value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
-                <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="請選擇分類" /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                <SelectTrigger className="h-12 rounded-xl border-gray-200 focus:ring-[#D95300]"><SelectValue placeholder="請選擇分類" /></SelectTrigger>
+                <SelectContent className="rounded-xl">
+                  {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value} className="focus:bg-orange-50 focus:text-[#D95300]">{c.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="price" className="font-bold">預售價格 (NT$) *</Label>
-              <Input id="price" type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="請輸入金額" className="rounded-lg h-11" />
+              <Label htmlFor="price" className="font-bold text-gray-600">預售價格 (NT$) *</Label>
+              <Input id="price" type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="請輸入金額" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="contact" className="font-bold">聯絡方式 (LINE/手機) *</Label>
-              <Input id="contact" required value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="例：Line ID: nstut_user" className="rounded-lg h-11" />
+              <Label htmlFor="contact" className="font-bold text-gray-600">聯絡方式 (LINE/手機) *</Label>
+              <Input id="contact" required value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="例：Line ID: stust_user" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="desc" className="font-bold">商品詳情</Label>
-              <Textarea id="desc" rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="說明物品新舊程度、面交地點等..." className="rounded-lg resize-none" />
+              <Label htmlFor="desc" className="font-bold text-gray-600">商品詳情</Label>
+              <Textarea id="desc" rows={4} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="說明物品新舊程度、面交地點等..." className="rounded-xl border-gray-200 focus-visible:ring-[#D95300] resize-none" />
             </div>
           </div>
         </div>
 
-        <div className="pt-4 pb-10">
-          <Button type="submit" disabled={isSubmitting} className="w-full h-14 text-lg font-black rounded-2xl shadow-xl shadow-blue-100 transition-all active:scale-[0.98]">
+        {/* 提交按鈕 - ✅ 全改為南臺橘風格 */}
+        <div className="pt-4 pb-12">
+          <Button 
+            type="submit" 
+            disabled={isSubmitting} 
+            className="w-full h-15 py-7 text-xl font-black rounded-2xl bg-[#D95300] hover:bg-[#B84600] shadow-xl shadow-orange-100 transition-all active:scale-[0.98] text-white"
+          >
             {isSubmitting ? (
               <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> {uploadProgress || "處理中..."}</>
             ) : (
-              <><Send className="mr-2 h-5 w-5" /> 立即刊登上架</>
+              <><Send className="mr-2 h-6 w-6" /> 立即刊登上架</>
             )}
           </Button>
+          <p className="text-center text-[10px] text-gray-400 mt-4 tracking-widest font-bold">SOUTHERN TAIWAN UNIVERSITY OF SCIENCE AND TECHNOLOGY</p>
         </div>
       </form>
     </>
