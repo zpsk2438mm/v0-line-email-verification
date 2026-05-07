@@ -10,11 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import Link from "next/link"; // 👈 匯入 Link
+import Link from "next/link";
 import {
   Search,
-  Package,
   ShoppingBag,
   Calendar,
   LogIn,
@@ -30,7 +28,7 @@ interface Product {
   description?: string;
   is_approved: boolean;
   created_at: string;
-  age_url?: any; // 👈 加入你的資料庫欄位
+  age_url?: any;
   image_url?: any;
   images?: any;
 }
@@ -107,11 +105,9 @@ export default function ExploreProductsPage() {
 
   useEffect(() => {
     let result = products;
-
     if (selectedCategory !== "all") {
       result = result.filter((p) => p.category === selectedCategory);
     }
-
     if (searchQuery.trim() !== "") {
       const query = searchQuery.toLowerCase().trim();
       result = result.filter(
@@ -120,16 +116,12 @@ export default function ExploreProductsPage() {
           (p.description && p.description.toLowerCase().includes(query))
       );
     }
-
     setFilteredProducts(result);
   }, [searchQuery, selectedCategory, products]);
 
-  // 修正後的圖片路徑解析
   const getCleanImageUrl = (product: Product) => {
-    // 優先順序：age_url -> image_url -> images
     let raw = product.age_url || product.image_url || product.images;
     if (!raw) return "";
-
     let urlString = "";
     if (Array.isArray(raw)) {
       urlString = raw[0] || "";
@@ -138,18 +130,11 @@ export default function ExploreProductsPage() {
         try {
           const parsed = JSON.parse(raw);
           urlString = Array.isArray(parsed) ? parsed[0] : parsed;
-        } catch (e) {
-          urlString = raw;
-        }
-      } else {
-        urlString = raw;
-      }
-    } else {
-      urlString = String(raw);
-    }
+        } catch (e) { urlString = raw; }
+      } else { urlString = raw; }
+    } else { urlString = String(raw); }
 
     let clean = urlString.trim().replace(/^\[['"]?/, "").replace(/['"]?\]$/, "").replace(/\\/g, "").replace(/^['"]/, "").replace(/['"]$/, "").trim();
-
     if (clean.startsWith("http")) return clean;
     const cleanPath = clean.replace(/^\//, "");
     return cleanPath.startsWith("product-images/") 
@@ -172,7 +157,6 @@ export default function ExploreProductsPage() {
           </div>
           <h1 className="text-lg font-bold text-slate-800">南台校園市集</h1>
         </header>
-
         <div className="flex-1 flex items-center justify-center p-4">
           <Card className="w-full max-w-sm border-none shadow-xl bg-white overflow-hidden rounded-2xl">
             <div className="bg-gradient-to-tr from-blue-600 to-indigo-500 py-8 px-6 text-center text-white space-y-2">
@@ -248,14 +232,21 @@ export default function ExploreProductsPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          {filteredProducts.map((product) => {
-            const imageUrl = getCleanImageUrl(product);
-            return (
-              <Card key={product.id} className="overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col justify-between group hover:shadow-md transition-all">
+          {filteredProducts.map((product) => (
+            <Link 
+              key={product.id} 
+              href={`/products/${product.id}`} 
+              className="block group active:scale-[0.98] transition-transform"
+            >
+              <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col group-hover:shadow-md transition-all">
                 <div className="aspect-square bg-slate-100 relative overflow-hidden flex items-center justify-center">
-                  <img src={imageUrl || "/placeholder.png"} alt={product.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                  <img 
+                    src={getCleanImageUrl(product) || "/placeholder.png"} 
+                    alt={product.name} 
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105" 
+                  />
                   <div className="absolute top-2.5 left-2.5">
-                    <Badge variant="secondary" className="text-[9px] bg-white/90 px-2 py-0.5 rounded-md font-bold text-slate-700 shadow-sm">
+                    <Badge variant="secondary" className="text-[9px] bg-white/90 px-2 py-0.5 rounded-md font-bold text-slate-700 shadow-sm border-none">
                       {CATEGORY_LABELS[product.category] || product.category}
                     </Badge>
                   </div>
@@ -263,26 +254,32 @@ export default function ExploreProductsPage() {
 
                 <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
                   <div>
-                    <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-blue-600">{product.name}</h4>
-                    <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{product.description || "南台二手優質商品"}</p>
+                    <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                      {product.name}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                      {product.description || "南台二手優質商品"}
+                    </p>
                   </div>
 
                   <div className="space-y-1.5 pt-1">
-                    <p className="text-base font-extrabold text-rose-500">NT$ {product.price.toLocaleString()}</p>
+                    <p className="text-base font-extrabold text-rose-500">
+                      NT$ {product.price.toLocaleString()}
+                    </p>
+                    
                     <div className="flex items-center justify-between text-[10px] text-slate-400 border-t pt-2 border-dashed border-slate-100">
                       <span className="flex items-center gap-0.5 font-medium">
                         <Calendar className="h-3 w-3" /> {formatDate(product.created_at)}
                       </span>
-                      {/* ✨ 修正：使用 Link 包裹查看 */}
-                      <Link href={`/products/${product.id}`} className="text-blue-600 font-bold hover:underline">
-                        查看 🔍
-                      </Link>
+                      <span className="text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                        GO →
+                      </span>
                     </div>
                   </div>
                 </div>
               </Card>
-            );
-          })}
+            </Link>
+          ))}
         </div>
       </div>
     </main>
