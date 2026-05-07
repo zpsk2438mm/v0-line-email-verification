@@ -9,25 +9,35 @@ import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+  const resolvedParams = use(params);
+  const id = resolvedParams.id;
+
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [debugInfo, setDebugInfo] = useState<string>("");
 
   useEffect(() => {
     async function fetchProduct() {
       if (!id) return;
       try {
         setLoading(true);
+        // 🔍 嘗試抓取資料
         const { data, error } = await supabase
           .from("products")
           .select("*")
           .eq("id", id)
-          .single();
+          .maybeSingle(); // 💡 使用 maybeSingle 避免找不到資料時直接噴錯
 
-        if (error) throw error;
-        setProduct(data);
-      } catch (err) {
-        console.error("抓取失敗:", err);
+        if (error) {
+          setDebugInfo(`資料庫錯誤: ${error.message}`);
+          console.error(error);
+        } else if (!data) {
+          setDebugInfo("資料庫中找不到這筆 ID 的資料，請確認 ID 是否正確。");
+        } else {
+          setProduct(data);
+        }
+      } catch (err: any) {
+        setDebugInfo(`執行錯誤: ${err.message}`);
       } finally {
         setLoading(false);
       }
@@ -35,69 +45,49 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     fetchProduct();
   }, [id]);
 
-  // 🖼️ 針對你的資料庫格式優化的圖片解析
+  // 🖼️ 處理您資料庫中的陣列型圖片網址
   const getImageUrl = (url: any) => {
     if (!url) return "/placeholder-logo.png";
-    
-    // 如果是真正的陣列
-    if (Array.isArray(url)) return url[0];
-    
-    // 如果是看起來像陣列的字串 ["http..."]
-    if (typeof url === "string" && url.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(url);
-        return Array.isArray(parsed) ? parsed[0] : url;
-      } catch {
-        return url;
-      }
+    try {
+      const parsed = typeof url === "string" && url.startsWith("[") ? JSON.parse(url) : url;
+      return Array.isArray(parsed) ? parsed[0] : url;
+    } catch {
+      return url;
     }
-    return url;
   };
 
-  if (loading) return <div className="p-8"><Skeleton className="h-64 w-full rounded-3xl" /></div>;
-  if (!product) return <div className="p-20 text-center">找不到商品 (ID: {id})</div>;
+  if (loading) return <div className="p-10"><Skeleton className="h-64 w-full rounded-3xl" /></div>;
+
+  if (!product) return (
+    <div className="p-20 text-center space-y-4">
+      <p className="text-slate-500 font-bold">找不到商品</p>
+      <p className="text-xs text-rose-400 bg-rose-50 p-2 rounded">查詢 ID: {id}</p>
+      {debugInfo && <p className="text-xs text-slate-400">除錯資訊: {debugInfo}</p>}
+      <Link href="/"><Button variant="outline">返回首頁</Button></Link>
+    </div>
+  );
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <header className="p-4 bg-white border-b flex items-center gap-2 sticky top-0 z-50">
+    <main className="min-h-screen bg-white">
+      <header className="p-4 border-b flex items-center gap-2 sticky top-0 bg-white z-50">
         <Link href="/"><Button variant="ghost" size="icon"><ChevronLeft /></Button></Link>
-        <h1 className="font-bold truncate">{product.name}</h1>
+        <span className="font-bold">商品詳情</span>
       </header>
-
-      <div className="max-w-md mx-auto p-4 space-y-4">
-        {/* 商品圖片 */}
-        <div className="aspect-square rounded-3xl overflow-hidden border bg-white shadow-sm">
-          <img 
-            src={getImageUrl(product.image_url)} 
-            className="w-full h-full object-cover" 
-            alt={product.name} 
-          />
+      <div className="p-4 max-w-md mx-auto space-y-6">
+        <div className="aspect-square rounded-3xl overflow-hidden border shadow-sm">
+          <img src={getImageUrl(product.image_url)} className="w-full h-full object-cover" alt={product.name} />
         </div>
-        
-        {/* 商品資訊 */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm">
-          <div className="flex justify-between items-start mb-2">
-            <Badge>{product.category}</Badge>
-            <span className="text-[10px] text-slate-400">ID: {product.id?.slice(0,8)}</span>
+        <div className="space-y-2">
+          <Badge>{product.category}</Badge>
+          <h1 className="text-2xl font-bold text-slate-800">{product.name}</h1>
+          <p className="text-rose-500 text-2xl font-black">NT$ {product.price}</p>
+          <div className="p-5 bg-slate-50 rounded-2xl text-slate-600 text-sm leading-relaxed border border-slate-100">
+            {product.description || "暫無描述"}
           </div>
-          <h2 className="text-2xl font-black text-slate-800">{product.name}</h2>
-          <p className="text-rose-500 text-2xl font-bold mt-2">NT$ {product.price?.toLocaleString()}</p>
-          
-          <div className="mt-4 pt-4 border-t text-slate-600 text-sm whitespace-pre-wrap leading-relaxed">
-            {product.description || "賣家很懶，還沒寫描述～"}
+          <div className="mt-6 p-5 bg-blue-600 rounded-2xl text-white shadow-lg">
+            <p className="text-xs opacity-70 mb-1">賣家聯絡方式</p>
+            <p className="text-xl font-mono font-bold tracking-tighter">{product.contact}</p>
           </div>
-        </div>
-
-        {/* 聯絡賣家區塊 */}
-        <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-blue-400 font-bold text-sm">聯絡方式</p>
-            <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse"></div>
-          </div>
-          <p className="text-xl font-mono tracking-wider">{product.contact || "未提供"}</p>
-          <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700 rounded-xl py-6">
-            立即私訊
-          </Button>
         </div>
       </div>
     </main>
