@@ -14,7 +14,7 @@ export default function HomePage() {
     async function fetchProducts() {
       try {
         setLoading(true);
-        // 抓取已核准 (is_approved: true) 的商品
+        // 只抓取已核准 (is_approved: true) 的商品
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -32,22 +32,14 @@ export default function HomePage() {
     fetchProducts();
   }, []);
 
-  // 修正後的圖片解析逻辑
+  // 解析圖片 (針對你的 age_url 欄位修正)
   const getImageUrl = (item: any) => {
-    // 同時檢查 age_url 和 image_url，優先使用 age_url
-    const rawUrl = item.age_url || item.image_url;
-    if (!rawUrl) return "/placeholder-logo.png";
-
-    // 處理可能的 JSON 字串格式
-    if (typeof rawUrl === "string" && rawUrl.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(rawUrl);
-        return Array.isArray(parsed) ? parsed[0] : rawUrl;
-      } catch (e) {
-        return rawUrl;
-      }
+    const url = item.age_url || item.image_url;
+    if (!url) return "/placeholder-logo.png";
+    if (typeof url === "string" && url.startsWith("[")) {
+      try { return JSON.parse(url)[0]; } catch { return url; }
     }
-    return rawUrl;
+    return url;
   };
 
   if (loading) return <div className="p-10 text-center">載入中...</div>;
@@ -61,13 +53,10 @@ export default function HomePage() {
 
       <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {products.map((product) => (
+          /* ✨ 重點：使用 Link 包裹整個卡片或是按鈕 */
           <div key={product.id} className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition">
             <div className="aspect-square bg-slate-100">
-              <img 
-                src={getImageUrl(product)} 
-                alt={product.name} 
-                className="w-full h-full object-cover" 
-              />
+              <img src={getImageUrl(product)} alt={product.name} className="w-full h-full object-cover" />
             </div>
             
             <div className="p-4">
@@ -75,7 +64,7 @@ export default function HomePage() {
               <h2 className="font-bold text-slate-800 truncate">{product.name}</h2>
               <p className="text-rose-500 font-black mt-1">NT$ {product.price}</p>
               
-              {/* 這裡確保 product.id 是小寫 */}
+              {/* ✨ 重點：Link 的 href 必須指向 /products/ID */}
               <Link href={`/products/${product.id}`}>
                 <Button className="w-full mt-3 bg-slate-800 hover:bg-slate-700 rounded-xl">
                   查看詳情
