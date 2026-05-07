@@ -38,7 +38,7 @@ interface ImagePreview {
 }
 
 export function ListingForm() {
-  const { isAuthenticated, userEmail, lineUserId, sendLineMessage, closeWindow } = useLiff();
+  const { isAuthenticated, userEmail, lineUserId, closeWindow } = useLiff();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -55,7 +55,7 @@ export function ListingForm() {
     contact: "",
   });
 
-  // Countdown timer for auto close
+  // 成功後倒數計時並自動關閉
   useEffect(() => {
     if (showSuccessModal && countdown > 0) {
       const timer = setTimeout(() => {
@@ -70,21 +70,14 @@ export function ListingForm() {
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
     const remainingSlots = MAX_IMAGES - images.length;
     const filesToAdd = Array.from(files).slice(0, remainingSlots);
-
     const newImages: ImagePreview[] = filesToAdd.map((file) => ({
       file,
       preview: URL.createObjectURL(file),
     }));
-
     setImages((prev) => [...prev, ...newImages]);
-    
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeImage = (index: number) => {
@@ -96,40 +89,25 @@ export function ListingForm() {
     });
   };
 
+  // 上傳圖片到 Supabase Storage
   const uploadImages = async (): Promise<string[]> => {
     const uploadedUrls: string[] = [];
-
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
-      setUploadProgress(`上傳圖片中 (${i + 1}/${images.length})...`);
-      
+      setUploadProgress(`圖片上傳中 (${i + 1}/${images.length})...`);
       const fileExt = image.file.name.split(".").pop()?.toLowerCase() || "jpg";
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
       const filePath = `${lineUserId || "anonymous"}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("product-images")
-        .upload(filePath, image.file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+        .upload(filePath, image.file);
 
-      if (uploadError) {
-        console.error("[v0] Image upload error:", uploadError);
-        throw new Error(`圖片上傳失敗: ${uploadError.message}`);
-      }
+      if (uploadError) throw new Error(`圖片上傳失敗: ${uploadError.message}`);
 
-      // Get the full public URL
-      const { data: urlData } = supabase.storage
-        .from("product-images")
-        .getPublicUrl(filePath);
-
-      if (urlData?.publicUrl) {
-        uploadedUrls.push(urlData.publicUrl);
-      }
+      const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(filePath);
+      if (urlData?.publicUrl) uploadedUrls.push(urlData.publicUrl);
     }
-
-    setUploadProgress("");
     return uploadedUrls;
   };
 
@@ -138,26 +116,12 @@ export function ListingForm() {
     setSubmitStatus("idle");
     setErrorMessage("");
 
-    // Check if user is authenticated (email verified)
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !userEmail || !lineUserId) {
       setSubmitStatus("error");
-      setErrorMessage("請先完成信箱驗證後再送出商品");
+      setErrorMessage("請確保已完成 LINE 登入與信箱驗證");
       return;
     }
 
-    if (!userEmail) {
-      setSubmitStatus("error");
-      setErrorMessage("無法取得已驗證的信箱，請重新驗證");
-      return;
-    }
-
-    if (!lineUserId) {
-      setSubmitStatus("error");
-      setErrorMessage("無法取得 LINE 使用者 ID，請重新登入");
-      return;
-    }
-
-    // Validate required fields
     if (!formData.name || !formData.category || !formData.price || !formData.contact) {
       setSubmitStatus("error");
       setErrorMessage("請填寫所有必填欄位");
@@ -167,300 +131,147 @@ export function ListingForm() {
     setIsSubmitting(true);
 
     try {
-      // Upload images first
+      // 1. 上傳圖片
       let imageUrls: string[] = [];
       if (images.length > 0) {
-        setUploadProgress("準備上傳圖片...");
         imageUrls = await uploadImages();
       }
 
       setUploadProgress("儲存商品資料...");
 
-      // Insert data with correct column names matching your Supabase schema
-      const insertData = {
+      // 2. 寫入資料庫 (請確保資料表名稱為 products)
+      const { error: dbError } = await supabase.from("products").insert({
         name: formData.name,
         price: parseInt(formData.price, 10),
         category: formData.category,
-        description: formData.description || null,
+        description: formData.description,
         contact: formData.contact,
         image_url: imageUrls.length > 0 ? imageUrls : null,
         line_user_id: lineUserId,
         verified_email: userEmail,
-      };
+      });
 
-      const { data, error } = await supabase.from("products").insert(insertData).select();
+      if (dbError) throw new Error(dbError.message);
 
-      if (error) {
-        console.error("[v0] Supabase insert error:", error);
-        const fullErrorMessage = `資料庫錯誤: ${error.message}${error.hint ? ` (${error.hint})` : ""}`;
-        setSubmitStatus("error");
-        setErrorMessage(fullErrorMessage);
-        setUploadProgress("");
-        return;
-      }
-
-      // Send LINE message
+      // 3. 發送 LINE 通知 (呼叫我們剛建的 API)
       setUploadProgress("發送 LINE 通知...");
-      const price = parseInt(formData.price, 10);
-      const firstImageUrl = imageUrls.length > 0 ? imageUrls[0] : undefined;
-      
-      await sendLineMessage(formData.name, price, firstImageUrl);
+      try {
+        await fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: formData.name,
+            price: parseInt(formData.price, 10),
+            imageUrl: imageUrls.length > 0 ? imageUrls[0] : null,
+            contact: formData.contact,
+          }),
+        });
+      } catch (err) {
+        console.error("通知發送失敗(不影響上架):", err);
+      }
 
       setUploadProgress("");
       setSubmitStatus("success");
       setShowSuccessModal(true);
-      setCountdown(3);
       
-      // Reset form
-      setFormData({
-        name: "",
-        category: "",
-        price: "",
-        description: "",
-        contact: "",
-      });
-      
-      // Clear images
+      // 重置表單
+      setFormData({ name: "", category: "", price: "", description: "", contact: "" });
       images.forEach((img) => URL.revokeObjectURL(img.preview));
       setImages([]);
-    } catch (error) {
-      console.error("[v0] Unexpected error:", error);
-      const errorMsg = error instanceof Error ? error.message : "未知錯誤";
+    } catch (error: any) {
       setSubmitStatus("error");
-      setErrorMessage(`送出失敗：${errorMsg}`);
-      setUploadProgress("");
+      setErrorMessage(error.message || "發生未知錯誤");
     } finally {
       setIsSubmitting(false);
+      setUploadProgress("");
     }
-  };
-
-  const handleCloseSuccess = () => {
-    setShowSuccessModal(false);
-    closeWindow();
   };
 
   return (
     <>
-      {/* Success Modal */}
+      {/* 成功彈窗 */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-card rounded-xl p-8 max-w-sm w-full text-center shadow-lg border border-border animate-in fade-in zoom-in duration-300">
-            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
-              <CheckCircle className="w-12 h-12 text-green-600" />
-            </div>
-            <h3 className="text-xl font-bold text-foreground mb-2">上架成功</h3>
-            <p className="text-muted-foreground mb-2">
-              您的商品已送出，目前正在審核中。
-            </p>
-            <p className="text-sm text-muted-foreground mb-6">
-              審核通過後將會上架顯示。
-            </p>
-            <p className="text-xs text-muted-foreground mb-4">
-              {countdown > 0 ? `${countdown} 秒後自動關閉...` : "正在關閉..."}
-            </p>
-            <Button
-              onClick={handleCloseSuccess}
-              className="w-full bg-green-600 hover:bg-green-700 text-white"
-            >
-              立即關閉
-            </Button>
+          <div className="bg-white rounded-xl p-8 max-w-sm w-full text-center shadow-lg border">
+            <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
+            <h3 className="text-xl font-bold mb-2">上架成功</h3>
+            <p className="text-sm text-gray-500 mb-6">您的商品已送出審核。<br/>{countdown} 秒後自動關閉...</p>
+            <Button onClick={() => closeWindow()} className="w-full bg-green-600">立即關閉</Button>
           </div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="p-5 space-y-5">
-        {/* Error Message */}
+      <form onSubmit={handleSubmit} className="p-5 space-y-5 max-w-md mx-auto bg-white min-h-screen">
         {submitStatus === "error" && (
-          <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-            <p className="text-sm font-medium break-all">{errorMessage}</p>
+          <div className="p-3 rounded-lg bg-red-50 text-red-600 border border-red-200 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            <p className="text-sm font-medium">{errorMessage}</p>
           </div>
         )}
 
-        {/* Image Upload */}
+        {/* 圖片上傳區 */}
         <div className="space-y-2">
-          <Label className="text-foreground">
-            商品照片 <span className="text-muted-foreground text-xs">(最多 {MAX_IMAGES} 張)</span>
-          </Label>
-          
+          <Label>商品照片 (最多 {MAX_IMAGES} 張)</Label>
           <div className="grid grid-cols-3 gap-2">
-            {/* Image Previews */}
             {images.map((image, index) => (
-              <div
-                key={index}
-                className="relative aspect-square rounded-lg overflow-hidden border border-border bg-muted"
-              >
-                <img
-                  src={image.preview}
-                  alt={`預覽 ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeImage(index)}
-                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+              <div key={index} className="relative aspect-square rounded-lg overflow-hidden border">
+                <img src={image.preview} className="w-full h-full object-cover" />
+                <button type="button" onClick={() => removeImage(index)} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1"><X className="w-3 h-3" /></button>
               </div>
             ))}
-
-            {/* Add Image Button */}
             {images.length < MAX_IMAGES && (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="aspect-square rounded-lg border-2 border-dashed border-border bg-muted/50 flex flex-col items-center justify-center gap-1 hover:border-primary hover:bg-primary/5 transition-colors"
-              >
-                <ImagePlus className="w-6 h-6 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">新增照片</span>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center text-gray-400 hover:border-blue-500 hover:text-blue-500">
+                <ImagePlus className="w-6 h-6" />
+                <span className="text-[10px]">新增照片</span>
               </button>
             )}
           </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleImageSelect}
-            className="hidden"
-          />
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
         </div>
 
-        {/* Name */}
-        <div className="space-y-2">
-          <Label htmlFor="name" className="text-foreground">
-            商品名稱 <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="name"
-            placeholder="例：微積分課本 第八版"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="bg-card border-border"
-            required
-            disabled={isSubmitting}
-          />
-        </div>
+        {/* 商品內容 */}
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <Label htmlFor="name">商品名稱 *</Label>
+            <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="例：微積分課本" required />
+          </div>
 
-        {/* Category */}
-        <div className="space-y-2">
-          <Label className="text-foreground">
-            商品類別 <span className="text-destructive">*</span>
-          </Label>
-          <Select
-            value={formData.category}
-            onValueChange={(value) =>
-              setFormData({ ...formData, category: value })
-            }
-            disabled={isSubmitting}
-            required
-          >
-            <SelectTrigger className="bg-card border-border">
-              <SelectValue placeholder="選擇類別" />
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map((cat) => (
-                <SelectItem key={cat.value} value={cat.value}>
-                  {cat.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="space-y-1">
+            <Label>類別 *</Label>
+            <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
+              <SelectTrigger><SelectValue placeholder="選擇類別" /></SelectTrigger>
+              <SelectContent>
+                {CATEGORIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Price */}
-        <div className="space-y-2">
-          <Label htmlFor="price" className="text-foreground">
-            售價 <span className="text-destructive">*</span>
-          </Label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
-              NT$
-            </span>
-            <Input
-              id="price"
-              type="number"
-              placeholder="0"
-              className="pl-12 bg-card border-border"
-              value={formData.price}
-              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-              required
-              min="0"
-              disabled={isSubmitting}
-            />
+          <div className="space-y-1">
+            <Label htmlFor="price">售價 *</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-gray-400 text-sm">NT$</span>
+              <Input id="price" type="number" className="pl-10" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} placeholder="0" required />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="description">描述</Label>
+            <Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="物品狀況說明..." />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="contact">聯絡方式 *</Label>
+            <Input id="contact" value={formData.contact} onChange={(e) => setFormData({ ...formData, contact: e.target.value })} placeholder="LINE ID 或手機" required />
           </div>
         </div>
 
-        {/* Description */}
-        <div className="space-y-2">
-          <Label htmlFor="description" className="text-foreground">
-            商品描述
-          </Label>
-          <Textarea
-            id="description"
-            placeholder="請描述商品狀況、使用時間等資訊..."
-            rows={4}
-            className="bg-card border-border resize-none"
-            value={formData.description}
-            onChange={(e) =>
-              setFormData({ ...formData, description: e.target.value })
-            }
-            disabled={isSubmitting}
-          />
-        </div>
-
-        {/* Contact */}
-        <div className="space-y-2">
-          <Label htmlFor="contact" className="text-foreground">
-            聯絡方式 <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="contact"
-            placeholder="LINE ID 或手機號碼"
-            className="bg-card border-border"
-            value={formData.contact}
-            onChange={(e) =>
-              setFormData({ ...formData, contact: e.target.value })
-            }
-            required
-            disabled={isSubmitting}
-          />
-        </div>
-
-        {/* Submit */}
-        <Button
-          type="submit"
-          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-          disabled={isSubmitting}
-        >
+        <Button type="submit" className="w-full h-12 text-lg font-bold" disabled={isSubmitting}>
           {isSubmitting ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {uploadProgress || "處理中..."}
-            </>
+            <><Loader2 className="w-5 h-5 mr-2 animate-spin" />{uploadProgress || "處理中..."}</>
           ) : (
-            <>
-              <Send className="w-4 h-4 mr-2" />
-              送出上架
-            </>
+            <><Send className="w-5 h-5 mr-2" />送出上架</>
           )}
         </Button>
-
-        {/* Email verification notice */}
-        {userEmail && (
-          <p className="text-xs text-center text-muted-foreground">
-            已驗證信箱：{userEmail}
-          </p>
-        )}
-
-        {/* Hidden Debug Mode - shows first 4 chars of LINE ID */}
-        <div className="pt-4 border-t border-border/30">
-          <p className="text-[10px] text-muted-foreground/50 text-center select-none">
-            Debug: {lineUserId ? `${lineUserId.substring(0, 4)}****` : "N/A"}
-          </p>
-        </div>
       </form>
     </>
   );
