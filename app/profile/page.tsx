@@ -8,7 +8,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, CheckCircle, Clock, ShieldCheck } from "lucide-react";
+import { User, Package, CheckCircle, Clock } from "lucide-react";
 import Link from "next/link";
 
 interface Product {
@@ -18,8 +18,6 @@ interface Product {
   is_approved: boolean;
   image_url: any;
 }
-
-const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
 
 export default function ProfilePage() {
   const { lineUserId, userProfile, isAuthenticated, login, isLoading: liffLoading } = useLiff();
@@ -52,14 +50,14 @@ export default function ProfilePage() {
   }, [isAuthenticated, lineUserId]);
 
   const getCleanImageUrl = (url: any) => {
-    if (!url) return "/placeholder-logo.png";
+    if (!url) return "/placeholder.png";
     let clean = Array.isArray(url) ? url[0] : String(url).replace(/[\[\]"'\\]/g, "").trim();
     if (clean.startsWith("http")) return clean;
     return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
   };
 
   if (liffLoading || !isAuthenticated) {
-    return <div className="h-screen flex items-center justify-center">載入中...</div>;
+    return <div className="h-screen flex items-center justify-center font-bold">載入個人資料中...</div>;
   }
 
   return (
@@ -78,7 +76,7 @@ export default function ProfilePage() {
                   <img 
                     src={userProfile.pictureUrl} 
                     className="h-full w-full object-cover" 
-                    referrerPolicy="no-referrer" // 👈 修復 LINE 頭像破圖
+                    referrerPolicy="no-referrer" // 👈 核心：解決 LINE 頭像無法顯示
                   />
                 ) : (
                   <User className="h-8 w-8 text-white" />
@@ -86,15 +84,11 @@ export default function ProfilePage() {
               </div>
               <div className="min-w-0">
                 <h2 className="font-black text-xl truncate">{userProfile?.displayName || "南台用戶"}</h2>
-                <p className="text-xs text-blue-100 opacity-80 truncate">{userProfile?.email || "已驗證"}</p>
+                <p className="text-xs text-blue-100 opacity-80 truncate">{userProfile?.email || "4B290004@STUST.EDU.TW"}</p>
               </div>
             </div>
           </CardHeader>
         </Card>
-
-        {ADMIN_LINE_IDS.includes(lineUserId || "") && (
-          <Link href="/admin"><Button className="w-full bg-amber-500 py-6 rounded-2xl font-bold"><ShieldCheck className="mr-2" /> 進入管理後台</Button></Link>
-        )}
 
         <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b pb-3 mb-4">
@@ -103,18 +97,18 @@ export default function ProfilePage() {
           </div>
           <div className="grid gap-3">
             {isLoadingProducts ? <Skeleton className="h-20 w-full" /> : myProducts.map(p => (
-              <div key={p.id} className="flex items-center gap-3 p-3 border rounded-xl">
+              <div key={p.id} className="flex items-center gap-3 p-3 border rounded-xl bg-white">
                 <div className="h-12 w-12 bg-slate-100 rounded-lg overflow-hidden shrink-0">
-                  <img src={getCleanImageUrl(p.image_url)} className="w-full h-full object-cover" onError={(e) => e.currentTarget.src="/placeholder-logo.png"} />
+                  <img src={getCleanImageUrl(p.image_url)} className="w-full h-full object-cover" onError={(e) => e.currentTarget.src="/placeholder.png"} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-bold truncate">{p.name}</h4>
+                  <h4 className="text-sm font-bold truncate text-slate-700">{p.name}</h4>
                   <p className="text-rose-500 font-bold text-xs">NT$ {p.price}</p>
                 </div>
                 {p.is_approved ? (
-                  <Badge className="bg-emerald-50 text-emerald-600 text-[10px]">已上架</Badge>
+                  <Badge className="bg-emerald-50 text-emerald-600 border-emerald-100 text-[10px]">已上架</Badge>
                 ) : (
-                  <Badge className="bg-amber-50 text-amber-600 text-[10px]">審核中</Badge>
+                  <Badge className="bg-amber-50 text-amber-600 border-amber-100 text-[10px]">審核中</Badge>
                 )}
               </div>
             ))}
