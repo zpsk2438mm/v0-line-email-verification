@@ -4,15 +4,13 @@ import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   User,
   Package,
-  CheckCircle,
-  Clock,
   ShieldCheck,
   Mail
 } from "lucide-react";
@@ -82,7 +80,7 @@ export default function ProfilePage() {
     }
   };
 
-  // --- 修改重點：未登入驗證畫面 ---
+  // --- 未登入驗證畫面 ---
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#F9F8F6] flex items-center justify-center p-4">
@@ -94,7 +92,6 @@ export default function ProfilePage() {
             <h2 className="text-2xl font-black text-gray-800">請先登入</h2>
             <p className="text-sm text-gray-500">登入後即可管理您的二手商品</p>
           </div>
-          {/* 按鈕改為橘色 */}
           <Button 
             onClick={() => login?.()} 
             className="w-full h-14 text-lg font-bold rounded-2xl bg-[#D95300] hover:bg-[#B84600] text-white shadow-lg shadow-orange-100 transition-all active:scale-[0.98]"
@@ -114,10 +111,12 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* 用戶資訊區塊 - 漸層改為橘色 */}
-        <Card className="border-none shadow-md rounded-2xl overflow-hidden bg-white">
-          <CardHeader className="bg-gradient-to-r from-[#D95300] to-[#FF8C42] text-white py-6">
+        
+        {/* ✅ 用戶資訊區塊 - 填滿版 (解決 image_a89f11.png 的白邊問題) */}
+        <Card className="border-none shadow-md rounded-2xl overflow-hidden bg-transparent">
+          <div className="bg-gradient-to-r from-[#D95300] to-[#FF8C42] text-white p-6">
             <div className="flex items-center gap-4">
+              {/* 頭像 */}
               <div className="h-16 w-16 rounded-full border-2 border-white/30 overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
                 {userProfile?.pictureUrl ? (
                   <img 
@@ -130,17 +129,23 @@ export default function ProfilePage() {
                   <User className="h-8 w-8 text-white" />
                 )}
               </div>
-              <div className="min-w-0">
-                <h2 className="font-black text-xl truncate">
-                  {userProfile?.displayName || "已驗證南台用戶"}
+
+              {/* 文字 */}
+              <div className="min-w-0 flex-1">
+                <h2 className="font-black text-2xl truncate flex items-center gap-2">
+                  {userProfile?.displayName || "已驗證用戶"}
+                  <span className="text-xl">🪑</span>
                 </h2>
-                <div className="flex items-center gap-1 text-orange-50 opacity-90 truncate">
-                  <Mail className="h-3 w-3" />
-                  <p className="text-xs">{userEmail || "4b290005@stust.edu.tw"}</p>
+                <div className="flex items-center gap-1.5 text-orange-50 opacity-90 truncate mt-0.5">
+                  <Mail className="h-3.5 w-3.5" />
+                  <p className="text-sm font-medium">{userEmail || "4b290005@stust.edu.tw"}</p>
+                  <Badge className="ml-1.5 bg-white/20 text-white border-none text-[10px] h-5 px-2 rounded-full backdrop-blur-sm">
+                    已驗證
+                  </Badge>
                 </div>
               </div>
             </div>
-          </CardHeader>
+          </div>
         </Card>
 
         {/* 管理員入口 */}
@@ -176,7 +181,7 @@ export default function ProfilePage() {
                 const isApproved = product.is_approved === true || String(product.is_approved) === "true";
                 return (
                   <div key={product.id} className="flex items-center gap-3 p-3 border rounded-xl border-gray-50 hover:bg-orange-50/30 transition-all">
-                    <div className="h-16 w-16 rounded-xl overflow-hidden bg-gray-100 border border-gray-100 shrink-0">
+                    <div className="h-16 w-16 rounded-xl overflow-hidden bg-gray-100 shrink-0 border border-gray-100">
                       <img 
                         src={getProductImage(product.image_url)} 
                         alt={product.name} 
@@ -190,13 +195,9 @@ export default function ProfilePage() {
                     </div>
                     <div className="shrink-0">
                       {isApproved ? (
-                        <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 border-emerald-100 rounded-lg">
-                          已上架
-                        </Badge>
+                        <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 border-emerald-100 rounded-lg">已上架</Badge>
                       ) : (
-                        <Badge variant="outline" className="text-[10px] text-orange-600 bg-orange-50 border-orange-100 rounded-lg">
-                          審核中
-                        </Badge>
+                        <Badge variant="outline" className="text-[10px] text-orange-600 bg-orange-50 border-orange-100 rounded-lg">審核中</Badge>
                       )}
                     </div>
                   </div>
