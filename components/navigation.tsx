@@ -21,13 +21,10 @@ import {
   LogOut,
   ShoppingBag,
   GraduationCap,
-  ShieldCheck, // 👈 引入管理員圖標
+  ShieldCheck,
 } from "lucide-react";
 
-// 管理員名單
-const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df",
-                       "Uf7c4668bc96315297b02b0a67fff88ea"
-                       ];
+const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df", "Uf7c4668bc96315297b02b0a67fff88ea"];
 
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
@@ -40,70 +37,51 @@ export function Navigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { userEmail, userProfile, lineUserId, closeWindow } = useLiff();
-
-  // 判斷是否為管理員
   const isAdmin = lineUserId && ADMIN_LINE_IDS.includes(lineUserId);
 
   const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("stust_authenticated");
-    }
+    if (typeof window !== "undefined") localStorage.removeItem("stust_authenticated");
     closeWindow();
   };
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-10 w-10"
-          aria-label="開啟選單"
-        >
-          <Menu className="h-5 w-5" />
+        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-primary/10 transition-all">
+          <Menu className="h-6 w-6 text-primary" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-72 p-0 flex flex-col">
-        <SheetHeader className="border-b border-border p-4">
+      <SheetContent side="left" className="w-80 p-0 flex flex-col border-r-0 shadow-2xl">
+        <SheetHeader className="p-6 bg-primary/5">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <GraduationCap className="h-5 w-5 text-primary-foreground" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
+              <GraduationCap className="h-6 w-6 text-white" />
             </div>
-            <SheetTitle className="text-left">南台二手物平台</SheetTitle>
+            <SheetTitle className="text-xl font-black tracking-tight text-primary">南台二手交易</SheetTitle>
           </div>
         </SheetHeader>
 
-        {/* 用戶資訊區塊 */}
+        {/* 用戶資訊區塊 - 卡片式設計 */}
         {(userEmail || userProfile) && (
-          <div className="border-b border-border p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 overflow-hidden border border-slate-100">
+          <div className="px-4 py-4">
+            <div className="bg-secondary/50 rounded-2xl p-4 flex items-center gap-3 border border-primary/5">
+              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white">
                 {userProfile?.pictureUrl ? (
-                  <img 
-                    src={userProfile.pictureUrl} 
-                    alt="Avatar" 
-                    className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
+                  <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" />
                 ) : (
-                  <User className="h-5 w-5 text-primary" />
+                  <div className="h-full w-full flex items-center justify-center bg-primary/10 text-primary"><User /></div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-foreground truncate">
-                  {userProfile?.displayName || "已驗證用戶"}
-                </p>
-                <p className="text-[11px] text-muted-foreground truncate font-medium">
-                  {userEmail}
-                </p>
+                <p className="text-sm font-bold truncate text-foreground">{userProfile?.displayName || "校園用戶"}</p>
+                <p className="text-[10px] text-muted-foreground truncate opacity-80">{userEmail}</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Navigation Links */}
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <ul className="space-y-1">
+        <nav className="flex-1 px-4 py-2 space-y-6">
+          <ul className="space-y-1.5">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -112,10 +90,8 @@ export function Navigation() {
                   <Link
                     href={item.href}
                     onClick={() => setOpen(false)}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-foreground hover:bg-accent"
+                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-all ${
+                      isActive ? "bg-primary text-white shadow-md shadow-primary/20" : "text-muted-foreground hover:bg-accent hover:text-foreground"
                     }`}
                   >
                     <Icon className="h-5 w-5" />
@@ -126,14 +102,11 @@ export function Navigation() {
             })}
           </ul>
 
-          {/* 👈 補回管理員按鈕：只有符合 ID 才會顯示 */}
           {isAdmin && (
-            <div className="mt-4 pt-4 border-t border-dashed border-border">
+            <div className="pt-4 border-t border-dashed">
               <Link href="/admin" onClick={() => setOpen(false)}>
-                <div className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors ${
-                  pathname === "/admin" 
-                    ? "bg-amber-500 text-white" 
-                    : "text-amber-600 hover:bg-amber-50 bg-amber-50/50"
+                <div className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-black transition-all ${
+                  pathname === "/admin" ? "bg-amber-500 text-white shadow-lg shadow-amber-200" : "bg-amber-50 text-amber-600 hover:bg-amber-100"
                 }`}>
                   <ShieldCheck className="h-5 w-5" />
                   管理員後台
@@ -143,23 +116,12 @@ export function Navigation() {
           )}
         </nav>
 
-        <Separator />
-
-        {/* Footer Actions */}
-        <div className="p-4 space-y-2">
-          <Button
-            variant="outline"
-            className="w-full justify-start gap-3 rounded-lg"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4" />
-            登出
+        <div className="p-6 bg-slate-50/50 mt-auto border-t space-y-3">
+          <Button variant="outline" className="w-full h-11 border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 transition-all" onClick={handleLogout}>
+            <LogOut className="h-4 w-4 mr-2" /> 退出登錄
           </Button>
-          
           {lineUserId && (
-            <p className="text-[10px] text-muted-foreground/30 text-center pt-2 font-mono">
-              ID: {lineUserId.substring(0, 12)}...
-            </p>
+            <p className="text-[9px] text-center font-mono text-slate-300 uppercase tracking-widest">UID: {lineUserId.substring(0, 16)}</p>
           )}
         </div>
       </SheetContent>
