@@ -22,6 +22,8 @@ const CATEGORIES = [
   { value: "tools_stationery", label: "文具/專業工具" },
   { value: "dorm_supplies", label: "租屋收納/雜貨" },
   { value: "hobbies", label: "遊戲/娛樂"},
+  { value: "cosmetics", label: "💄 化妝品/美妝"},
+  { value: "food", label: "🍕 食物/零食"},
   { value: "clothing", label: "服飾配件" },
   { value: "furniture", label: "家具家電" },
   { value: "sports", label: "運動用品" },
