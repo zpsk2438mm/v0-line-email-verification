@@ -72,11 +72,11 @@ export default function ProfilePage() {
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6">
             <div className="flex items-center gap-4">
               <div className="h-16 w-16 rounded-full border-2 border-white/30 overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
-                {/* 【核心修正】加入 referrerPolicy 以顯示 LINE 頭像 */}
+                {/* 關鍵修正：必須加入 referrerPolicy="no-referrer" 才能繞過 LINE 伺服器的擋圖機制 */}
                 {userProfile?.pictureUrl ? (
                   <img 
                     src={userProfile.pictureUrl} 
-                    alt="LINE Profile" 
+                    alt="Profile"
                     className="h-full w-full object-cover" 
                     referrerPolicy="no-referrer" 
                   />
@@ -101,7 +101,7 @@ export default function ProfilePage() {
           </div>
           <div className="grid gap-3">
             {isLoadingProducts ? <Skeleton className="h-20 w-full" /> : myProducts.map(p => (
-              <div key={p.id} className="flex items-center gap-3 p-3 border rounded-xl bg-white transition-all">
+              <div key={p.id} className="flex items-center gap-3 p-3 border rounded-xl bg-white">
                 <div className="h-12 w-12 bg-slate-100 rounded-lg overflow-hidden shrink-0">
                   <img 
                     src={getCleanImageUrl(p.image_url)} 
