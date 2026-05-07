@@ -5,52 +5,29 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    console.log("=== 收到請求通知 ===", JSON.stringify(body, null, 2));
+    console.log("=== 偵測到請求注入 ===");
+    console.log("完整 Payload:", JSON.stringify(body, null, 2));
 
-    let targetLineId = "";
-    let messageContent: any = null;
+    // 1. 抓取 LINE ID (多重相容模式)
+    const record = body.record || body; 
+    const targetLineId = record.line_user_id || record.lineUserId || body.lineUserId;
 
-    // --- 情況 A：來自 Supabase Webhook (當資料庫欄位變動時) ---
-    if (body.record) {
-      const { record, old_record } = body;
-      targetLineId = record.line_user_id || record.lineUserId;
-
-      // 檢查審核狀態是否真的有改變 (從 TRUE 變 FALSE，或 FALSE 變 TRUE)
-      if (old_record && String(record.is_approved) !== String(old_record.is_approved)) {
-        const isNowApproved = String(record.is_approved) === 'true';
-        
-        messageContent = createFlex(
-          isNowApproved ? "✅ 商品審核通過" : "❌ 商品審核未通過",
-          record.name || "未知名商品",
-          record.price || 0,
-          record.image_url || record.imageUrl,
-          isNowApproved ? "#1DB446" : "#E53E3E", // 通過綠色，拒絕紅色
-          isNowApproved 
-            ? "您的商品已成功上架！買家現在可以在市場上看到了。" 
-            : "很抱歉，您的商品未通過審核。請檢查內容或重新提交。"
-        );
-      } else {
-        return NextResponse.json({ message: "狀態未變更，跳過通知" });
-      }
-    } 
-    // --- 情況 B：來自網頁前端直接呼叫 (例如剛上架成功時) ---
-    else if (body.lineUserId || body.line_user_id) {
-      targetLineId = body.lineUserId || body.line_user_id;
-      messageContent = createFlex(
-        "📦 商品提交成功",
-        body.name || "新商品",
-        body.price || 0,
-        body.imageUrl || body.image_url,
-        "#D95300", // 提交橘色
-        "我們已收到您的申請，管理員將盡快為您審核，請耐心等候。"
-      );
+    if (!targetLineId) {
+      console.error("❌ 失敗：找不到任何 Line ID 欄位");
+      return NextResponse.json({ error: "找不到 LINE ID" }, { status: 400 });
     }
 
-    if (!targetLineId || !messageContent) {
-      return NextResponse.json({ error: "資訊不足或未達發送條件" }, { status: 400 });
-    }
+    // 2. 判斷狀態 (強制轉型判斷)
+    const isApproved = String(record.is_approved) === 'true';
+    
+    // 如果是「前端手動呼叫」或者是「Webhook 狀態改變」，我們就發送
+    // 這裡我們放寬限制，只要有請求過來就嘗試發送，確保網頁按鈕一定會響
+    const title = isApproved ? "✅ 審核通過通知" : "❌ 審核未通過";
+    const color = isApproved ? "#1DB446" : "#E53E3E";
+    const subText = isApproved ? "您的商品已成功上架！" : "很抱歉，您的商品未通過審核。";
 
-    // 發送至 LINE Push API
+    console.log(`準備發送通知給 ${targetLineId}，標題為: ${title}`);
+
     const lineResponse = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
@@ -59,7 +36,11 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         to: targetLineId,
-        messages: [{ type: 'flex', altText: '商品狀態更新通知', contents: messageContent }]
+        messages: [{
+          type: 'flex',
+          altText: '商品狀態更新',
+          contents: createFlex(title, record.name || "商品", record.price || 0, record.image_url || record.imageUrl, color, subText)
+        }]
       }),
     });
 
@@ -67,21 +48,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, result });
 
   } catch (error: any) {
-    console.error("Notify API Error:", error.message);
+    console.error("嚴重錯誤:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// Flex Message 模板生成器
 function createFlex(title: string, name: string, price: any, img: any, color: string, sub: string) {
-  let displayUrl = "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1000";
-  try {
-    if (img) {
-      const parsed = (typeof img === 'string' && img.startsWith('[')) ? JSON.parse(img) : img;
-      displayUrl = Array.isArray(parsed) ? (parsed[0] || displayUrl) : img;
-    }
-  } catch (e) {}
-
+  let displayUrl = img || "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1000";
   return {
     type: 'bubble',
     hero: { type: 'image', url: displayUrl, size: 'full', aspectRatio: '20:13', aspectMode: 'cover' },
