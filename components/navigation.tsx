@@ -25,7 +25,7 @@ import {
 
 // 💡 秘訣：在這裡直接把「市集瀏覽」加入選單清單中！
 const NAV_ITEMS = [
-  { href: "/", label: "首頁", icon: Home },
+  { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag }, // 👈 新增這一行！
   { href: "/profile", label: "個人中心", icon: User },
   { href: "/my-listings", label: "我的商品", icon: Package },
