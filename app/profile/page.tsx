@@ -9,13 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "next/navigation"; 
-import Link from "next/link"; // ✅ 確保引入 Link
+import Link from "next/link"; // ✅ 確保使用 Link 進行穩定跳轉
 import {
   User,
   Package,
   ShieldCheck,
   Mail,
-  PlusCircle
+  PlusCircle,
+  CheckCircle,
+  Clock
 } from "lucide-react";
 
 interface Product {
@@ -94,12 +96,12 @@ export default function ProfilePage() {
             <h2 className="text-2xl font-black text-gray-800">請先登入</h2>
             <p className="text-sm text-gray-500">登入後即可管理您的二手商品</p>
           </div>
-          <button 
+          <Button 
             onClick={() => login?.()} 
             className="w-full h-14 text-lg font-bold rounded-2xl bg-[#D95300] hover:bg-[#B84600] text-white shadow-lg shadow-orange-100 transition-all active:scale-[0.98]"
           >
             使用 LINE 登入
-          </button>
+          </Button>
         </Card>
       </main>
     );
@@ -114,7 +116,7 @@ export default function ProfilePage() {
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
         
-        {/* 用戶資訊區塊 - 橘色漸層主題 */}
+        {/* 用戶資訊區塊 */}
         <Card className="p-0 border-none shadow-md rounded-2xl overflow-hidden bg-transparent">
           <div className="bg-gradient-to-r from-[#D95300] to-[#FF8C42] text-white p-6">
             <div className="flex items-center gap-4">
@@ -147,12 +149,13 @@ export default function ProfilePage() {
           </div>
         </Card>
 
+        {/* 管理員入口 - 已修改為連接到 app/page.tsx (路徑 "/") */}
         {isAdmin && (
-          <Link href="/admin" className="block w-full">
+          <Link href="/" className="block w-full">
             <Button 
-              className="w-full bg-[#404040] hover:bg-black text-white font-bold py-6 rounded-2xl mb-4 shadow-lg"
+              className="w-full bg-[#404040] hover:bg-black text-white font-bold py-6 rounded-2xl mb-4 shadow-lg transition-all"
             >
-              <ShieldCheck className="mr-2" /> 進入管理後台
+              <ShieldCheck className="mr-2" /> 回到首頁 (管理員)
             </Button>
           </Link>
         )}
@@ -165,34 +168,38 @@ export default function ProfilePage() {
               我刊登的商品 ({myProducts.length})
             </h3>
             
-            {/* ✅ 關鍵修正：改用 Link 組件包裹 Button，這是最穩定的跳轉方式 */}
-            <Link href="/upload">
+            {/* ✅ 已修改：按鈕現在連接到 app/page.tsx (路徑 "/") */}
+            <Link href="/">
               <Button 
                 size="sm" 
                 variant="outline" 
-                className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg flex items-center gap-1"
+                className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg flex items-center gap-1 font-bold"
               >
                 <PlusCircle className="h-3.5 w-3.5" />
-                我要上架
+                回到首頁
               </Button>
             </Link>
           </div>
 
           {isLoadingProducts ? (
-            <div className="space-y-3"><Skeleton className="h-20 w-full rounded-xl" /></div>
+            <div className="space-y-3">
+              <Skeleton className="h-20 w-full rounded-xl" />
+            </div>
           ) : myProducts.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 text-xs font-medium">目前沒有商品，快去上架吧！</div>
+            <div className="text-center py-10 text-gray-400 text-xs font-medium">
+              目前沒有商品。
+            </div>
           ) : (
             <div className="grid gap-3">
               {myProducts.map((product) => {
                 const isApproved = product.is_approved === true || String(product.is_approved) === "true";
                 return (
-                  <div key={product.id} className="flex items-center gap-3 p-3 border rounded-xl border-gray-50 hover:bg-orange-50/30 transition-all">
+                  <div key={product.id} className="flex items-center gap-3 p-3 border rounded-xl border-gray-50 hover:bg-orange-50/30 transition-all group">
                     <div className="h-16 w-16 rounded-xl overflow-hidden bg-gray-100 shrink-0 border border-gray-100">
                       <img 
                         src={getProductImage(product.image_url)} 
                         alt={product.name} 
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                         onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
                       />
                     </div>
@@ -202,9 +209,13 @@ export default function ProfilePage() {
                     </div>
                     <div className="shrink-0">
                       {isApproved ? (
-                        <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 border-emerald-100 rounded-lg">已上架</Badge>
+                        <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 border-emerald-100 rounded-lg py-1 px-2">
+                          <CheckCircle className="h-3 w-3 mr-1" /> 已上架
+                        </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-[10px] text-orange-600 bg-orange-50 border-orange-100 rounded-lg">審核中</Badge>
+                        <Badge variant="outline" className="text-[10px] text-orange-600 bg-orange-50 border-orange-100 rounded-lg py-1 px-2">
+                          <Clock className="h-3 w-3 mr-1" /> 審核中
+                        </Badge>
                       )}
                     </div>
                   </div>
