@@ -20,8 +20,8 @@ const CATEGORIES = [
   { value: "electronics", label: "電子產品" },
   { value: "books", label: "書籍教材" },
   { value: "tools_stationery", label: "文具/專業工具" },
-  { value: "dorm_supplies",label: "租屋收納/雜貨" }，
-  { value: "hobbies"，label: "遊戲／娛樂"},
+  { value: "dorm_supplies",label: "租屋收納/雜貨" },
+  { value: "hobbies"，label: "遊戲/娛樂"},
   { value: "clothing", label: "服飾配件" },
   { value: "furniture", label: "家具家電" },
   { value: "sports", label: "運動用品" },
