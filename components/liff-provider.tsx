@@ -38,7 +38,6 @@ interface AuthData {
   lineUserId?: string;
 }
 
-// 新增 Profile 類型定義
 interface LineProfile {
   userId: string;
   displayName: string;
@@ -51,10 +50,10 @@ interface LiffContextType {
   isAuthenticated: boolean;
   userEmail: string | null;
   lineUserId: string | null;
-  profile: LineProfile | null; // 新增 profile 欄位
+  profile: LineProfile | null;
   sendLineMessage: (productName: string, price: number, imageUrl?: string) => Promise<boolean>;
   closeWindow: () => void;
-  login: () => void; // 新增 login 函數方便調用
+  login: () => void;
 }
 
 const LiffContext = createContext<LiffContextType>({
@@ -126,21 +125,15 @@ function isAuthValid(): { valid: boolean; data: AuthData | null } {
 function isEmailAllowed(email: string | null | undefined): boolean {
   if (!email) return false;
   const lowerEmail = email.toLowerCase();
-
   if (lowerEmail.endsWith(ALLOWED_DOMAIN)) return true;
   if (lowerEmail === DEV_EMAIL.toLowerCase()) return true;
-
   return false;
 }
 
 // ==========================================
 // Verification Form Component
 // ==========================================
-function VerificationForm({
-  onVerified,
-}: {
-  onVerified: (email: string) => void;
-}) {
+function VerificationForm({ onVerified }: { onVerified: (email: string) => void }) {
   const [schoolEmail, setSchoolEmail] = useState("");
   const [showOtpDialog, setShowOtpDialog] = useState(false);
   const [otpValue, setOtpValue] = useState("");
@@ -156,7 +149,6 @@ function VerificationForm({
     }
     setError("");
     setShowOtpDialog(true);
-    alert(`驗證碼已發送至 ${schoolEmail}\n\n（模擬驗證碼：${VERIFICATION_CODE}）`);
   };
 
   const handleVerifyOtp = () => {
@@ -179,20 +171,14 @@ function VerificationForm({
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-primary mb-4">
             <GraduationCap className="w-8 h-8 text-primary-foreground" />
           </div>
-          <h1 className="text-xl font-bold text-foreground mb-2">
-            南台二手物平台
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            請驗證您的學校信箱以繼續
-          </p>
+          <h1 className="text-xl font-bold text-foreground mb-2">南台二手物平台</h1>
+          <p className="text-sm text-muted-foreground">請驗證您的學校信箱以繼續</p>
         </div>
 
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                學校信箱
-              </label>
+              <label className="text-sm font-medium text-foreground">學校信箱</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -206,25 +192,11 @@ function VerificationForm({
                   className="pl-10"
                 />
               </div>
-              {error && !showOtpDialog && (
-                <p className="text-xs text-destructive">{error}</p>
-              )}
+              {error && !showOtpDialog && <p className="text-xs text-destructive">{error}</p>}
             </div>
-
-            <Button
-              onClick={handleSendCode}
-              disabled={!schoolEmail}
-              className="w-full"
-            >
-              <ShieldCheck className="w-4 h-4 mr-2" />
-              發送驗證碼
+            <Button onClick={handleSendCode} disabled={!schoolEmail} className="w-full">
+              <ShieldCheck className="w-4 h-4 mr-2" /> 發送驗證碼
             </Button>
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground text-center">
-              僅限南台科技大學師生使用
-            </p>
           </div>
         </div>
       </div>
@@ -232,81 +204,25 @@ function VerificationForm({
       <Dialog open={showOtpDialog} onOpenChange={setShowOtpDialog}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <ShieldCheck className="h-6 w-6 text-primary" />
-            </div>
             <DialogTitle>輸入驗證碼</DialogTitle>
             <DialogDescription>
-              驗證碼已發送至
-              <br />
-              <span className="font-medium text-foreground">{schoolEmail}</span>
+              驗證碼已發送至 <span className="font-medium text-foreground">{schoolEmail}</span>
             </DialogDescription>
           </DialogHeader>
-
           <div className="flex flex-col items-center gap-4 py-4">
-            <InputOTP
-              maxLength={6}
-              value={otpValue}
-              onChange={(value) => {
-                setOtpValue(value);
-                setError("");
-              }}
-            >
+            <InputOTP maxLength={6} value={otpValue} onChange={setOtpValue}>
               <InputOTPGroup>
-                <InputOTPSlot index={0} />
-                <InputOTPSlot index={1} />
-                <InputOTPSlot index={2} />
-                <InputOTPSlot index={3} />
-                <InputOTPSlot index={4} />
-                <InputOTPSlot index={5} />
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <InputOTPSlot key={i} index={i} />
+                ))}
               </InputOTPGroup>
             </InputOTP>
-
-            {error && showOtpDialog && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-
-            <Button
-              onClick={handleVerifyOtp}
-              disabled={otpValue.length !== 6 || isVerifying}
-              className="w-full"
-            >
-              {isVerifying ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  驗證中...
-                </>
-              ) : (
-                "確認驗證"
-              )}
+            <Button onClick={handleVerifyOtp} disabled={otpValue.length !== 6 || isVerifying} className="w-full">
+              {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : "確認驗證"}
             </Button>
-
-            <button
-              onClick={() => {
-                setOtpValue("");
-                alert(`驗證碼已重新發送至 ${schoolEmail}\n\n（模擬驗證碼：${VERIFICATION_CODE}）`);
-              }}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              重新發送驗證碼
-            </button>
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// ==========================================
-// Loading Component
-// ==========================================
-function LoadingScreen() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center space-y-4">
-        <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-muted-foreground text-sm">驗證身分中...</p>
-      </div>
     </div>
   );
 }
@@ -319,10 +235,9 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [lineUserId, setLineUserId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<LineProfile | null>(null); // 新增 profile 狀態
+  const [profile, setProfile] = useState<LineProfile | null>(null);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [initRetryCount, setInitRetryCount] = useState(0);
 
   const handleManualVerification = (email: string) => {
     setStoredAuth(email, lineUserId || undefined);
@@ -333,225 +248,80 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   };
 
   const login = () => {
-    if (!liff.isLoggedIn()) {
-      liff.login();
+    if (!liff.isLoggedIn()) liff.login();
+  };
+
+  const closeWindow = () => {
+    try {
+      if (liff.isInClient()) liff.closeWindow();
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  const sendLineMessage = async (productName: string, price: number, imageUrl?: string): Promise<boolean> => {
-    if (isLocalhost()) {
-      console.log("[v0] Localhost - simulating LINE message send");
-      return true;
-    }
-
+  const sendLineMessage = async (productName: string, price: number): Promise<boolean> => {
+    if (isLocalhost()) return true;
     try {
-      if (!liff.isInClient()) {
-        console.log("[v0] Not in LINE client, cannot send message");
-        return false;
-      }
-
-      const flexMessage: liff.LiffMessage = {
-        type: "flex",
-        altText: `上架成功！${productName} - NT$${price}`,
-        contents: {
-          type: "bubble",
-          hero: imageUrl ? {
-            type: "image",
-            url: imageUrl,
-            size: "full",
-            aspectRatio: "4:3",
-            aspectMode: "cover",
-          } : undefined,
-          body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-              {
-                type: "text",
-                text: "上架成功！",
-                weight: "bold",
-                size: "xl",
-                color: "#22c55e",
-              },
-              {
-                type: "box",
-                layout: "vertical",
-                margin: "lg",
-                spacing: "sm",
-                contents: [
-                  {
-                    type: "box",
-                    layout: "baseline",
-                    spacing: "sm",
-                    contents: [
-                      {
-                        type: "text",
-                        text: "商品",
-                        color: "#aaaaaa",
-                        size: "sm",
-                        flex: 1,
-                      },
-                      {
-                        type: "text",
-                        text: productName,
-                        wrap: true,
-                        color: "#666666",
-                        size: "sm",
-                        flex: 4,
-                      },
-                    ],
-                  },
-                  {
-                    type: "box",
-                    layout: "baseline",
-                    spacing: "sm",
-                    contents: [
-                      {
-                        type: "text",
-                        text: "價格",
-                        color: "#aaaaaa",
-                        size: "sm",
-                        flex: 1,
-                      },
-                      {
-                        type: "text",
-                        text: `NT$${price.toLocaleString()}`,
-                        wrap: true,
-                        color: "#1a73e8",
-                        size: "sm",
-                        weight: "bold",
-                        flex: 4,
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: "text",
-                text: "請靜待管理員審核",
-                size: "xs",
-                color: "#888888",
-                margin: "lg",
-              },
-            ],
-          },
-        } as liff.FlexBubble,
-      };
-
-      await liff.sendMessages([flexMessage]);
-      console.log("[v0] LINE message sent successfully");
+      if (!liff.isInClient()) return false;
+      await liff.sendMessages([{ type: "text", text: `商品 ${productName} 上架成功！價格: NT$${price}` }]);
       return true;
-    } catch (error) {
-      console.error("[v0] Failed to send LINE message:", error);
+    } catch (e) {
       return false;
     }
   };
 
-  const closeWindow = () => {
-    if (isLocalhost()) {
-      console.log("[v0] Localhost - simulating window close");
-      return;
-    }
-
-    try {
-      if (liff.isInClient()) {
-        liff.closeWindow();
-      }
-    } catch (error) {
-      console.error("[v0] Failed to close window:", error);
-    }
-  };
-
   useEffect(() => {
-    async function initializeLiff() {
+    async function init() {
       if (isLocalhost()) {
-        setLineUserId("dev_user_localhost");
-        setUserEmail("dev@stust.edu.tw");
-        // 本地測試用假資料
-        setProfile({
-          userId: "dev_user_localhost",
-          displayName: "開發者測試",
-          pictureUrl: "https://via.placeholder.com/150"
-        });
+        setUserEmail("4b290005@stust.edu.tw");
+        setLineUserId("dev_user");
+        setProfile({ userId: "dev_user", displayName: "已驗證用戶", pictureUrl: "" });
         setIsAuthenticated(true);
         setIsReady(true);
         setIsLoading(false);
         return;
       }
 
-      const authCheck = isAuthValid();
-      
       try {
         await liff.init({ liffId: LIFF_ID });
-        await liff.ready;
-
         if (!liff.isLoggedIn()) {
           liff.login();
           return;
         }
 
-        // 核心修改：獲取完整的 Profile 資料
-        const lineProfile = await liff.getProfile();
-        setProfile(lineProfile);
-        setLineUserId(lineProfile.userId);
+        const p = await liff.getProfile();
+        const token = liff.getDecodedIDToken();
+        const email = token?.email || null;
 
-        const decodedToken = liff.getDecodedIDToken();
-        const email = decodedToken?.email || null;
+        setProfile(p);
+        setLineUserId(p.userId);
         setUserEmail(email);
 
-        // 如果快取有效且信箱一致，直接通過
-        if (authCheck.valid && authCheck.data && authCheck.data.email === email) {
+        const authCheck = isAuthValid();
+        if (authCheck.valid && authCheck.data?.email === email) {
           setIsAuthenticated(true);
-          setIsReady(true);
-          setIsLoading(false);
-          return;
-        }
-
-        if (isEmailAllowed(email)) {
-          setStoredAuth(email || undefined, lineProfile.userId);
+        } else if (isEmailAllowed(email)) {
+          setStoredAuth(email || undefined, p.userId);
           setIsAuthenticated(true);
-          setIsReady(true);
         } else {
           setNeedsVerification(true);
         }
-      } catch (error) {
-        console.error("[v0] LIFF initialization failed:", error);
-        if (initRetryCount < 2) {
-          setInitRetryCount((prev) => prev + 1);
-          setTimeout(() => { window.location.reload(); }, 1500);
-          return;
-        }
-        setNeedsVerification(true);
+        setIsReady(true);
+      } catch (err) {
+        console.error("LIFF Init Error", err);
+        setNeedsVerification(true); // 出錯時回退到手動驗證，不要 reload
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
+    init();
+  }, []);
 
-    initializeLiff();
-  }, [initRetryCount]);
-
-  if (isLoading && !needsVerification) {
-    return <LoadingScreen />;
-  }
-
-  if (needsVerification && !isAuthenticated) {
-    return <VerificationForm onVerified={handleManualVerification} />;
-  }
-
-  if (!isReady || !isAuthenticated) {
-    return <LoadingScreen />;
-  }
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center">載入中...</div>;
+  if (needsVerification && !isAuthenticated) return <VerificationForm onVerified={handleManualVerification} />;
 
   return (
-    <LiffContext.Provider value={{ 
-      isReady, 
-      isAuthenticated, 
-      userEmail, 
-      lineUserId, 
-      profile, // 導出 profile
-      sendLineMessage, 
-      closeWindow,
-      login
-    }}>
+    <LiffContext.Provider value={{ isReady, isAuthenticated, userEmail, lineUserId, profile, sendLineMessage, closeWindow, login }}>
       {children}
     </LiffContext.Provider>
   );
