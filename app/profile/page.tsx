@@ -155,7 +155,7 @@ export default function ProfilePage() {
             <Button 
               className="w-full bg-[#404040] hover:bg-black text-white font-bold py-6 rounded-2xl mb-4 shadow-lg transition-all"
             >
-              <ShieldCheck className="mr-2" />  + 我要上架 (管理員)
+              <ShieldCheck className="mr-2" />  我要上架 (管理員)
             </Button>
           </Link>
         )}
@@ -176,7 +176,7 @@ export default function ProfilePage() {
                 className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg flex items-center gap-1 font-bold"
               >
                 <PlusCircle className="h-3.5 w-3.5" />
-                + 我要上架
+                我要上架
               </Button>
             </Link>
           </div>
