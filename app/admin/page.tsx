@@ -41,6 +41,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 // 🔒 管理員 LINE ID 白名單
 const ADMIN_LINE_IDS = [
   "Ued7dfd77b63273d497cebc62f1a7b1df", // 👈 你的專屬管理員 ID
+  "Uf7c4668bc96315297b02b0a67fff88ea", // 👈 你的專屬管理員 ID
 ];
 
 export default function AdminReviewPage() {
