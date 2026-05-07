@@ -12,17 +12,19 @@ import { User, Package, CheckCircle, Clock } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
-  // 從 liff-provider 獲取已抓到的用戶資訊
+  // 從 liff-provider 取得 userProfile，裡面包含你在側邊欄看到的信箱資料
   const { lineUserId, userProfile, isAuthenticated, login, isLoading: liffLoading } = useLiff();
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
+  // 1. 登入狀態檢查
   useEffect(() => {
     if (!liffLoading && !isAuthenticated) {
       login?.();
     }
   }, [isAuthenticated, liffLoading, login]);
 
+  // 2. 抓取該使用者的商品
   useEffect(() => {
     if (!isAuthenticated || !lineUserId) return;
     async function fetchMyProducts() {
@@ -49,27 +51,29 @@ export default function ProfilePage() {
     return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${url.replace(/^\//, "")}`;
   };
 
-  // 確保載入完成前不跳轉
-  if (liffLoading) return <div className="h-screen flex items-center justify-center font-bold text-slate-400">連線中...</div>;
+  // 載入中畫面
+  if (liffLoading) {
+    return <div className="h-screen flex items-center justify-center font-bold text-slate-400">同步中...</div>;
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 pb-12">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
+        <h1 className="text-lg font-bold">個人中心</h1>
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* 用戶資訊卡片 */}
+        {/* 使用者資訊卡片：同步手機側邊欄的真實信箱 */}
         <Card className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6">
             <div className="flex items-center gap-4">
               <div className="h-16 w-16 rounded-full border-2 border-white/30 overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
-                {/* 修正：加入專門顯示 LINE 頭像的策略 */}
+                {/* 顯示 LINE 授權頭像 */}
                 {userProfile?.pictureUrl ? (
                   <img 
                     src={userProfile.pictureUrl} 
-                    alt="LINE"
+                    alt="Profile"
                     className="h-full w-full object-cover" 
                     referrerPolicy="no-referrer" 
                     crossOrigin="anonymous"
@@ -78,33 +82,36 @@ export default function ProfilePage() {
                   <User className="h-8 w-8 text-white/70" />
                 )}
               </div>
+              
               <div className="min-w-0">
-                {/* 優先顯示 LINE 暱稱，否則顯示已驗證用戶 */}
+                {/* 顯示 LINE 暱稱 */}
                 <h2 className="font-black text-xl truncate">
                   {userProfile?.displayName || "已驗證用戶"}
                 </h2>
-                {/* 顯示你手機版已抓到的信箱 */}
+                
+                {/* 核心修正：將原本寫死的學號信箱改為抓取真實 userProfile 資訊 */}
                 <p className="text-xs text-blue-100 opacity-80 truncate">
-                  {userProfile?.email || "載入信箱中..."}
+                  {userProfile?.email || "載入信箱資料中..."}
                 </p>
               </div>
             </div>
           </CardHeader>
         </Card>
 
-        {/* 商品清單區塊 */}
+        {/* 商品列表部分 */}
         <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b pb-3 mb-4">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               <Package className="h-4 w-4 text-blue-600" /> 我刊登的商品
             </h3>
             <Link href="/">
-              <Button size="sm" variant="outline" className="rounded-lg text-xs">+ 上架</Button>
+              <Button size="sm" variant="outline">+ 上架</Button>
             </Link>
           </div>
+          
           <div className="grid gap-3">
             {isLoadingProducts ? (
-              Array(2).fill(0).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)
+              <Skeleton className="h-20 w-full" />
             ) : myProducts.length > 0 ? (
               myProducts.map(p => (
                 <div key={p.id} className="flex items-center gap-3 p-3 border rounded-xl bg-white">
@@ -131,7 +138,7 @@ export default function ProfilePage() {
                 </div>
               ))
             ) : (
-              <p className="text-center py-8 text-slate-400 text-sm italic">尚無刊登商品</p>
+              <div className="text-center py-6 text-slate-400 text-sm">目前尚無商品</div>
             )}
           </div>
         </Card>
