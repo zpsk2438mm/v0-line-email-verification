@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,13 +26,10 @@ interface Product {
   price: number;
   is_approved: boolean;
   created_at: string;
-  image_url: string[] | null; // 👈 確保圖片網址型別正確
+  image_url: string | string[] | null; // 👈 這裡調整為相容兩種格式
 }
 
-// 🔒 填入你的 LINE ID 白名單
-const ADMIN_LINE_IDS = [
-  "Ued7dfd77b63273d497cebc62f1a7b1df", 
-];
+const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
 
 export default function ProfilePage() {
   const { lineUserId, userEmail, isAuthenticated, login, isLoading: liffLoading } = useLiff();
@@ -40,14 +37,12 @@ export default function ProfilePage() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // 1. 檢查是否為管理員
   useEffect(() => {
     if (lineUserId && ADMIN_LINE_IDS.includes(lineUserId)) {
       setIsAdmin(true);
     }
   }, [lineUserId]);
 
-  // 2. 獲取使用者自己上架的商品
   useEffect(() => {
     if (!isAuthenticated || !lineUserId) {
       setIsLoadingProducts(false);
@@ -57,65 +52,61 @@ export default function ProfilePage() {
     async function fetchMyProducts() {
       try {
         setIsLoadingProducts(true);
-        // 🔒 撈取資料時加入 image_url
         const { data, error } = await supabase
           .from("products")
           .select("id, name, price, is_approved, created_at, image_url")
           .eq("line_user_id", lineUserId)
           .order("created_at", { ascending: false });
 
-        if (error) {
-          console.error("讀取商品失敗:", error);
-          return;
-        }
+        if (error) throw error;
         setMyProducts(data || []);
       } catch (err) {
-        console.error(err);
+        console.error("讀取失敗:", err);
       } finally {
         setIsLoadingProducts(false);
       }
     }
-
     fetchMyProducts();
   }, [isAuthenticated, lineUserId]);
 
+  // 🖼️ 核心解析函式：處理資料庫中各種奇怪的圖片格式
+  const getProductImage = (imageUrl: any): string => {
+    const fallback = "/placeholder-logo.png"; // 👈 確保 public/ 有這張圖
+    if (!imageUrl) return fallback;
+
+    try {
+      // 1. 如果已經是陣列，直接回傳第一項
+      if (Array.isArray(imageUrl)) return imageUrl[0] || fallback;
+
+      // 2. 如果是字串但包含 "["，嘗試解析 JSON (處理 ["http..."] 格式)
+      if (typeof imageUrl === "string" && imageUrl.startsWith("[")) {
+        const parsed = JSON.parse(imageUrl);
+        return Array.isArray(parsed) ? parsed[0] : fallback;
+      }
+
+      // 3. 一般字串直接回傳
+      return typeof imageUrl === "string" ? imageUrl : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  };
+
   if (liffLoading) {
     return (
-      <main className="min-h-screen bg-slate-50">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-          <Navigation />
-          <h1 className="text-lg font-bold">個人中心</h1>
-        </header>
-        <div className="p-4 space-y-4 max-w-md mx-auto">
-          <Skeleton className="h-32 w-full rounded-2xl" />
-          <Skeleton className="h-60 w-full rounded-2xl" />
-        </div>
+      <main className="min-h-screen bg-slate-50 p-4">
+        <Skeleton className="h-32 w-full max-w-md mx-auto rounded-2xl" />
       </main>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-slate-50">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-          <Navigation />
-          <h1 className="text-lg font-bold">個人中心</h1>
-        </header>
-        <div className="min-h-[70vh] flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm border-none shadow-md rounded-2xl bg-white text-center p-6 space-y-4">
-            <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto">
-              <User className="h-6 w-6 text-slate-400" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg text-slate-800">歡迎來到個人中心</h2>
-              <p className="text-xs text-slate-500 mt-1">請登入以查看您的個人資料與上架商品</p>
-            </div>
-            <Button onClick={() => login?.()} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-xl">
-              <LogIn className="h-4 w-4 mr-2" />
-              使用 LINE 登入
-            </Button>
-          </Card>
-        </div>
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-sm p-6 text-center space-y-4">
+          <User className="h-12 w-12 mx-auto text-slate-300" />
+          <h2 className="font-bold">請先登入</h2>
+          <Button onClick={() => login?.()} className="w-full">使用 LINE 登入</Button>
+        </Card>
       </main>
     );
   }
@@ -124,111 +115,82 @@ export default function ProfilePage() {
     <main className="min-h-screen bg-slate-50 pb-12">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
+        <h1 className="text-lg font-bold">個人中心</h1>
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* 1. 用戶資訊卡 */}
-        <Card className="border-none shadow-sm rounded-2xl bg-white overflow-hidden">
+        {/* 用戶資訊 */}
+        <Card className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6">
             <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+              <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center">
                 <User className="h-7 w-7 text-white" />
               </div>
-              <div>
-                <h2 className="font-black text-lg">已驗證南台用戶</h2>
-                <p className="text-xs text-blue-100 mt-0.5">{userEmail}</p>
+              <div className="min-w-0">
+                <h2 className="font-black text-lg truncate">已驗證南台用戶</h2>
+                <p className="text-xs text-blue-100 truncate">{userEmail}</p>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-4 space-y-2.5 text-xs text-slate-500">
-            <div className="flex items-center gap-2">
-              <Mail className="h-3.5 w-3.5 text-slate-400" />
-              <span>學校信箱：{userEmail}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-3.5 w-3.5 text-slate-400" />
-              <span>註冊時間：已成功通過南台信箱驗證</span>
-            </div>
-          </CardContent>
         </Card>
 
-        {/* 2. 管理員專屬傳送門 */}
+        {/* 管理員入口 */}
         {isAdmin && (
-          <Link href="/admin" className="block">
-            <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-6 rounded-2xl shadow-md shadow-amber-100 flex items-center justify-center gap-2">
-              <ShieldCheck className="h-5 w-5" />
-              進入「商品審核管理後台」
+          <Link href="/admin">
+            <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-6 rounded-2xl mb-4">
+              <ShieldCheck className="mr-2" /> 進入管理後台
             </Button>
           </Link>
         )}
 
-        {/* 3. 我的商品清單 */}
-        <Card className="border-none shadow-sm rounded-2xl bg-white p-4 space-y-4">
-          <div className="flex items-center justify-between border-b pb-3">
-            <h3 className="font-bold text-slate-800 flex items-center gap-1.5">
-              <Package className="h-4.5 w-4.5 text-blue-600" />
+        {/* 商品清單 */}
+        <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
+          <div className="flex items-center justify-between border-b pb-3 mb-4">
+            <h3 className="font-bold flex items-center gap-1.5 text-slate-800">
+              <Package className="h-4 w-4 text-blue-600" />
               我刊登的商品 ({myProducts.length})
             </h3>
-            <Link href="/">
-              <Button size="sm" variant="outline" className="text-xs rounded-lg">
-                + 我要上架
-              </Button>
-            </Link>
+            <Link href="/"><Button size="sm" variant="outline">+ 我要上架</Button></Link>
           </div>
 
           {isLoadingProducts ? (
-            <div className="space-y-2">
-              <Skeleton className="h-12 w-full rounded-lg" />
-              <Skeleton className="h-12 w-full rounded-lg" />
-            </div>
+            <div className="space-y-3"><Skeleton className="h-20 w-full rounded-xl" /></div>
           ) : myProducts.length === 0 ? (
-            <div className="text-center py-8 space-y-2">
-              <Package className="h-10 w-10 mx-auto text-slate-300" />
-              <p className="text-xs font-medium text-slate-400">您還沒有上架過任何商品喔</p>
-            </div>
+            <div className="text-center py-10 text-slate-400 text-xs">目前沒有商品</div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-3">
               {myProducts.map((product) => {
-                const isApproved = 
-                  product.is_approved === true || 
-                  String(product.is_approved).toLowerCase() === "true";
-                
-                // 🖼️ 處理圖片路徑
-                const hasImages = product.image_url && product.image_url.length > 0;
-                const productImageUrl = hasImages ? product.image_url[0] : "/placeholder-logo.png";
+                const isApproved = product.is_approved === true || String(product.is_approved).toLowerCase() === "true";
+                const displayImg = getProductImage(product.image_url);
 
                 return (
-                  <div key={product.id} className="flex items-center gap-3 p-3 border rounded-xl border-slate-100 hover:bg-slate-50/50 transition-colors">
-                    
-                    {/* 圖片展示區 */}
-                    <div className="h-14 w-14 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
-                      <img
-                        src={productImageUrl}
-                        alt={product.name}
+                  <div key={product.id} className="flex items-center gap-3 p-3 border rounded-xl border-slate-100 hover:bg-slate-50 transition-all">
+                    {/* 🖼️ 圖片顯示區域 */}
+                    <div className="h-16 w-16 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                      <img 
+                        src={displayImg} 
+                        alt={product.name} 
                         className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "/placeholder-logo.png";
-                        }}
+                        onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
                       />
                     </div>
 
-                    <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-sm text-slate-800 truncate">{product.name}</h4>
-                      <p className="text-xs font-extrabold text-rose-500">NT$ {product.price.toLocaleString()}</p>
+                      <p className="text-xs font-black text-rose-500 mt-1">NT$ {product.price.toLocaleString()}</p>
                     </div>
 
-                    {isApproved ? (
-                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-emerald-600 bg-emerald-50 border-emerald-200 shrink-0">
-                        <CheckCircle className="h-3 w-3" />
-                        已上架
-                      </Badge>
-                    ) : (
-                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-amber-600 bg-amber-50 border-amber-200 shrink-0">
-                        <Clock className="h-3 w-3" />
-                        審核中
-                      </Badge>
-                    )}
+                    <div className="shrink-0">
+                      {isApproved ? (
+                        <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 border-emerald-100">
+                          <CheckCircle className="h-3 w-3 mr-1" /> 已上架
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-amber-600 bg-amber-50 border-amber-100">
+                          <Clock className="h-3 w-3 mr-1" /> 審核中
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 );
               })}
