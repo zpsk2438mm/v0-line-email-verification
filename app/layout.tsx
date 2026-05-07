@@ -5,8 +5,8 @@ import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '南臺二手交易平臺',
-  description: '南臺科技大學專屬二手交易平台',
+  title: '南台二手物平台',
+  description: '南台科技大學二手物品交易平台',
   icons: { icon: '/icon.svg' },
 }
 
@@ -28,7 +28,7 @@ export default function RootLayout({
           strategy="beforeInteractive" 
         />
       </head>
-      <body className="antialiased bg-[#F9F8F6]">
+      <body className="font-sans antialiased bg-[#F9F8F6]">
         <LiffProvider>
           {children}
         </LiffProvider>
