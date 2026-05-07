@@ -4,50 +4,42 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // --- 情況 A：Supabase Webhook 觸發（審核狀態更新） ---
+    // --- 情況 A：來自 Supabase Webhook (審核狀態變更) ---
     if (body.record && body.old_record) {
       const { record, old_record } = body;
 
-      // 只有當 is_approved 狀態有變動時才觸發
+      // 只有當審核狀態 (is_approved) 有變動時才觸發
       if (record.is_approved !== old_record.is_approved) {
-        const isNowApproved = record.is_approved === true;
+        const isApproved = record.is_approved === true;
         
-        const statusTitle = isNowApproved ? "✅ 審核通過通知" : "❌ 審核未通過";
-        const statusColor = isNowApproved ? "#1DB446" : "#E53E3E"; // 綠色或紅色
-        const statusDesc = isNowApproved 
-          ? "您的商品已成功上架！買家現在可以看到它了。" 
-          : "很抱歉，您的商品未通過審核。請檢查內容後重新上架。";
-
         await sendToLine(record.line_user_id, createFlex(
-          statusTitle, 
-          record.name, 
-          record.price, 
-          record.image_url, 
-          statusColor, 
-          statusDesc
+          isApproved ? "✅ 審核通過通知" : "❌ 審核未通過",
+          record.name,
+          record.price,
+          record.image_url,
+          isApproved ? "#1DB446" : "#E53E3E", // 通過綠，失敗紅
+          isApproved ? "您的商品已成功上架！買家現在可以看到它了。" : "很抱歉，您的商品未通過審核。請檢查內容或聯繫管理員。"
         ));
-        
-        return NextResponse.json({ success: true, mode: 'status_update_notified' });
+        return NextResponse.json({ success: true, mode: 'webhook_status_update' });
       }
-      return NextResponse.json({ message: '狀態無變動' });
+      return NextResponse.json({ message: '狀態未變更' });
     }
 
-    // --- 情況 B：前端提交申請（新商品上架） ---
-    // 注意：前端呼叫此 API 時，請務必傳入 lineUserId
-    const { name, price, imageUrl, lineUserId } = body;
+    // --- 情況 B：來自前端表單 (新商品提交) ---
+    const { name, price, imageUrl, contact, lineUserId } = body;
 
     if (lineUserId) {
       await sendToLine(lineUserId, createFlex(
-        "📦 商品提交成功", 
-        name, 
-        price, 
-        imageUrl, 
-        "#D95300", // 橘色
-        "我們已收到您的申請，管理員將盡快為您審核。"
+        "📦 商品提交成功",
+        name,
+        price,
+        imageUrl,
+        "#D95300", // 南臺橘
+        "我們已收到您的申請，管理員將盡快為您審核，請耐心等候通知。"
       ));
     }
     
-    return NextResponse.json({ success: true, mode: 'submission_notified' });
+    return NextResponse.json({ success: true, mode: 'frontend_submission' });
 
   } catch (error: any) {
     console.error('Notify API Error:', error);
@@ -55,7 +47,6 @@ export async function POST(req: Request) {
   }
 }
 
-// 統一發送函數
 async function sendToLine(to: string, contents: any) {
   return fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
@@ -63,11 +54,10 @@ async function sendToLine(to: string, contents: any) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
     },
-    body: JSON.stringify({ to, messages: [{ type: 'flex', altText: '通知', contents }] }),
+    body: JSON.stringify({ to, messages: [{ type: 'flex', altText: '商品通知', contents }] }),
   });
 }
 
-// 統一 Flex 樣式
 function createFlex(title: string, name: string, price: any, img: any, color: string, sub: string) {
   let displayUrl = "https://your-domain.com/placeholder-logo.png";
   if (img) {
