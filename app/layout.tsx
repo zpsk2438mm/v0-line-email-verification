@@ -1,30 +1,15 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { LiffProvider } from '@/components/liff-provider'
+// 1. 引入 Next.js 的 Script 組件
+import Script from 'next/script' 
 import './globals.css'
-
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: '南台二手物平台',
   description: '南台科技大學二手物品交易平台',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
+    icon: '/icon.svg',
     apple: '/apple-icon.png',
   },
 }
@@ -44,6 +29,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW" className="bg-background">
+      <head>
+        {/* 2. 這是最重要的一行：在所有程式碼執行前載入 LINE SDK */}
+        <Script 
+          src="https://static.line-scdn.net/liff/edge/2/sdk.js" 
+          strategy="beforeInteractive" 
+        />
+      </head>
       <body className="font-sans antialiased">
         <LiffProvider>
           {children}
