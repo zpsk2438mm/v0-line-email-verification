@@ -25,7 +25,7 @@ const CATEGORIES = [
   { value: "clothing", label: "服飾配件" },
   { value: "furniture", label: "家具家電" },
   { value: "sports", label: "運動用品" },
-  { value: "other", label: "其他" }
+  { value: "other", label: "其他" },
 ];
 
 const MAX_IMAGES = 5;
