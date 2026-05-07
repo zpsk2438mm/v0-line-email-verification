@@ -58,7 +58,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const Header = ({ title }: { title: string }) => (
     <header className="p-4 bg-white border-b flex items-center gap-2 sticky top-0 z-50">
       <Navigation /> {/* 👈 漢堡選單 */}
-      <Link href="/">
+      <Link href="/products">
         <Button variant="ghost" size="icon" className="h-10 w-10">
           <ChevronLeft className="h-5 w-5" />
         </Button>
