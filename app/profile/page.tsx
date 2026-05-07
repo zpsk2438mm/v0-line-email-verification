@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "next/navigation"; 
+import Link from "next/link"; // ✅ 確保引入 Link
 import {
   User,
   Package,
@@ -82,11 +83,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleUploadClick = () => {
-    // 使用 replace 避免在驗證失敗後產生的跳轉死循環
-    router.replace('/upload');
-  };
-
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#F9F8F6] flex items-center justify-center p-4">
@@ -98,12 +94,12 @@ export default function ProfilePage() {
             <h2 className="text-2xl font-black text-gray-800">請先登入</h2>
             <p className="text-sm text-gray-500">登入後即可管理您的二手商品</p>
           </div>
-          <Button 
+          <button 
             onClick={() => login?.()} 
             className="w-full h-14 text-lg font-bold rounded-2xl bg-[#D95300] hover:bg-[#B84600] text-white shadow-lg shadow-orange-100 transition-all active:scale-[0.98]"
           >
             使用 LINE 登入
-          </Button>
+          </button>
         </Card>
       </main>
     );
@@ -118,7 +114,7 @@ export default function ProfilePage() {
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
         
-        {/* 用戶資訊區塊 */}
+        {/* 用戶資訊區塊 - 橘色漸層主題 */}
         <Card className="p-0 border-none shadow-md rounded-2xl overflow-hidden bg-transparent">
           <div className="bg-gradient-to-r from-[#D95300] to-[#FF8C42] text-white p-6">
             <div className="flex items-center gap-4">
@@ -137,7 +133,7 @@ export default function ProfilePage() {
 
               <div className="min-w-0 flex-1">
                 <h2 className="font-black text-2xl truncate">
-                  {userProfile?.displayName || "椅子"}
+                  {userProfile?.displayName || "用戶"}
                 </h2>
                 <div className="flex items-center gap-1.5 text-orange-50 opacity-90 truncate mt-0.5">
                   <Mail className="h-3.5 w-3.5" />
@@ -152,12 +148,13 @@ export default function ProfilePage() {
         </Card>
 
         {isAdmin && (
-          <Button 
-            onClick={() => router.push('/admin')}
-            className="w-full bg-[#404040] hover:bg-black text-white font-bold py-6 rounded-2xl mb-4 shadow-lg"
-          >
-            <ShieldCheck className="mr-2" /> 進入管理後台
-          </Button>
+          <Link href="/admin" className="block w-full">
+            <Button 
+              className="w-full bg-[#404040] hover:bg-black text-white font-bold py-6 rounded-2xl mb-4 shadow-lg"
+            >
+              <ShieldCheck className="mr-2" /> 進入管理後台
+            </Button>
+          </Link>
         )}
 
         {/* 商品列表卡片 */}
@@ -168,16 +165,17 @@ export default function ProfilePage() {
               我刊登的商品 ({myProducts.length})
             </h3>
             
-            {/* ✅ 加強穩定性的跳轉按鈕 */}
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg flex items-center gap-1"
-              onClick={handleUploadClick}
-            >
-              <PlusCircle className="h-3.5 w-3.5" />
-              我要上架
-            </Button>
+            {/* ✅ 關鍵修正：改用 Link 組件包裹 Button，這是最穩定的跳轉方式 */}
+            <Link href="/upload">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg flex items-center gap-1"
+              >
+                <PlusCircle className="h-3.5 w-3.5" />
+                我要上架
+              </Button>
+            </Link>
           </div>
 
           {isLoadingProducts ? (
