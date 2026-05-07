@@ -21,7 +21,7 @@ import { Mail, ShieldCheck, Loader2, GraduationCap } from "lucide-react";
 // ==========================================
 // Configuration
 // ==========================================
-const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
+const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "YOUR_LIFF_ID";
 const ALLOWED_DOMAIN = "@stust.edu.tw";
 const DEV_EMAIL = "YOUR_GMAIL@gmail.com";
 const AUTH_STORAGE_KEY = "stust_authenticated";
@@ -43,11 +43,6 @@ interface LiffContextType {
   isAuthenticated: boolean;
   userEmail: string | null;
   lineUserId: string | null;
-  userProfile: {
-    displayName: string;
-    pictureUrl: string;
-    email: string | null;
-  } | null;
   sendLineMessage: (productName: string, price: number, imageUrl?: string) => Promise<boolean>;
   closeWindow: () => void;
 }
@@ -57,7 +52,6 @@ const LiffContext = createContext<LiffContextType>({
   isAuthenticated: false,
   userEmail: null,
   lineUserId: null,
-  userProfile: null,
   sendLineMessage: async () => false,
   closeWindow: () => {},
 });
@@ -71,8 +65,7 @@ function isLocalhost(): boolean {
   if (typeof window === "undefined") return false;
   return (
     window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname.startsWith("192.168")
+    window.location.hostname === "127.0.0.1"
   );
 }
 
@@ -80,21 +73,233 @@ function getStoredAuth(): AuthData | null {
   if (typeof window === "undefined") return null;
   try {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
-  } catch { return null; }
+    if (!stored) return null;
+    return JSON.parse(stored) as AuthData;
+  } catch {
+    return null;
+  }
 }
 
 function setStoredAuth(email?: string, lineUserId?: string): void {
   if (typeof window === "undefined") return;
-  const authData: AuthData = { verified: true, timestamp: Date.now(), email, lineUserId };
+  const authData: AuthData = {
+    verified: true,
+    timestamp: Date.now(),
+    email,
+    lineUserId,
+  };
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
+}
+
+function clearStoredAuth(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
 function isAuthValid(): { valid: boolean; data: AuthData | null } {
   const authData = getStoredAuth();
   if (!authData || !authData.verified) return { valid: false, data: null };
-  const isExpired = Date.now() - authData.timestamp > AUTH_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-  return isExpired ? { valid: false, data: null } : { valid: true, data: authData };
+
+  const expiryMs = AUTH_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+  const isExpired = Date.now() - authData.timestamp > expiryMs;
+
+  if (isExpired) {
+    clearStoredAuth();
+    return { valid: false, data: null };
+  }
+
+  return { valid: true, data: authData };
+}
+
+function isEmailAllowed(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const lowerEmail = email.toLowerCase();
+
+  if (lowerEmail.endsWith(ALLOWED_DOMAIN)) return true;
+  if (lowerEmail === DEV_EMAIL.toLowerCase()) return true;
+
+  return false;
+}
+
+// ==========================================
+// Verification Form Component
+// ==========================================
+function VerificationForm({
+  onVerified,
+}: {
+  onVerified: (email: string) => void;
+}) {
+  const [schoolEmail, setSchoolEmail] = useState("");
+  const [showOtpDialog, setShowOtpDialog] = useState(false);
+  const [otpValue, setOtpValue] = useState("");
+  const [error, setError] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  const isValidSchoolEmail = schoolEmail.toLowerCase().endsWith(ALLOWED_DOMAIN);
+
+  const handleSendCode = () => {
+    if (!isValidSchoolEmail) {
+      setError("請輸入有效的學校信箱 (@stust.edu.tw)");
+      return;
+    }
+    setError("");
+    setShowOtpDialog(true);
+    alert(`驗證碼已發送至 ${schoolEmail}\n\n（模擬驗證碼：${VERIFICATION_CODE}）`);
+  };
+
+  const handleVerifyOtp = () => {
+    setIsVerifying(true);
+    setTimeout(() => {
+      if (otpValue === VERIFICATION_CODE) {
+        onVerified(schoolEmail);
+      } else {
+        setError("驗證碼錯誤，請重新輸入");
+        setOtpValue("");
+      }
+      setIsVerifying(false);
+    }, 500);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm">
+        {/* Logo & Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-primary mb-4">
+            <GraduationCap className="w-8 h-8 text-primary-foreground" />
+          </div>
+          <h1 className="text-xl font-bold text-foreground mb-2">
+            南台二手物平台
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            請驗證您的學校信箱以繼續
+          </p>
+        </div>
+
+        {/* Verification Card */}
+        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                學校信箱
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="email"
+                  placeholder="your_id@stust.edu.tw"
+                  value={schoolEmail}
+                  onChange={(e) => {
+                    setSchoolEmail(e.target.value);
+                    setError("");
+                  }}
+                  className="pl-10"
+                />
+              </div>
+              {error && !showOtpDialog && (
+                <p className="text-xs text-destructive">{error}</p>
+              )}
+            </div>
+
+            <Button
+              onClick={handleSendCode}
+              disabled={!schoolEmail}
+              className="w-full"
+            >
+              <ShieldCheck className="w-4 h-4 mr-2" />
+              發送驗證碼
+            </Button>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-border">
+            <p className="text-xs text-muted-foreground text-center">
+              僅限南台科技大學師生使用
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* OTP Dialog */}
+      <Dialog open={showOtpDialog} onOpenChange={setShowOtpDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <ShieldCheck className="h-6 w-6 text-primary" />
+            </div>
+            <DialogTitle>輸入驗證碼</DialogTitle>
+            <DialogDescription>
+              驗證碼已發送至
+              <br />
+              <span className="font-medium text-foreground">{schoolEmail}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col items-center gap-4 py-4">
+            <InputOTP
+              maxLength={6}
+              value={otpValue}
+              onChange={(value) => {
+                setOtpValue(value);
+                setError("");
+              }}
+            >
+              <InputOTPGroup>
+                <InputOTPSlot index={0} />
+                <InputOTPSlot index={1} />
+                <InputOTPSlot index={2} />
+                <InputOTPSlot index={3} />
+                <InputOTPSlot index={4} />
+                <InputOTPSlot index={5} />
+              </InputOTPGroup>
+            </InputOTP>
+
+            {error && showOtpDialog && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
+
+            <Button
+              onClick={handleVerifyOtp}
+              disabled={otpValue.length !== 6 || isVerifying}
+              className="w-full"
+            >
+              {isVerifying ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  驗證中...
+                </>
+              ) : (
+                "確認驗證"
+              )}
+            </Button>
+
+            <button
+              onClick={() => {
+                setOtpValue("");
+                alert(`驗證碼已重新發送至 ${schoolEmail}\n\n（模擬驗證碼：${VERIFICATION_CODE}）`);
+              }}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              重新發送驗證碼
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ==========================================
+// Loading Component
+// ==========================================
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center space-y-4">
+        <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-muted-foreground text-sm">驗證身分中...</p>
+      </div>
+    </div>
+  );
 }
 
 // ==========================================
@@ -105,113 +310,270 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [lineUserId, setLineUserId] = useState<string | null>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [initRetryCount, setInitRetryCount] = useState(0);
 
   const handleManualVerification = (email: string) => {
     setStoredAuth(email, lineUserId || undefined);
     setUserEmail(email);
-    setUserProfile((prev: any) => ({
-      displayName: prev?.displayName || "南台同學",
-      pictureUrl: prev?.pictureUrl || "",
-      email: email
-    }));
     setIsAuthenticated(true);
     setNeedsVerification(false);
     setIsReady(true);
   };
 
+  // Send LINE message function
+  const sendLineMessage = async (productName: string, price: number, imageUrl?: string): Promise<boolean> => {
+    if (isLocalhost()) {
+      console.log("[v0] Localhost - simulating LINE message send");
+      return true;
+    }
+
+    try {
+      // Check if we can send messages
+      if (!liff.isInClient()) {
+        console.log("[v0] Not in LINE client, cannot send message");
+        return false;
+      }
+
+      // Create Flex Message
+      const flexMessage: liff.LiffMessage = {
+        type: "flex",
+        altText: `上架成功！${productName} - NT$${price}`,
+        contents: {
+          type: "bubble",
+          hero: imageUrl ? {
+            type: "image",
+            url: imageUrl,
+            size: "full",
+            aspectRatio: "4:3",
+            aspectMode: "cover",
+          } : undefined,
+          body: {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "text",
+                text: "上架成功！",
+                weight: "bold",
+                size: "xl",
+                color: "#22c55e",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "sm",
+                contents: [
+                  {
+                    type: "box",
+                    layout: "baseline",
+                    spacing: "sm",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "商品",
+                        color: "#aaaaaa",
+                        size: "sm",
+                        flex: 1,
+                      },
+                      {
+                        type: "text",
+                        text: productName,
+                        wrap: true,
+                        color: "#666666",
+                        size: "sm",
+                        flex: 4,
+                      },
+                    ],
+                  },
+                  {
+                    type: "box",
+                    layout: "baseline",
+                    spacing: "sm",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "價格",
+                        color: "#aaaaaa",
+                        size: "sm",
+                        flex: 1,
+                      },
+                      {
+                        type: "text",
+                        text: `NT$${price.toLocaleString()}`,
+                        wrap: true,
+                        color: "#1a73e8",
+                        size: "sm",
+                        weight: "bold",
+                        flex: 4,
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "text",
+                text: "請靜待管理員審核",
+                size: "xs",
+                color: "#888888",
+                margin: "lg",
+              },
+            ],
+          },
+        } as liff.FlexBubble,
+      };
+
+      await liff.sendMessages([flexMessage]);
+      console.log("[v0] LINE message sent successfully");
+      return true;
+    } catch (error) {
+      console.error("[v0] Failed to send LINE message:", error);
+      return false;
+    }
+  };
+
+  // Close LIFF window
+  const closeWindow = () => {
+    if (isLocalhost()) {
+      console.log("[v0] Localhost - simulating window close");
+      return;
+    }
+
+    try {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      }
+    } catch (error) {
+      console.error("[v0] Failed to close window:", error);
+    }
+  };
+
   useEffect(() => {
     async function initializeLiff() {
-      // 1. 本地開發模擬
+      // Dev bypass: localhost always passes
       if (isLocalhost()) {
-        console.log("LIFF: Running in Localhost Mode");
-        const mockData = { displayName: "椅子 🪑", email: "dev@stust.edu.tw", pictureUrl: "" };
+        console.log("[v0] Localhost detected - bypassing LIFF auth");
         setLineUserId("dev_user_localhost");
-        setUserEmail(mockData.email);
-        setUserProfile(mockData);
+        setUserEmail("dev@stust.edu.tw");
         setIsAuthenticated(true);
         setIsReady(true);
         setIsLoading(false);
         return;
       }
 
-      // 2. 檢查快取
+      // Check persistent login first (7-day cache)
       const authCheck = isAuthValid();
       if (authCheck.valid && authCheck.data) {
+        console.log("[v0] Valid auth cache found - skipping LIFF init");
         setUserEmail(authCheck.data.email || null);
         setLineUserId(authCheck.data.lineUserId || null);
-        setUserProfile({ 
-          email: authCheck.data.email || null, 
-          displayName: "南台同學", 
-          pictureUrl: "" 
-        });
         setIsAuthenticated(true);
         setIsReady(true);
         setIsLoading(false);
         return;
       }
 
-      // 3. 正式初始化
+      // Initialize LIFF with retry logic
       try {
+        console.log("[v0] Initializing LIFF...");
         await liff.init({ liffId: LIFF_ID });
+        
+        // Wait for LIFF to be fully ready
+        await liff.ready;
+        console.log("[v0] LIFF initialized and ready");
+
+        // Check if user is logged in
         if (!liff.isLoggedIn()) {
+          console.log("[v0] User not logged in - redirecting to LINE login");
           liff.login();
           return;
         }
 
-        const profile = await liff.getProfile();
-        const decodedToken = liff.getDecodedIDToken();
-        const email = decodedToken?.email || null;
+        // Get user profile and info
+        let userId: string | null = null;
+        let email: string | null = null;
 
-        setUserProfile({
-          displayName: profile.displayName,
-          pictureUrl: profile.pictureUrl || "",
-          email: email,
-        });
+        try {
+          // Get LINE User ID from profile
+          const profile = await liff.getProfile();
+          userId = profile.userId;
+          console.log("[v0] LINE User ID from profile:", userId);
+        } catch (profileError) {
+          console.error("[v0] Failed to get profile:", profileError);
+        }
+
+        // Get email from decoded ID token
+        try {
+          const decodedToken = liff.getDecodedIDToken();
+          email = decodedToken?.email || null;
+          // Fallback to get userId from token if profile failed
+          if (!userId && decodedToken?.sub) {
+            userId = decodedToken.sub;
+          }
+          console.log("[v0] User email:", email);
+        } catch (tokenError) {
+          console.error("[v0] Failed to get decoded token:", tokenError);
+        }
+
         setUserEmail(email);
-        setLineUserId(profile.userId);
+        setLineUserId(userId);
 
-        if (email && (email.toLowerCase().endsWith(ALLOWED_DOMAIN) || email.toLowerCase() === DEV_EMAIL.toLowerCase())) {
-          setStoredAuth(email, profile.userId);
+        // Verify email domain
+        if (isEmailAllowed(email)) {
+          console.log("[v0] Email verified - access granted");
+          setStoredAuth(email || undefined, userId || undefined);
           setIsAuthenticated(true);
           setIsReady(true);
         } else {
+          // Email is not @stust.edu.tw - show verification form
+          console.log("[v0] Email not school domain - showing verification form");
           setNeedsVerification(true);
         }
       } catch (error) {
-        console.error("LIFF Error:", error);
+        console.error("[v0] LIFF initialization failed:", error);
+        
+        // Retry logic - max 2 retries
+        if (initRetryCount < 2) {
+          console.log(`[v0] Retrying LIFF init (attempt ${initRetryCount + 2}/3)...`);
+          setInitRetryCount((prev) => prev + 1);
+          
+          // Clear LIFF cache and retry after delay
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+          return;
+        }
+        
+        // After max retries, show verification form as fallback
         setNeedsVerification(true);
-      } finally {
-        setIsLoading(false);
       }
+
+      setIsLoading(false);
     }
+
     initializeLiff();
-  }, []);
+  }, [initRetryCount]);
 
-  const closeWindow = () => { if (liff.isInClient()) liff.closeWindow(); };
+  // Show loading screen
+  if (isLoading && !needsVerification) {
+    return <LoadingScreen />;
+  }
 
-  const value = {
-    isReady,
-    isAuthenticated,
-    userEmail,
-    lineUserId,
-    userProfile,
-    sendLineMessage: async () => true, 
-    closeWindow
-  };
+  // Show verification form if needed
+  if (needsVerification && !isAuthenticated) {
+    return <VerificationForm onVerified={handleManualVerification} />;
+  }
 
-  if (isLoading && !needsVerification) return <LoadingScreen />;
-  if (needsVerification && !isAuthenticated) return <VerificationForm onVerified={handleManualVerification} />;
-  
+  // Return null until authenticated
+  if (!isReady || !isAuthenticated) {
+    return <LoadingScreen />;
+  }
+
   return (
-    <LiffContext.Provider value={value}>
+    <LiffContext.Provider value={{ isReady, isAuthenticated, userEmail, lineUserId, sendLineMessage, closeWindow }}>
       {children}
     </LiffContext.Provider>
   );
 }
-
-// 保持 LoadingScreen & VerificationForm 原樣...
-function LoadingScreen() { return <div className="min-h-screen flex items-center justify-center">載入中...</div>; }
-function VerificationForm({ onVerified }: any) { return <button onClick={() => onVerified("test@stust.edu.tw")}>模擬驗證</button>; }
