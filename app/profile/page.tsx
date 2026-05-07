@@ -111,10 +111,12 @@ export default function ProfilePage() {
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
         
-        {/* ✅ 用戶資訊區塊 - 修正暱稱顯示 */}
-        <Card className="border-none shadow-md rounded-2xl overflow-hidden bg-transparent">
+        {/* ✅ 用戶資訊區塊 - 最終填滿修正版 */}
+        {/* 使用 p-0 移除 Card 預設內邊距，配合 overflow-hidden 裁切圓角 */}
+        <Card className="p-0 border-none shadow-md rounded-2xl overflow-hidden bg-transparent">
           <div className="bg-gradient-to-r from-[#D95300] to-[#FF8C42] text-white p-6">
             <div className="flex items-center gap-4">
+              {/* 頭像 */}
               <div className="h-16 w-16 rounded-full border-2 border-white/30 overflow-hidden bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
                 {userProfile?.pictureUrl ? (
                   <img 
@@ -128,8 +130,8 @@ export default function ProfilePage() {
                 )}
               </div>
 
+              {/* 文字資訊 */}
               <div className="min-w-0 flex-1">
-                {/* ✅ 這裡直接顯示用戶暱稱，不再額外加 Emoji */}
                 <h2 className="font-black text-2xl truncate">
                   {userProfile?.displayName || "椅子"}
                 </h2>
@@ -153,6 +155,7 @@ export default function ProfilePage() {
           </Link>
         )}
 
+        {/* 商品列表 */}
         <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b border-gray-50 pb-3 mb-4">
             <h3 className="font-bold flex items-center gap-1.5 text-gray-800">
