@@ -335,4 +335,3 @@ export default function AdminReviewPage() {
     </main>
   );
 }
-1212
