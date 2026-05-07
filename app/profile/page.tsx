@@ -10,12 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   User,
-  Mail,
-  Calendar,
   Package,
   CheckCircle,
   Clock,
-  LogIn,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,13 +23,14 @@ interface Product {
   price: number;
   is_approved: boolean;
   created_at: string;
-  image_url: string | string[] | null; // 👈 這裡調整為相容兩種格式
+  image_url: string | string[] | null;
 }
 
 const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
 
 export default function ProfilePage() {
-  const { lineUserId, userEmail, isAuthenticated, login, isLoading: liffLoading } = useLiff();
+  // ✨ 1. 從 useLiff 中解構出 userProfile
+  const { lineUserId, userProfile, isAuthenticated, login, isLoading: liffLoading } = useLiff();
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -69,22 +67,15 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [isAuthenticated, lineUserId]);
 
-  // 🖼️ 核心解析函式：處理資料庫中各種奇怪的圖片格式
   const getProductImage = (imageUrl: any): string => {
-    const fallback = "/placeholder-logo.png"; // 👈 確保 public/ 有這張圖
+    const fallback = "/placeholder-logo.png";
     if (!imageUrl) return fallback;
-
     try {
-      // 1. 如果已經是陣列，直接回傳第一項
       if (Array.isArray(imageUrl)) return imageUrl[0] || fallback;
-
-      // 2. 如果是字串但包含 "["，嘗試解析 JSON (處理 ["http..."] 格式)
       if (typeof imageUrl === "string" && imageUrl.startsWith("[")) {
         const parsed = JSON.parse(imageUrl);
         return Array.isArray(parsed) ? parsed[0] : fallback;
       }
-
-      // 3. 一般字串直接回傳
       return typeof imageUrl === "string" ? imageUrl : fallback;
     } catch (e) {
       return fallback;
@@ -119,22 +110,33 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* 用戶資訊 */}
+        {/* ✨ 2. 用戶資訊區塊：替換為 LINE 頭像與暱稱 */}
         <Card className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6">
             <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center">
-                <User className="h-7 w-7 text-white" />
+              <div className="h-16 w-16 rounded-full border-2 border-white/30 overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
+                {userProfile?.pictureUrl ? (
+                  <img 
+                    src={userProfile.pictureUrl} 
+                    alt="LINE Profile" 
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <User className="h-8 w-8 text-white" />
+                )}
               </div>
               <div className="min-w-0">
-                <h2 className="font-black text-lg truncate">已驗證南台用戶</h2>
-                <p className="text-xs text-blue-100 truncate">{userEmail}</p>
+                <h2 className="font-black text-xl truncate">
+                  {userProfile?.displayName || "南台用戶"}
+                </h2>
+                <p className="text-xs text-blue-100 opacity-80 truncate">
+                  {userProfile?.statusMessage || "歡迎來到校園市集"}
+                </p>
               </div>
             </div>
           </CardHeader>
         </Card>
 
-        {/* 管理員入口 */}
         {isAdmin && (
           <Link href="/admin">
             <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-6 rounded-2xl mb-4">
@@ -143,14 +145,13 @@ export default function ProfilePage() {
           </Link>
         )}
 
-        {/* 商品清單 */}
         <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b pb-3 mb-4">
             <h3 className="font-bold flex items-center gap-1.5 text-slate-800">
               <Package className="h-4 w-4 text-blue-600" />
               我刊登的商品 ({myProducts.length})
             </h3>
-            <Link href="/"><Button size="sm" variant="outline">+ 我要上架</Button></Link>
+            <Link href="/upload"><Button size="sm" variant="outline">+ 我要上架</Button></Link>
           </div>
 
           {isLoadingProducts ? (
@@ -160,12 +161,13 @@ export default function ProfilePage() {
           ) : (
             <div className="grid gap-3">
               {myProducts.map((product) => {
-                const isApproved = product.is_approved === true || String(product.is_approved).toLowerCase() === "true";
+                // 這裡要注意：如果 Supabase 報錯 "ture" does not exist，
+                // 請去 Supabase 後台把 Policy 裡的 "ture" 改成 "true"
+                const isApproved = product.is_approved === true;
                 const displayImg = getProductImage(product.image_url);
 
                 return (
                   <div key={product.id} className="flex items-center gap-3 p-3 border rounded-xl border-slate-100 hover:bg-slate-50 transition-all">
-                    {/* 🖼️ 圖片顯示區域 */}
                     <div className="h-16 w-16 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
                       <img 
                         src={displayImg} 
@@ -174,12 +176,10 @@ export default function ProfilePage() {
                         onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
                       />
                     </div>
-
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-sm text-slate-800 truncate">{product.name}</h4>
                       <p className="text-xs font-black text-rose-500 mt-1">NT$ {product.price.toLocaleString()}</p>
                     </div>
-
                     <div className="shrink-0">
                       {isApproved ? (
                         <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 border-emerald-100">
