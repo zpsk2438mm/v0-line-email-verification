@@ -6,10 +6,10 @@ import { ShoppingBag } from "lucide-react";
 
 export default function Page() {
   return (
-    <main className="min-h-screen bg-[#F9F8F6]">
-      {/* 頂部 Header */}
+    <main className="min-h-screen bg-background">
       <header className="sticky top-0 z-20 flex items-center justify-between bg-white px-4 py-3 shadow-sm">
         <div className="flex items-center gap-2">
+          {/* 改為橘色背景 */}
           <div className="bg-[#D95300] p-1.5 rounded-lg shadow-sm">
             <ShoppingBag className="h-5 w-5 text-white" />
           </div>
@@ -18,7 +18,6 @@ export default function Page() {
         <Navigation />
       </header>
 
-      {/* 刊登表單區域 */}
       <div className="mx-auto max-w-lg px-4 py-8">
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-orange-900/5 overflow-hidden">
           <ListingForm />
