@@ -1,41 +1,23 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import liff from "@line/liff";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Mail, ShieldCheck, Loader2, GraduationCap } from "lucide-react";
+import liff from "@line/liff"; // 確保你有執行 npm install @line/liff
+import { Loader2 } from "lucide-react";
 
 // ==========================================
 // Configuration
 // ==========================================
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
 const ALLOWED_DOMAIN = "@stust.edu.tw";
-const DEV_EMAIL = "YOUR_GMAIL@gmail.com";
 const AUTH_STORAGE_KEY = "stust_authenticated";
-const AUTH_EXPIRY_DAYS = 7;
-const VERIFICATION_CODE = "123456";
 
 // ==========================================
 // Types
 // ==========================================
-interface AuthData {
-  verified: boolean;
-  timestamp: number;
-  email?: string;
-  lineUserId?: string;
+export interface UserProfile {
+  displayName: string;
+  pictureUrl: string;
+  email: string | null;
 }
 
 interface LiffContextType {
@@ -43,12 +25,7 @@ interface LiffContextType {
   isAuthenticated: boolean;
   userEmail: string | null;
   lineUserId: string | null;
-  userProfile: {
-    displayName: string;
-    pictureUrl: string;
-    email: string | null;
-  } | null;
-  sendLineMessage: (productName: string, price: number, imageUrl?: string) => Promise<boolean>;
+  userProfile: UserProfile | null;
   closeWindow: () => void;
 }
 
@@ -58,131 +35,72 @@ const LiffContext = createContext<LiffContextType>({
   userEmail: null,
   lineUserId: null,
   userProfile: null,
-  sendLineMessage: async () => false,
   closeWindow: () => {},
 });
 
 export const useLiff = () => useContext(LiffContext);
 
-// ==========================================
-// Helper Functions
-// ==========================================
 function isLocalhost(): boolean {
   if (typeof window === "undefined") return false;
-  return (
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname.startsWith("192.168")
-  );
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 }
 
-function getStoredAuth(): AuthData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
-  } catch { return null; }
-}
-
-function setStoredAuth(email?: string, lineUserId?: string): void {
-  if (typeof window === "undefined") return;
-  const authData: AuthData = { verified: true, timestamp: Date.now(), email, lineUserId };
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
-}
-
-function isAuthValid(): { valid: boolean; data: AuthData | null } {
-  const authData = getStoredAuth();
-  if (!authData || !authData.verified) return { valid: false, data: null };
-  const isExpired = Date.now() - authData.timestamp > AUTH_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-  return isExpired ? { valid: false, data: null } : { valid: true, data: authData };
-}
-
-// ==========================================
-// Provider Component
-// ==========================================
 export function LiffProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [lineUserId, setLineUserId] = useState<string | null>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [needsVerification, setNeedsVerification] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  const handleManualVerification = (email: string) => {
-    setStoredAuth(email, lineUserId || undefined);
-    setUserEmail(email);
-    setUserProfile((prev: any) => ({
-      displayName: prev?.displayName || "南台同學",
-      pictureUrl: prev?.pictureUrl || "",
-      email: email
-    }));
-    setIsAuthenticated(true);
-    setNeedsVerification(false);
-    setIsReady(true);
-  };
 
   useEffect(() => {
     async function initializeLiff() {
-      // 1. 本地開發模擬
-      if (isLocalhost()) {
-        console.log("LIFF: Running in Localhost Mode");
-        const mockData = { displayName: "椅子 🪑", email: "dev@stust.edu.tw", pictureUrl: "" };
-        setLineUserId("dev_user_localhost");
-        setUserEmail(mockData.email);
-        setUserProfile(mockData);
-        setIsAuthenticated(true);
-        setIsReady(true);
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. 檢查快取
-      const authCheck = isAuthValid();
-      if (authCheck.valid && authCheck.data) {
-        setUserEmail(authCheck.data.email || null);
-        setLineUserId(authCheck.data.lineUserId || null);
-        setUserProfile({ 
-          email: authCheck.data.email || null, 
-          displayName: "南台同學", 
-          pictureUrl: "" 
-        });
-        setIsAuthenticated(true);
-        setIsReady(true);
-        setIsLoading(false);
-        return;
-      }
-
-      // 3. 正式初始化
       try {
+        // 本地開發模擬模式
+        if (isLocalhost()) {
+          const mockProfile = { 
+            displayName: "椅子 🪑", 
+            email: "dev@stust.edu.tw", 
+            pictureUrl: "" 
+          };
+          setUserProfile(mockProfile);
+          setUserEmail(mockProfile.email);
+          setLineUserId("dev-user-id");
+          setIsAuthenticated(true);
+          setIsReady(true);
+          return;
+        }
+
+        // 初始化 LIFF
         await liff.init({ liffId: LIFF_ID });
+        
         if (!liff.isLoggedIn()) {
           liff.login();
           return;
         }
 
+        // 抓取真實資料
         const profile = await liff.getProfile();
         const decodedToken = liff.getDecodedIDToken();
         const email = decodedToken?.email || null;
 
-        setUserProfile({
+        const data: UserProfile = {
           displayName: profile.displayName,
           pictureUrl: profile.pictureUrl || "",
           email: email,
-        });
-        setUserEmail(email);
-        setLineUserId(profile.userId);
+        };
 
-        if (email && (email.toLowerCase().endsWith(ALLOWED_DOMAIN) || email.toLowerCase() === DEV_EMAIL.toLowerCase())) {
-          setStoredAuth(email, profile.userId);
+        setUserProfile(data);
+        setLineUserId(profile.userId);
+        setUserEmail(email);
+
+        // 簡單驗證邏輯
+        if (email?.endsWith(ALLOWED_DOMAIN)) {
           setIsAuthenticated(true);
           setIsReady(true);
-        } else {
-          setNeedsVerification(true);
         }
-      } catch (error) {
-        console.error("LIFF Error:", error);
-        setNeedsVerification(true);
+      } catch (err) {
+        console.error("LIFF 載入失敗:", err);
       } finally {
         setIsLoading(false);
       }
@@ -190,28 +108,27 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     initializeLiff();
   }, []);
 
-  const closeWindow = () => { if (liff.isInClient()) liff.closeWindow(); };
-
   const value = {
     isReady,
     isAuthenticated,
     userEmail,
     lineUserId,
     userProfile,
-    sendLineMessage: async () => true, 
-    closeWindow
+    closeWindow: () => liff.closeWindow(),
   };
 
-  if (isLoading && !needsVerification) return <LoadingScreen />;
-  if (needsVerification && !isAuthenticated) return <VerificationForm onVerified={handleManualVerification} />;
-  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <p className="text-sm text-slate-500 font-medium">驗證身分中...</p>
+      </div>
+    );
+  }
+
   return (
     <LiffContext.Provider value={value}>
       {children}
     </LiffContext.Provider>
   );
 }
-
-// 保持 LoadingScreen & VerificationForm 原樣...
-function LoadingScreen() { return <div className="min-h-screen flex items-center justify-center">載入中...</div>; }
-function VerificationForm({ onVerified }: any) { return <button onClick={() => onVerified("test@stust.edu.tw")}>模擬驗證</button>; }
