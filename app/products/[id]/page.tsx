@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react"; // 👈 務必引入 use
+import { useEffect, useState, use } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 
+// 💡 必須正確定義 Props 類型以符合 Next.js 路由規範
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  // 👈 這是 Next.js 最新版最安全的抓取 ID 方式
+  // 使用 use() 非同步處理 params，這是解決 404 的核心
   const resolvedParams = use(params);
   const id = resolvedParams.id;
 
@@ -24,12 +25,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         const { data, error } = await supabase
           .from("products")
           .select("*")
-          .eq("id", id)
+          .eq("id", id) // 使用從 URL 抓到的 id
           .single();
+
         if (error) throw error;
         setProduct(data);
       } catch (err) {
-        console.error("抓取失敗:", err);
+        console.error("Fetch error:", err);
       } finally {
         setLoading(false);
       }
@@ -37,39 +39,38 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     fetchProduct();
   }, [id]);
 
-  const getImageUrl = (url: any) => {
-    if (!url) return "/placeholder-logo.png";
-    if (Array.isArray(url)) return url[0];
-    if (typeof url === "string" && url.startsWith("[")) {
-      try { return JSON.parse(url)[0]; } catch { return url; }
-    }
-    return url;
-  };
-
-  if (loading) return <div className="p-10"><Skeleton className="h-64 w-full rounded-3xl" /></div>;
-  if (!product) return <div className="p-20 text-center text-slate-500">找不到商品 (ID: {id})</div>;
+  if (loading) return <div className="p-8 space-y-4"><Skeleton className="h-64 w-full" /><Skeleton className="h-10 w-1/2" /></div>;
+  if (!product) return <div className="p-20 text-center">找不到商品 (ID: {id})</div>;
 
   return (
-    <main className="min-h-screen bg-white">
-      <header className="p-4 border-b flex items-center gap-2">
+    <main className="min-h-screen bg-slate-50 pb-10">
+      <header className="p-4 bg-white border-b flex items-center gap-2 sticky top-0 z-50">
         <Link href="/"><Button variant="ghost" size="icon"><ChevronLeft /></Button></Link>
-        <span className="font-bold">商品詳情</span>
+        <h1 className="font-bold truncate">{product.name}</h1>
       </header>
-      <div className="p-4 max-w-md mx-auto space-y-6">
-        <div className="aspect-square rounded-3xl overflow-hidden border">
-          <img src={getImageUrl(product.image_url)} className="w-full h-full object-cover" />
+
+      <div className="max-w-md mx-auto p-4 space-y-4">
+        <div className="aspect-square rounded-3xl overflow-hidden bg-white border shadow-sm">
+          <img 
+            src={Array.isArray(product.image_url) ? product.image_url[0] : product.image_url} 
+            className="w-full h-full object-cover"
+            alt={product.name}
+          />
         </div>
-        <div className="space-y-2">
-          <Badge>{product.category}</Badge>
-          <h1 className="text-2xl font-bold">{product.name}</h1>
-          <p className="text-rose-500 text-xl font-black font-mono text-right">NT$ {product.price}</p>
-          <div className="p-4 bg-slate-50 rounded-2xl text-slate-600 text-sm leading-relaxed">
+
+        <div className="bg-white p-6 rounded-3xl shadow-sm space-y-3">
+          <Badge variant="secondary">{product.category}</Badge>
+          <h2 className="text-2xl font-black text-slate-800">{product.name}</h2>
+          <p className="text-rose-500 text-2xl font-black">NT$ {product.price}</p>
+          <div className="h-px bg-slate-100 my-4" />
+          <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
             {product.description}
-          </div>
-          <div className="mt-6 p-4 bg-blue-600 rounded-2xl text-white text-center">
-            <p className="text-xs opacity-80 mb-1">聯絡賣家</p>
-            <p className="text-lg font-bold">{product.contact}</p>
-          </div>
+          </p>
+        </div>
+
+        <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-lg">
+          <p className="text-blue-400 font-bold text-xs mb-1">賣家聯絡方式</p>
+          <p className="text-lg font-mono">{product.contact || "未提供"}</p>
         </div>
       </div>
     </main>
