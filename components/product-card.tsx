@@ -4,15 +4,21 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 
 export function ProductCard({ product }: { product: any }) {
-  // 如果沒有 id，顯示警告，避免空連結
+  // 1. 安全檢查：如果沒有 ID，點擊會失效，所以在主控台留下警告幫助除錯
   if (!product?.id) {
-    console.warn("商品缺少 ID:", product);
-    return <div>商品資料錯誤</div>;
+    console.warn("此商品資料缺少 ID，無法建立連結:", product);
+    return null;
   }
 
+  // 2. 圖片解析邏輯：確保相容 Supabase 中 ["https://..."] 這種字串格式的網址
   const getDisplayImage = (url: any) => {
-    if (!url) return "/placeholder-logo.png";
-    if (Array.isArray(url)) return url[0];
+    const fallback = "/placeholder-logo.png";
+    if (!url) return fallback;
+    
+    // 如果是陣列，取第一個
+    if (Array.isArray(url)) return url[0] || fallback;
+    
+    // 如果是 JSON 字串格式的陣列 (例如 ["http..."])
     if (typeof url === "string" && url.startsWith("[")) {
       try {
         const parsed = JSON.parse(url);
@@ -27,30 +33,38 @@ export function ProductCard({ product }: { product: any }) {
   return (
     <Link 
       href={`/products/${product.id}`} 
-      className="block group cursor-pointer" // 👈 強制加入 cursor-pointer 確保滑鼠移上去會變手指
+      // 💡 className 加入 z-50 確保卡片在最上層，cursor-pointer 確保滑鼠變手指
+      className="relative z-10 block group cursor-pointer no-underline"
     >
-      <div className="bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-slate-100 h-full">
-        {/* 圖片區域 */}
-        <div className="relative aspect-square bg-slate-50">
+      <div className="bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300 border border-slate-100 h-full flex flex-col">
+        
+        {/* 圖片區域：固定比例避免破圖 */}
+        <div className="relative aspect-square bg-slate-50 overflow-hidden">
           <img 
             src={getDisplayImage(product.image_url)} 
             alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+            onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
           />
-          <Badge className="absolute top-2 left-2 bg-white/80 backdrop-blur-md text-slate-700">
-            {product.category}
-          </Badge>
+          {/* 分類標籤 */}
+          {product.category && (
+            <Badge className="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-slate-700 border-none shadow-sm font-medium">
+              {product.category}
+            </Badge>
+          )}
         </div>
 
-        {/* 文字資訊 */}
-        <div className="p-4">
-          <h3 className="font-bold text-slate-800 truncate">{product.name}</h3>
-          <div className="flex justify-between items-end mt-2">
-            <span className="text-rose-500 font-black text-lg">NT$ {product.price}</span>
-            <span className="text-[10px] text-blue-500 font-bold">查看詳情 🔍</span>
+        {/* 文字資訊區域 */}
+        <div className="p-4 flex-1 flex flex-col justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800 text-base mb-1 truncate group-hover:text-blue-600 transition-colors">
+              {product.name}
+            </h3>
+            <p className="text-xs text-slate-400 line-clamp-2 min-h-[2rem]">
+              {product.description || "點擊查看商品詳細資訊..."}
+            </p>
           </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
+
+          <div className="flex justify-between items-end mt-4">
+            <div className="flex flex-col">
+              <span className="text-[10px
