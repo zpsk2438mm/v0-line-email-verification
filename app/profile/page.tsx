@@ -26,7 +26,9 @@ interface Product {
   image_url: string | string[] | null;
 }
 
-const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
+const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df",
+                        "Uf7c4668bc96315297b02b0a67fff88ea"
+                       ];
 
 export default function ProfilePage() {
   // 從 useLiff 取得 userProfile (包含 pictureUrl 和 displayName)
