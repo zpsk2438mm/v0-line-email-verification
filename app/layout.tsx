@@ -21,14 +21,18 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-TW">
+    <html lang="zh-TW" className="light">
       <head>
         <Script 
           src="https://static.line-scdn.net/liff/edge/2/sdk.js" 
           strategy="beforeInteractive" 
         />
       </head>
-      <body className="font-sans antialiased bg-[#F9F8F6]">
+      {/* 1. bg-[#F9F8F6] 確保全站背景色 
+        2. text-[#404040] 確保文字顏色符合你 css 的設定 
+        3. min-h-screen 確保背景色撐滿整個螢幕
+      */}
+      <body className="font-sans antialiased bg-[#F9F8F6] text-[#404040] min-h-screen">
         <LiffProvider>
           {children}
         </LiffProvider>
