@@ -25,7 +25,9 @@ import {
 } from "lucide-react";
 
 // 管理員名單
-const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
+const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df",
+                       "Uf7c4668bc96315297b02b0a67fff88ea"
+                       ];
 
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
