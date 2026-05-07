@@ -155,7 +155,7 @@ export default function ProfilePage() {
             <Button 
               className="w-full bg-[#404040] hover:bg-black text-white font-bold py-6 rounded-2xl mb-4 shadow-lg transition-all"
             >
-              <ShieldCheck className="mr-2" /> 回到首頁 (管理員)
+              <ShieldCheck className="mr-2" />  + 我要上架 (管理員)
             </Button>
           </Link>
         )}
