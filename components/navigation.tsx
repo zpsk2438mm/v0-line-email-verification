@@ -21,9 +21,12 @@ import {
   LogOut,
   ShoppingBag,
   GraduationCap,
+  ShieldCheck, // 👈 引入管理員圖標
 } from "lucide-react";
 
-// 保持你設定的選單清單
+// 管理員名單
+const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
+
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
@@ -34,9 +37,10 @@ const NAV_ITEMS = [
 export function Navigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  
-  // 注入 userProfile 以取得動態名稱與頭像
-  const { userEmail, userProfile, lineUserId, closeWindow, isAuthenticated } = useLiff();
+  const { userEmail, userProfile, lineUserId, closeWindow } = useLiff();
+
+  // 判斷是否為管理員
+  const isAdmin = lineUserId && ADMIN_LINE_IDS.includes(lineUserId);
 
   const handleLogout = () => {
     if (typeof window !== "undefined") {
@@ -57,7 +61,7 @@ export function Navigation() {
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-72 p-0">
+      <SheetContent side="left" className="w-72 p-0 flex flex-col">
         <SheetHeader className="border-b border-border p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
@@ -67,11 +71,10 @@ export function Navigation() {
           </div>
         </SheetHeader>
 
-        {/* User Info Section - 修正為動態同步 */}
+        {/* 用戶資訊區塊 */}
         {(userEmail || userProfile) && (
           <div className="border-b border-border p-4">
             <div className="flex items-center gap-3">
-              {/* 頭像顯示邏輯 */}
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 overflow-hidden border border-slate-100">
                 {userProfile?.pictureUrl ? (
                   <img 
@@ -84,13 +87,12 @@ export function Navigation() {
                   <User className="h-5 w-5 text-primary" />
                 )}
               </div>
-              
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-foreground truncate">
                   {userProfile?.displayName || "已驗證用戶"}
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate font-medium">
-                  {userEmail || "驗證信箱讀取中..."}
+                  {userEmail}
                 </p>
               </div>
             </div>
@@ -98,7 +100,7 @@ export function Navigation() {
         )}
 
         {/* Navigation Links */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-1">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
@@ -121,6 +123,22 @@ export function Navigation() {
               );
             })}
           </ul>
+
+          {/* 👈 補回管理員按鈕：只有符合 ID 才會顯示 */}
+          {isAdmin && (
+            <div className="mt-4 pt-4 border-t border-dashed border-border">
+              <Link href="/admin" onClick={() => setOpen(false)}>
+                <div className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors ${
+                  pathname === "/admin" 
+                    ? "bg-amber-500 text-white" 
+                    : "text-amber-600 hover:bg-amber-50 bg-amber-50/50"
+                }`}>
+                  <ShieldCheck className="h-5 w-5" />
+                  管理員後台
+                </div>
+              </Link>
+            </div>
+          )}
         </nav>
 
         <Separator />
@@ -136,10 +154,9 @@ export function Navigation() {
             登出
           </Button>
           
-          {/* Debug info */}
           {lineUserId && (
-            <p className="text-[10px] text-muted-foreground/30 text-center pt-2">
-              LIFF ID: {lineUserId.substring(0, 8)}...
+            <p className="text-[10px] text-muted-foreground/30 text-center pt-2 font-mono">
+              ID: {lineUserId.substring(0, 12)}...
             </p>
           )}
         </div>
