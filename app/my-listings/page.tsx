@@ -101,6 +101,11 @@ export default function MyListingsPage() {
   const Header = () => (
     <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
       <Navigation /> {/* 👈 三條線漢堡選單放在這裡 */}
+      <Link href="/products">
+        <Button variant="ghost" size="icon" className="h-10 w-10">
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+      </Link>
       <div className="h-6 w-[1px] bg-slate-200 mx-1" /> {/* 分隔線，讓視覺更整齊 */}
       <h1 className="text-lg font-bold text-slate-800">我的商品</h1>
     </header>
