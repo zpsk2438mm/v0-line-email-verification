@@ -13,32 +13,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { Search, ShoppingBag } from "lucide-react";
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  is_approved: boolean;
-  image_url?: any;
-}
-
-const CATEGORIES = [
-  { id: "all", label: "✨ 全部" },
-  { id: "electronics", label: "📱 電子產品" },
-  { id: "books", label: "📚 書籍教材" },
-  { id: "food", label: "🍕 食物/零食" },
-  { id: "other", label: "🔍 其他" },
-];
-
 export default function ExploreProductsPage() {
   const { isAuthenticated, login, isLoading: liffLoading } = useLiff();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // 自動登入驗證邏輯
+  // 【新增】強制登入邏輯
   useEffect(() => {
     if (!liffLoading && !isAuthenticated) {
       login?.();
@@ -58,8 +41,6 @@ export default function ExploreProductsPage() {
         if (error) throw error;
         setProducts(data || []);
         setFilteredProducts(data || []);
-      } catch (err) {
-        console.error("載入失敗:", err);
       } finally {
         setIsLoading(false);
       }
@@ -67,25 +48,15 @@ export default function ExploreProductsPage() {
     fetchProducts();
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    let result = products;
-    if (selectedCategory !== "all") result = result.filter(p => p.category === selectedCategory);
-    if (searchQuery.trim()) result = result.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
-    setFilteredProducts(result);
-  }, [searchQuery, selectedCategory, products]);
-
-  // 強力圖片解析：確保路徑包含 product-images 並清除括號
-  const getCleanImageUrl = (product: Product) => {
-    let raw = product.image_url;
-    if (!raw) return "/placeholder.png";
-    let url = Array.isArray(raw) ? raw[0] : String(raw).replace(/[\[\]"'\\]/g, "").trim();
+  // 【修正】圖片解析邏輯，確保顯示你的商品圖
+  const getCleanImageUrl = (img: any) => {
+    if (!img) return "/placeholder.png";
+    let url = Array.isArray(img) ? img[0] : String(img).replace(/[\[\]"'\\]/g, "").trim();
     if (url.startsWith("http")) return url;
     return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${url.replace(/^\//, "")}`;
   };
 
-  if (liffLoading || !isAuthenticated) {
-    return <div className="h-screen flex items-center justify-center bg-white font-bold">LINE 驗證跳轉中...</div>;
-  }
+  if (liffLoading || !isAuthenticated) return null;
 
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
@@ -96,23 +67,18 @@ export default function ExploreProductsPage() {
       <div className="mx-auto max-w-lg px-4 pt-4">
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input placeholder="搜尋商品..." className="pl-10 py-5 bg-white rounded-xl shadow-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-none">
-          {CATEGORIES.map(cat => (
-            <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`rounded-full shrink-0 h-9 px-4 text-xs font-medium transition-all ${selectedCategory === cat.id ? "bg-blue-600 text-white" : "bg-white border text-slate-600"}`}>{cat.label}</button>
-          ))}
+          <Input placeholder="搜尋商品..." className="pl-10 py-5 bg-white rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          {isLoading ? <Skeleton className="h-40 w-full rounded-2xl" /> : filteredProducts.map(product => (
-            <Card key={product.id} className="overflow-hidden border-none shadow-sm rounded-2xl bg-white">
+          {filteredProducts.map(product => (
+            <Card key={product.id} className="overflow-hidden border-none shadow-sm rounded-2xl">
               <div className="aspect-square bg-slate-100">
-                <img src={getCleanImageUrl(product)} className="h-full w-full object-cover" onError={(e) => e.currentTarget.src="/placeholder.png"} />
+                <img src={getCleanImageUrl(product.image_url)} className="h-full w-full object-cover" />
               </div>
               <div className="p-3">
                 <h4 className="font-bold text-sm truncate">{product.name}</h4>
                 <p className="text-rose-500 font-extrabold text-lg">NT$ {product.price}</p>
-                <Link href={`/products/${product.id}`} className="block text-center text-xs text-blue-600 mt-2 border-t pt-2 font-bold">查看詳情 🔍</Link>
+                <Link href={`/products/${product.id}`} className="block text-center text-xs text-blue-600 mt-2 border-t pt-2">查看詳情</Link>
               </div>
             </Card>
           ))}
