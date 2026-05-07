@@ -24,8 +24,9 @@ interface Product {
   id: string;
   name: string;
   price: number;
-  is_approved: boolean; // 👈 修正為正確的 is_approved 欄位
+  is_approved: boolean;
   created_at: string;
+  image_url: string[] | null; // 👈 確保圖片網址型別正確
 }
 
 // 🔒 填入你的 LINE ID 白名單
@@ -56,10 +57,10 @@ export default function ProfilePage() {
     async function fetchMyProducts() {
       try {
         setIsLoadingProducts(true);
-        // 🔒 修正 Select，撈取 is_approved 替代 status
+        // 🔒 撈取資料時加入 image_url
         const { data, error } = await supabase
           .from("products")
-          .select("id, name, price, is_approved, created_at")
+          .select("id, name, price, is_approved, created_at, image_url")
           .eq("line_user_id", lineUserId)
           .order("created_at", { ascending: false });
 
@@ -189,24 +190,41 @@ export default function ProfilePage() {
           ) : (
             <div className="space-y-3">
               {myProducts.map((product) => {
-                // 🔒 安全判斷狀態：相容處理布林值與字串 "true"/"TRUE"
                 const isApproved = 
                   product.is_approved === true || 
                   String(product.is_approved).toLowerCase() === "true";
                 
+                // 🖼️ 處理圖片路徑
+                const hasImages = product.image_url && product.image_url.length > 0;
+                const productImageUrl = hasImages ? product.image_url[0] : "/placeholder-logo.png";
+
                 return (
-                  <div key={product.id} className="flex items-center justify-between p-3 border rounded-xl border-slate-100 hover:bg-slate-50/50 transition-colors">
-                    <div className="space-y-1">
-                      <h4 className="font-bold text-sm text-slate-800">{product.name}</h4>
+                  <div key={product.id} className="flex items-center gap-3 p-3 border rounded-xl border-slate-100 hover:bg-slate-50/50 transition-colors">
+                    
+                    {/* 圖片展示區 */}
+                    <div className="h-14 w-14 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
+                      <img
+                        src={productImageUrl}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/placeholder-logo.png";
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h4 className="font-bold text-sm text-slate-800 truncate">{product.name}</h4>
                       <p className="text-xs font-extrabold text-rose-500">NT$ {product.price.toLocaleString()}</p>
                     </div>
+
                     {isApproved ? (
-                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-emerald-600 bg-emerald-50 border-emerald-200">
+                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-emerald-600 bg-emerald-50 border-emerald-200 shrink-0">
                         <CheckCircle className="h-3 w-3" />
                         已上架
                       </Badge>
                     ) : (
-                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-amber-600 bg-amber-50 border-amber-200">
+                      <Badge className="text-[10px] font-bold border flex items-center gap-1 shadow-none text-amber-600 bg-amber-50 border-amber-200 shrink-0">
                         <Clock className="h-3 w-3" />
                         審核中
                       </Badge>
