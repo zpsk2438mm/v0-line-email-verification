@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,7 +29,7 @@ interface Product {
 const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
 
 export default function ProfilePage() {
-  // ✨ 1. 從 useLiff 中解構出 userProfile
+  // 從 useLiff 取得 userProfile (包含 pictureUrl 和 displayName)
   const { lineUserId, userProfile, isAuthenticated, login, isLoading: liffLoading } = useLiff();
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
@@ -67,6 +67,7 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [isAuthenticated, lineUserId]);
 
+  // 解析商品圖片函式
   const getProductImage = (imageUrl: any): string => {
     const fallback = "/placeholder-logo.png";
     if (!imageUrl) return fallback;
@@ -110,16 +111,21 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* ✨ 2. 用戶資訊區塊：替換為 LINE 頭像與暱稱 */}
+        {/* 用戶資訊區塊 */}
         <Card className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6">
             <div className="flex items-center gap-4">
+              {/* LINE 頭像顯示區域 */}
               <div className="h-16 w-16 rounded-full border-2 border-white/30 overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
                 {userProfile?.pictureUrl ? (
                   <img 
                     src={userProfile.pictureUrl} 
                     alt="LINE Profile" 
                     className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer" // 👈 重要：防止 LINE 擋掉圖片請求
+                    onError={(e) => {
+                      e.currentTarget.src = ""; // 如果失敗則顯示下方的 User icon
+                    }}
                   />
                 ) : (
                   <User className="h-8 w-8 text-white" />
@@ -127,16 +133,17 @@ export default function ProfilePage() {
               </div>
               <div className="min-w-0">
                 <h2 className="font-black text-xl truncate">
-                  {userProfile?.displayName || "南台用戶"}
+                  {userProfile?.displayName || "已驗證南台用戶"}
                 </h2>
                 <p className="text-xs text-blue-100 opacity-80 truncate">
-                  {userProfile?.statusMessage || "歡迎來到校園市集"}
+                  {userProfile?.statusMessage || "歡迎使用校園二手市集"}
                 </p>
               </div>
             </div>
           </CardHeader>
         </Card>
 
+        {/* 管理員入口 */}
         {isAdmin && (
           <Link href="/admin">
             <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-6 rounded-2xl mb-4">
@@ -145,6 +152,7 @@ export default function ProfilePage() {
           </Link>
         )}
 
+        {/* 商品清單 */}
         <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b pb-3 mb-4">
             <h3 className="font-bold flex items-center gap-1.5 text-slate-800">
@@ -161,9 +169,8 @@ export default function ProfilePage() {
           ) : (
             <div className="grid gap-3">
               {myProducts.map((product) => {
-                // 這裡要注意：如果 Supabase 報錯 "ture" does not exist，
-                // 請去 Supabase 後台把 Policy 裡的 "ture" 改成 "true"
-                const isApproved = product.is_approved === true;
+                // 修正布林值判斷，確保支援多種格式
+                const isApproved = product.is_approved === true || String(product.is_approved) === "true";
                 const displayImg = getProductImage(product.image_url);
 
                 return (
