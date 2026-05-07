@@ -38,13 +38,23 @@ interface AuthData {
   lineUserId?: string;
 }
 
+// 新增 Profile 類型定義
+interface LineProfile {
+  userId: string;
+  displayName: string;
+  pictureUrl?: string;
+  statusMessage?: string;
+}
+
 interface LiffContextType {
   isReady: boolean;
   isAuthenticated: boolean;
   userEmail: string | null;
   lineUserId: string | null;
+  profile: LineProfile | null; // 新增 profile 欄位
   sendLineMessage: (productName: string, price: number, imageUrl?: string) => Promise<boolean>;
   closeWindow: () => void;
+  login: () => void; // 新增 login 函數方便調用
 }
 
 const LiffContext = createContext<LiffContextType>({
@@ -52,8 +62,10 @@ const LiffContext = createContext<LiffContextType>({
   isAuthenticated: false,
   userEmail: null,
   lineUserId: null,
+  profile: null,
   sendLineMessage: async () => false,
   closeWindow: () => {},
+  login: () => {},
 });
 
 export const useLiff = () => useContext(LiffContext);
@@ -163,7 +175,6 @@ function VerificationForm({
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm">
-        {/* Logo & Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-primary mb-4">
             <GraduationCap className="w-8 h-8 text-primary-foreground" />
@@ -176,7 +187,6 @@ function VerificationForm({
           </p>
         </div>
 
-        {/* Verification Card */}
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
           <div className="space-y-4">
             <div className="space-y-2">
@@ -219,7 +229,6 @@ function VerificationForm({
         </div>
       </div>
 
-      {/* OTP Dialog */}
       <Dialog open={showOtpDialog} onOpenChange={setShowOtpDialog}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader className="text-center">
@@ -310,6 +319,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [lineUserId, setLineUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<LineProfile | null>(null); // 新增 profile 狀態
   const [needsVerification, setNeedsVerification] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [initRetryCount, setInitRetryCount] = useState(0);
@@ -322,7 +332,12 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     setIsReady(true);
   };
 
-  // Send LINE message function
+  const login = () => {
+    if (!liff.isLoggedIn()) {
+      liff.login();
+    }
+  };
+
   const sendLineMessage = async (productName: string, price: number, imageUrl?: string): Promise<boolean> => {
     if (isLocalhost()) {
       console.log("[v0] Localhost - simulating LINE message send");
@@ -330,13 +345,11 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Check if we can send messages
       if (!liff.isInClient()) {
         console.log("[v0] Not in LINE client, cannot send message");
         return false;
       }
 
-      // Create Flex Message
       const flexMessage: liff.LiffMessage = {
         type: "flex",
         altText: `上架成功！${productName} - NT$${price}`,
@@ -434,7 +447,6 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Close LIFF window
   const closeWindow = () => {
     if (isLocalhost()) {
       console.log("[v0] Localhost - simulating window close");
@@ -452,127 +464,94 @@ export function LiffProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function initializeLiff() {
-      // Dev bypass: localhost always passes
       if (isLocalhost()) {
-        console.log("[v0] Localhost detected - bypassing LIFF auth");
         setLineUserId("dev_user_localhost");
         setUserEmail("dev@stust.edu.tw");
+        // 本地測試用假資料
+        setProfile({
+          userId: "dev_user_localhost",
+          displayName: "開發者測試",
+          pictureUrl: "https://via.placeholder.com/150"
+        });
         setIsAuthenticated(true);
         setIsReady(true);
         setIsLoading(false);
         return;
       }
 
-      // Check persistent login first (7-day cache)
       const authCheck = isAuthValid();
-      if (authCheck.valid && authCheck.data) {
-        console.log("[v0] Valid auth cache found - skipping LIFF init");
-        setUserEmail(authCheck.data.email || null);
-        setLineUserId(authCheck.data.lineUserId || null);
-        setIsAuthenticated(true);
-        setIsReady(true);
-        setIsLoading(false);
-        return;
-      }
-
-      // Initialize LIFF with retry logic
+      
       try {
-        console.log("[v0] Initializing LIFF...");
         await liff.init({ liffId: LIFF_ID });
-        
-        // Wait for LIFF to be fully ready
         await liff.ready;
-        console.log("[v0] LIFF initialized and ready");
 
-        // Check if user is logged in
         if (!liff.isLoggedIn()) {
-          console.log("[v0] User not logged in - redirecting to LINE login");
           liff.login();
           return;
         }
 
-        // Get user profile and info
-        let userId: string | null = null;
-        let email: string | null = null;
+        // 核心修改：獲取完整的 Profile 資料
+        const lineProfile = await liff.getProfile();
+        setProfile(lineProfile);
+        setLineUserId(lineProfile.userId);
 
-        try {
-          // Get LINE User ID from profile
-          const profile = await liff.getProfile();
-          userId = profile.userId;
-          console.log("[v0] LINE User ID from profile:", userId);
-        } catch (profileError) {
-          console.error("[v0] Failed to get profile:", profileError);
-        }
-
-        // Get email from decoded ID token
-        try {
-          const decodedToken = liff.getDecodedIDToken();
-          email = decodedToken?.email || null;
-          // Fallback to get userId from token if profile failed
-          if (!userId && decodedToken?.sub) {
-            userId = decodedToken.sub;
-          }
-          console.log("[v0] User email:", email);
-        } catch (tokenError) {
-          console.error("[v0] Failed to get decoded token:", tokenError);
-        }
-
+        const decodedToken = liff.getDecodedIDToken();
+        const email = decodedToken?.email || null;
         setUserEmail(email);
-        setLineUserId(userId);
 
-        // Verify email domain
+        // 如果快取有效且信箱一致，直接通過
+        if (authCheck.valid && authCheck.data && authCheck.data.email === email) {
+          setIsAuthenticated(true);
+          setIsReady(true);
+          setIsLoading(false);
+          return;
+        }
+
         if (isEmailAllowed(email)) {
-          console.log("[v0] Email verified - access granted");
-          setStoredAuth(email || undefined, userId || undefined);
+          setStoredAuth(email || undefined, lineProfile.userId);
           setIsAuthenticated(true);
           setIsReady(true);
         } else {
-          // Email is not @stust.edu.tw - show verification form
-          console.log("[v0] Email not school domain - showing verification form");
           setNeedsVerification(true);
         }
       } catch (error) {
         console.error("[v0] LIFF initialization failed:", error);
-        
-        // Retry logic - max 2 retries
         if (initRetryCount < 2) {
-          console.log(`[v0] Retrying LIFF init (attempt ${initRetryCount + 2}/3)...`);
           setInitRetryCount((prev) => prev + 1);
-          
-          // Clear LIFF cache and retry after delay
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
+          setTimeout(() => { window.location.reload(); }, 1500);
           return;
         }
-        
-        // After max retries, show verification form as fallback
         setNeedsVerification(true);
       }
-
       setIsLoading(false);
     }
 
     initializeLiff();
   }, [initRetryCount]);
 
-  // Show loading screen
   if (isLoading && !needsVerification) {
     return <LoadingScreen />;
   }
 
-  // Show verification form if needed
   if (needsVerification && !isAuthenticated) {
     return <VerificationForm onVerified={handleManualVerification} />;
   }
 
-  // Return null until authenticated
   if (!isReady || !isAuthenticated) {
     return <LoadingScreen />;
   }
 
   return (
-    <LiffContext.Provider value={{ isReady, isAuthenticated, userEmail, lineUserId, sendLineMessage, closeWindow }}>
+    <LiffContext.Provider value={{ 
+      isReady, 
+      isAuthenticated, 
+      userEmail, 
+      lineUserId, 
+      profile, // 導出 profile
+      sendLineMessage, 
+      closeWindow,
+      login
+    }}>
       {children}
     </LiffContext.Provider>
   );
