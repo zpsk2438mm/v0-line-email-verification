@@ -8,12 +8,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRouter } from "next/navigation"; // 引入路由
+import { useRouter } from "next/navigation"; 
 import {
   User,
   Package,
   ShieldCheck,
-  Mail
+  Mail,
+  PlusCircle
 } from "lucide-react";
 
 interface Product {
@@ -28,7 +29,7 @@ interface Product {
 const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df"];
 
 export default function ProfilePage() {
-  const router = useRouter(); // 初始化路由
+  const router = useRouter(); 
   const { lineUserId, userProfile, userEmail, isAuthenticated, login } = useLiff();
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
@@ -81,6 +82,11 @@ export default function ProfilePage() {
     }
   };
 
+  const handleUploadClick = () => {
+    // 使用 replace 避免在驗證失敗後產生的跳轉死循環
+    router.replace('/upload');
+  };
+
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#F9F8F6] flex items-center justify-center p-4">
@@ -112,7 +118,7 @@ export default function ProfilePage() {
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
         
-        {/* ✅ 用戶資訊區塊 - 顏色完全填滿版 */}
+        {/* 用戶資訊區塊 */}
         <Card className="p-0 border-none shadow-md rounded-2xl overflow-hidden bg-transparent">
           <div className="bg-gradient-to-r from-[#D95300] to-[#FF8C42] text-white p-6">
             <div className="flex items-center gap-4">
@@ -154,20 +160,23 @@ export default function ProfilePage() {
           </Button>
         )}
 
+        {/* 商品列表卡片 */}
         <Card className="border-none shadow-sm rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b border-gray-50 pb-3 mb-4">
             <h3 className="font-bold flex items-center gap-1.5 text-gray-800">
               <Package className="h-4 w-4 text-[#D95300]" />
               我刊登的商品 ({myProducts.length})
             </h3>
-            {/* ✅ 修正後的跳轉按鈕 */}
+            
+            {/* ✅ 加強穩定性的跳轉按鈕 */}
             <Button 
               size="sm" 
               variant="outline" 
-              className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg"
-              onClick={() => router.push('/upload')}
+              className="border-[#D95300] text-[#D95300] hover:bg-orange-50 rounded-lg flex items-center gap-1"
+              onClick={handleUploadClick}
             >
-              + 我要上架
+              <PlusCircle className="h-3.5 w-3.5" />
+              我要上架
             </Button>
           </div>
 
