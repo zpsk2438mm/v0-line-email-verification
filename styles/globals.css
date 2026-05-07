@@ -4,16 +4,16 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* 全站背景顏色改為米白 */
-  --background: oklch(0.98 0.01 60); 
-  --foreground: oklch(0.25 0.02 60);
+  /* 強制全站背景為米白 */
+  --background: #F9F8F6; 
+  --foreground: #404040;
+  /* 強制主色為南臺橘 */
+  --primary: #D95300;
+  --primary-foreground: #FFFFFF;
   
-  /* 主色統一改為橘色 */
-  --primary: oklch(0.55 0.18 45); 
-  --primary-foreground: oklch(0.98 0.01 60);
-  
-  --card: oklch(1 0 0);
-  --border: oklch(0.9 0.02 60);
+  --card: #FFFFFF;
+  --card-foreground: #404040;
+  --border: #E5E5E5;
   --radius: 1rem;
 }
 
@@ -23,5 +23,9 @@
 }
 
 @layer base {
-  body { @apply bg-background; }
+  * { @apply border-border; }
+  body { 
+    background-color: #F9F8F6 !important; /* 強制背景色 */
+    @apply text-foreground; 
+  }
 }
