@@ -7,211 +7,158 @@ import { Navigation } from "@/components/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  ShieldCheck, 
-  CheckCircle, 
-  Loader2,
-  AlertCircle,
-  Image as ImageIcon
-} from "lucide-react";
+import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 
+// 🛡️ 只有你的 ID 可以進入
 const ADMIN_IDS = ["Uf7c4668bc96315297b02b0a67fff88ea"];
-
-// ⚠️ 請確認你的 Bucket 名稱是否為 "product-images"
-const STORAGE_URL = "https://ntubmewovubpzxgsfayp.supabase.co/storage/v1/object/public/product-images/";
-
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  description: string;
-  category: string;
-  is_approved: boolean;
-  created_at: string;
-  line_user_id: string;
-  image_url: any;
-}
 
 export default function AdminPage() {
   const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
-  const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
+  const [pendingProducts, setPendingProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const isAdmin = lineUserId && ADMIN_IDS.includes(lineUserId);
-
-  // 🛠️ 終極網址解析
-  const getImageUrl = (urlData: any) => {
-    const fallback = "/placeholder-logo.png";
-    if (!urlData) return fallback;
-
+  // 🚀 核心：解析完整網址
+  const getImageUrl = (raw: any) => {
+    if (!raw) return "/placeholder-logo.png";
+    
     try {
-      let fileName = "";
-
-      // 1. 如果是陣列，取第一個元素
-      if (Array.isArray(urlData)) {
-        fileName = urlData[0];
+      let url = "";
+      
+      // 情況 A：如果是陣列格式 ["http..."]
+      if (Array.isArray(raw)) {
+        url = raw[0];
       } 
-      // 2. 如果是 JSON 字串格式 ["..."]
-      else if (typeof urlData === 'string' && urlData.startsWith('[')) {
-        const parsed = JSON.parse(urlData);
-        fileName = Array.isArray(parsed) ? parsed[0] : urlData;
+      // 情況 B：如果是字串格式的陣列 '["http..."]'
+      else if (typeof raw === 'string' && raw.startsWith('[')) {
+        const parsed = JSON.parse(raw);
+        url = Array.isArray(parsed) ? parsed[0] : raw;
       } 
-      // 3. 一般字串
+      // 情況 C：一般字串
       else {
-        fileName = urlData;
+        url = raw;
       }
 
-      // 如果 fileName 已經是完整的網址，直接回傳
-      if (typeof fileName === 'string' && fileName.startsWith('http')) {
-        return fileName.replace(/\\/g, '');
-      }
-
-      // 關鍵：如果只是檔案名，幫它加上 Supabase 的完整路徑
-      if (fileName && typeof fileName === 'string') {
-        // 移除可能存在的引號或括號
-        const cleanName = fileName.replace(/[\[\]"']/g, '');
-        return `${STORAGE_URL}${cleanName}`;
-      }
-
-      return fallback;
+      // 移除所有可能殘留的引號、中括號及反斜線
+      const cleanUrl = url.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim();
+      
+      return cleanUrl || "/placeholder-logo.png";
     } catch (e) {
-      return fallback;
+      console.error("解析網址出錯:", e);
+      return "/placeholder-logo.png";
     }
   };
 
   useEffect(() => {
-    if (liffLoading) return;
-    if (isAuthenticated && isAdmin) {
-      fetchPendingProducts();
-    } else {
+    if (!liffLoading && isAuthenticated && lineUserId && ADMIN_IDS.includes(lineUserId)) {
+      fetchData();
+    } else if (!liffLoading) {
       setLoading(false);
     }
-  }, [isAuthenticated, isAdmin, liffLoading]);
+  }, [liffLoading, isAuthenticated, lineUserId]);
 
-  async function fetchPendingProducts() {
+  async function fetchData() {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from("products")
         .select("*")
         .eq("is_approved", false)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setPendingProducts(data || []);
     } catch (err) {
-      console.error("Fetch error:", err);
+      console.error("抓取失敗:", err);
     } finally {
       setLoading(false);
     }
   }
 
+  // 核准功能
   async function handleApprove(id: string) {
-    try {
-      setActionLoading(id);
-      const { error } = await supabase
-        .from("products")
-        .update({ is_approved: true })
-        .eq("id", id);
-      if (error) throw error;
-      setPendingProducts((prev) => prev.filter((p) => p.id !== id));
-    } catch (err) {
-      alert("核准失敗");
-    } finally {
-      setActionLoading(null);
-    }
+    const { error } = await supabase.from("products").update({ is_approved: true }).eq("id", id);
+    if (error) alert("操作失敗");
+    else fetchData();
   }
 
+  // 刪除功能
   async function handleDelete(id: string) {
-    if (!confirm("確定要刪除嗎？")) return;
-    try {
-      setActionLoading(id);
-      const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) throw error;
-      setPendingProducts((prev) => prev.filter((p) => p.id !== id));
-    } catch (err) {
-      alert("刪除失敗");
-    } finally {
-      setActionLoading(null);
-    }
+    if (!confirm("確定要拒絕並刪除此商品嗎？")) return;
+    const { error } = await supabase.from("products").delete().eq("id", id);
+    if (error) alert("刪除失敗");
+    else fetchData();
   }
 
   if (liffLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+      <div className="h-screen flex items-center justify-center bg-[#FDFBF7]">
+        <Loader2 className="animate-spin h-10 w-10 text-orange-500" />
       </div>
     );
   }
 
-  if (!isAdmin) {
+  if (!lineUserId || !ADMIN_IDS.includes(lineUserId)) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 text-center">
-        <div className="space-y-4">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
-          <h1 className="text-xl font-bold">權限不足</h1>
-          <Button asChild className="bg-[#D35400] text-white">
-            <a href="/">回首頁</a>
-          </Button>
-        </div>
+      <div className="h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+        <h1 className="text-2xl font-bold">權限不足</h1>
+        <p className="text-gray-500 mb-6">您的 ID: {lineUserId || "未偵測"}</p>
+        <Button asChild className="bg-orange-600 text-white rounded-xl px-8 h-12"><a href="/">回首頁</a></Button>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#FDFBF7] pb-20">
-      <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-        <Navigation />
-        <h1 className="text-lg font-bold text-slate-800">待審核列表 ({pendingProducts.length})</h1>
-        <Button onClick={fetchPendingProducts} variant="ghost" size="sm" className="ml-auto text-[#D35400] font-bold">
-          重新整理
-        </Button>
+    <main className="min-h-screen bg-[#FDFBF7] pb-24">
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b px-4 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Navigation />
+          <ShieldCheck className="text-slate-800" />
+          <h1 className="font-bold text-lg">待審核 ({pendingProducts.length})</h1>
+        </div>
+        <Button onClick={fetchData} variant="ghost" className="text-orange-600 font-bold">刷新</Button>
       </header>
 
-      <div className="p-4 max-w-2xl mx-auto space-y-4">
+      <div className="p-4 max-w-2xl mx-auto space-y-6">
         {pendingProducts.length === 0 ? (
-          <Card className="p-20 text-center bg-white/50 border-dashed rounded-[32px]">
-            <p className="text-slate-400">目前沒有待處理商品</p>
-          </Card>
+          <div className="py-20 text-center text-gray-400">目前沒有待審核項目</div>
         ) : (
           pendingProducts.map((product) => (
-            <Card key={product.id} className="overflow-hidden border-none shadow-md rounded-[32px] bg-white">
-              <div className="p-5 flex gap-4">
-                <div className="h-24 w-24 rounded-2xl bg-orange-50 shrink-0 overflow-hidden border border-orange-100 flex items-center justify-center">
-                  <img 
-                    src={getImageUrl(product.image_url)} 
-                    className="h-full w-full object-cover" 
-                    alt="Product" 
-                    onError={(e) => {
-                      // 如果拼接後的網址也失敗，就顯示預設圖
-                      e.currentTarget.src = "/placeholder-logo.png";
-                    }}
-                  />
+            <Card key={product.id} className="border-none shadow-xl rounded-[32px] bg-white overflow-hidden">
+              <div className="p-6">
+                <div className="flex gap-5 mb-6 text-left">
+                  <div className="w-28 h-28 bg-gray-100 rounded-3xl overflow-hidden shrink-0 border border-gray-100 shadow-inner">
+                    <img 
+                      src={getImageUrl(product.image_url)} 
+                      className="w-full h-full object-cover"
+                      alt="Product"
+                      onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <Badge className="bg-orange-100 text-orange-700 border-none mb-1 text-[10px]">
+                      {product.category}
+                    </Badge>
+                    <h3 className="text-lg font-bold text-slate-800 truncate">{product.name}</h3>
+                    <p className="text-2xl font-black text-orange-600 mt-1">NT$ {product.price}</p>
+                    <p className="text-xs text-gray-400 mt-2 line-clamp-1 italic">{product.description}</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <Badge className="bg-orange-50 text-[#D35400] border-none text-[10px] mb-1">
-                    {product.category}
-                  </Badge>
-                  <h3 className="font-bold text-slate-800 truncate">{product.name}</h3>
-                  <p className="text-[#D35400] font-black">NT$ {product.price.toLocaleString()}</p>
+
+                <div className="flex gap-3">
+                  <Button 
+                    onClick={() => handleApprove(product.id)}
+                    className="flex-[2] bg-[#00E000] hover:bg-[#00CC00] text-white h-14 rounded-2xl text-lg font-bold shadow-lg shadow-green-100"
+                  >
+                    准許上架
+                  </Button>
+                  <Button 
+                    onClick={() => handleDelete(product.id)}
+                    className="flex-1 bg-rose-50 text-rose-500 h-14 rounded-2xl font-bold"
+                  >
+                    拒絕
+                  </Button>
                 </div>
-              </div>
-              <div className="px-5 pb-5 flex gap-2">
-                <Button 
-                  onClick={() => handleApprove(product.id)}
-                  disabled={!!actionLoading}
-                  className="flex-[2] bg-[#00B900] hover:bg-[#009900] text-white rounded-2xl h-12 font-bold"
-                >
-                  {actionLoading === product.id ? <Loader2 className="animate-spin h-5 w-5" /> : "准許上架"}
-                </Button>
-                <Button 
-                  onClick={() => handleDelete(product.id)}
-                  disabled={!!actionLoading}
-                  className="flex-1 bg-rose-50 text-rose-500 rounded-2xl h-12 font-bold"
-                >
-                  拒絕
-                </Button>
               </div>
             </Card>
           ))
