@@ -25,9 +25,7 @@ export default function ProfilePage() {
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 1. 抓取資料邏輯
   useEffect(() => {
-    // 關鍵：在手機版 LIFF 載入較慢，必須明確等待 lineUserId
     if (!isAuthenticated || !lineUserId) {
       if (!isAuthenticated) setIsLoadingProducts(false);
       return;
@@ -45,7 +43,7 @@ export default function ProfilePage() {
         if (error) throw error;
         setMyProducts(data || []);
       } catch (err) {
-        console.error("Supabase 讀取失敗:", err);
+        console.error("讀取失敗:", err);
       } finally {
         setIsLoadingProducts(false);
       }
@@ -53,7 +51,6 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [isAuthenticated, lineUserId]);
 
-  // 2. 圖片解析函數
   const getProductImage = (url: any): string => {
     const fallback = "/placeholder-logo.png";
     if (!url) return fallback;
@@ -64,23 +61,18 @@ export default function ProfilePage() {
         return Array.isArray(parsed) ? parsed[0] : url;
       }
       return url;
-    } catch (e) {
-      return url;
-    }
+    } catch (e) { return url; }
   };
 
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
-        <Card className="w-full max-w-sm p-8 space-y-6 shadow-xl rounded-3xl bg-white border-none">
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-sm p-8 text-center space-y-6 rounded-3xl bg-white border-none shadow-xl">
           <div className="bg-slate-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto">
             <User className="h-10 w-10 text-slate-400" />
           </div>
-          <div className="space-y-2">
-            <h2 className="font-bold text-2xl text-slate-800">尚未登入</h2>
-            <p className="text-slate-500 text-sm">請使用 LINE 登入以管理您的商品</p>
-          </div>
-          <Button onClick={() => login?.()} className="w-full bg-blue-600 hover:bg-blue-700 h-14 rounded-2xl font-bold text-lg text-white transition-all shadow-lg shadow-blue-100">使用 LINE 登入</Button>
+          <h2 className="font-bold text-2xl text-slate-800">請先登入</h2>
+          <Button onClick={() => login?.()} className="w-full bg-blue-600 h-14 rounded-2xl font-bold text-white shadow-lg">使用 LINE 登入</Button>
         </Card>
       </main>
     );
@@ -88,32 +80,26 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
-      <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white/80 backdrop-blur-md px-4 py-4 shadow-sm">
+      <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <h1 className="text-lg font-extrabold text-slate-800">個人中心</h1>
+        <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* 用戶資訊 */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
-          <CardHeader className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white py-10 px-6">
+          <CardHeader className="bg-gradient-to-br from-blue-600 to-indigo-800 text-white py-10 px-6">
             <div className="flex items-center gap-5 text-left">
-              <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/10 shrink-0 shadow-inner">
+              <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/10 shrink-0">
                 {userProfile?.pictureUrl ? (
-                  <img 
-                    src={userProfile.pictureUrl} 
-                    alt="Profile" 
-                    className="h-full w-full object-cover" 
-                    referrerPolicy="no-referrer" 
-                  />
+                  <img src={userProfile.pictureUrl} alt="Profile" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center"><User size={32} /></div>
+                  <div className="h-full w-full flex items-center justify-center bg-white/20"><User size={32} /></div>
                 )}
               </div>
               <div className="min-w-0">
                 <h2 className="font-black text-2xl truncate tracking-tight">{userProfile?.displayName || "南台用戶"}</h2>
                 <div className="flex items-center gap-1.5 text-blue-100/80 mt-1">
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                  <Mail className="h-3.5 w-3.5" />
                   <p className="text-xs font-semibold truncate uppercase">{userEmail || "個人檔案載入中"}</p>
                 </div>
               </div>
@@ -121,16 +107,12 @@ export default function ProfilePage() {
           </CardHeader>
         </Card>
 
-        {/* 商品列表區塊 */}
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-6">
           <div className="flex items-center justify-between border-b border-slate-50 pb-5 mb-5">
-            <div className="flex flex-col">
-              <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
-                <Package className="h-5 w-5 text-blue-600" />
-                我刊登的商品
-              </h3>
-              <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">Total {myProducts.length} Items</p>
-            </div>
+            <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
+              <Package className="h-5 w-5 text-blue-600" />
+              我刊登的商品
+            </h3>
             <Link href="/">
               <Button size="sm" className="rounded-xl bg-blue-50 text-blue-600 font-black hover:bg-blue-100 border-none px-4 h-10 shadow-none">
                 <Plus className="h-4 w-4 mr-1 stroke-[3px]" /> 我要上架
@@ -139,11 +121,9 @@ export default function ProfilePage() {
           </div>
 
           {isLoadingProducts ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full rounded-2xl bg-slate-50" />)}
-            </div>
+            <div className="space-y-4"><Skeleton className="h-24 w-full rounded-2xl" /></div>
           ) : myProducts.length === 0 ? (
-            <div className="text-center py-16 bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
+            <div className="text-center py-16">
               <Package className="h-14 w-14 mx-auto text-slate-200 mb-4" />
               <p className="text-slate-400 font-bold">目前還沒有刊登任何商品</p>
             </div>
