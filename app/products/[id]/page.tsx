@@ -1,132 +1,191 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState } from "react";
+import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
-import { Navigation } from "@/components/navigation"; // 👈 引入導覽組件
+import { Navigation } from "@/components/navigation"; // 👈 確保引入 Navigation
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Package,
+  CheckCircle,
+  Clock,
+  Trash2,
+  ChevronLeft
+} from "lucide-react";
 import Link from "next/link";
 
-export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const id = resolvedParams.id;
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  description?: string;
+  category: string;
+  image_url?: any;
+  images?: any;
+  is_approved: boolean; 
+  created_at: string;
+}
 
-  const [product, setProduct] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+export default function MyListingsPage() {
+  const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
+  const [myProducts, setMyProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
+  // 獲取使用者自己上架的商品
   useEffect(() => {
-    async function fetchProduct() {
-      if (!id) return;
+    if (liffLoading) return;
+
+    async function fetchMyProducts() {
       try {
-        setLoading(true);
+        setIsLoadingProducts(true);
         const { data, error } = await supabase
           .from("products")
           .select("*")
-          .eq("id", id)
-          .maybeSingle();
+          .order("created_at", { ascending: false });
 
         if (error) {
-          setErrorMsg(error.message);
-        } else if (!data) {
-          setErrorMsg("資料庫中完全找不到這筆 ID。請確認該商品是否已被刪除，或 ID 是否正確。");
-        } else {
-          setProduct(data);
+          console.error("讀取商品失敗:", error);
+          return;
         }
-      } catch (err: any) {
-        setErrorMsg(err.message);
+
+        const userProducts = lineUserId 
+          ? (data || []).filter((p: any) => p.line_user_id === lineUserId || p.user_id === lineUserId)
+          : (data || []);
+
+        setMyProducts(userProducts.length > 0 ? userProducts : (data || []));
+      } catch (err) {
+        console.error(err);
       } finally {
-        setLoading(false);
+        setIsLoadingProducts(false);
       }
     }
-    fetchProduct();
-  }, [id]);
 
-  const getImageUrl = (item: any) => {
-    const url = item?.age_url || item?.image_url;
-    if (!url) return "/placeholder-logo.png";
+    fetchMyProducts();
+  }, [liffLoading, lineUserId]);
+
+  const handleDelete = async (productId: string) => {
+    if (!confirm("確定要刪除這項商品嗎？此動作無法復原。")) return;
+
     try {
-      const parsed = (typeof url === "string" && url.startsWith("[")) ? JSON.parse(url) : url;
-      return Array.isArray(parsed) ? parsed[0] : url;
-    } catch {
-      return url;
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId);
+
+      if (error) {
+        alert("刪除失敗：" + error.message);
+        return;
+      }
+
+      setMyProducts(myProducts.filter((p) => p.id !== productId));
+      alert("商品已成功刪除！");
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  // --- 封裝統一的標頭，確保錯誤畫面與成功畫面一致 ---
-  const Header = ({ title }: { title: string }) => (
-    <header className="p-4 bg-white border-b flex items-center gap-2 sticky top-0 z-50">
-      <Navigation /> {/* 👈 漢堡選單 */}
+  const getCleanImageUrl = (product: Product) => {
+    let raw = product.image_url || product.images;
+    if (!raw) return "";
+    let urlString = Array.isArray(raw) ? raw[0] : String(raw);
+    let clean = urlString.trim().replace(/[\[\]"']/g, "");
+    if (clean.startsWith("http")) return clean;
+    const cleanPath = clean.replace(/^\//, "");
+    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath.replace("product-images/", "")}`;
+  };
+
+  // --- 修改標頭區塊：加入 Navigation，調整顏色 ---
+  const Header = () => (
+    <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+      <Navigation /> {/* 👈 三條線漢堡選單放在這裡 */}
       <Link href="/products">
-        <Button variant="ghost" size="icon" className="h-10 w-10">
+        <Button variant="ghost" size="icon" className="h-10 w-10 text-[#D35400]">
           <ChevronLeft className="h-5 w-5" />
         </Button>
       </Link>
       <div className="h-6 w-[1px] bg-slate-200 mx-1" /> {/* 分隔線 */}
-      <span className="font-bold truncate text-slate-800">{title}</span>
+      <h1 className="text-lg font-bold text-slate-800">我的商品</h1>
     </header>
   );
 
-  if (loading) return <div className="p-10 text-center animate-pulse text-slate-400">讀取中...</div>;
-
-  if (!product) return (
-    <main className="min-h-screen bg-slate-50">
-      <Header title="找不到商品" />
-      <div className="p-10 max-w-md mx-auto mt-10 text-center bg-white rounded-3xl shadow-xl border border-rose-100">
-        <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-slate-800 mb-2">哎呀！抓不到資料</h2>
-        <p className="text-sm text-slate-500 mb-6">嘗試 ID: <code className="bg-slate-100 px-1 rounded">{id}</code></p>
-        <div className="text-xs text-rose-400 bg-rose-50 p-4 rounded-xl mb-6 text-left">
-          <strong>除錯訊息：</strong> {errorMsg || "無具體錯誤，但回傳值為空。"}
+  if (liffLoading || isLoadingProducts) {
+    return (
+      <main className="min-h-screen bg-[#FDFBF7]">
+        <Header />
+        <div className="p-4 space-y-4 max-w-md mx-auto">
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
         </div>
-        <Link href="/"><Button className="w-full bg-slate-800 rounded-xl">返回首頁重試</Button></Link>
-      </div>
-    </main>
-  );
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-20">
-      <Header title={product.name} />
+    <main className="min-h-screen bg-[#FDFBF7] pb-12">
+      <Header />
 
-      <div className="max-w-md mx-auto p-4 space-y-4">
-        {/* 商品圖片 */}
-        <div className="aspect-square rounded-3xl overflow-hidden border bg-white shadow-sm">
-          <img src={getImageUrl(product)} className="w-full h-full object-cover" alt="商品圖片" />
-        </div>
-
-        {/* 商品資訊 */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-center mb-4">
-            <Badge className={product.is_approved ? "bg-green-100 text-green-600 shadow-none border-none" : "bg-amber-100 text-amber-600 shadow-none border-none"}>
-              {product.is_approved ? "✅ 已核准上架" : "⏳ 審核中"}
-            </Badge>
-            <span className="text-[10px] text-slate-400 font-medium">類別：{product.category || "未分類"}</span>
+      <div className="p-4 space-y-4 max-w-md mx-auto">
+        {myProducts.length === 0 ? (
+          <div className="text-center py-20 space-y-3 bg-white rounded-2xl p-6 shadow-sm border border-orange-100">
+            <Package className="h-12 w-12 mx-auto text-orange-200" />
+            <p className="text-sm font-medium text-slate-400">目前沒有刊登中的商品喔</p>
+            <Link href="/">
+              <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22] text-white font-bold rounded-xl px-6">
+                前往上架商品
+              </Button>
+            </Link>
           </div>
-          
-          <h1 className="text-2xl font-black text-slate-800 mb-2">{product.name}</h1>
-          <p className="text-blue-600 text-3xl font-black mb-4">NT$ {product.price?.toLocaleString()}</p>
-          
-          <div className="h-px bg-slate-100 mb-4" />
-          <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap font-medium">
-            {product.description || "這件商品還沒有詳細描述。"}
-          </p>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            {myProducts.map((product) => {
+              const isApproved = product.is_approved === true || String(product.is_approved).toLowerCase() === "true";
+              const imageUrl = getCleanImageUrl(product);
 
-        {/* 聯絡資訊 */}
-        <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-lg">
-          <p className="text-blue-400 font-bold text-[10px] uppercase tracking-wider mb-2">聯絡方式 (LINE/Email)</p>
-          <p className="text-lg font-mono tracking-tight break-all">
-             {product.contact || product.verified_email || "未提供聯絡資訊"}
-          </p>
-        </div>
+              return (
+                <Card key={product.id} className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
+                  <CardContent className="p-4 flex gap-4">
+                    <div className="relative h-24 w-24 flex-shrink-0 bg-[#FDFBF7] rounded-xl overflow-hidden border border-orange-50 flex items-center justify-center">
+                      {imageUrl ? (
+                        <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <Package className="h-8 w-8 text-orange-200" />
+                      )}
+                    </div>
 
-        <details className="mt-10 opacity-30 hover:opacity-100 transition-opacity">
-          <summary className="text-[10px] text-slate-300 cursor-pointer">檢視原始 JSON 資料</summary>
-          <pre className="text-[10px] bg-white p-4 rounded border mt-2 overflow-auto">
-            {JSON.stringify(product, null, 2)}
-          </pre>
-        </details>
+                    <div className="flex-1 flex flex-col justify-between min-w-0">
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-bold text-sm text-slate-800 truncate pr-2">{product.name}</h3>
+                          {isApproved ? (
+                            <Badge className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border-emerald-100 border shadow-none">
+                              <CheckCircle className="h-3 w-3 mr-1" /> 已上架
+                            </Badge>
+                          ) : (
+                            <Badge className="text-[10px] font-bold text-[#D35400] bg-orange-50 border-orange-100 border shadow-none">
+                              <Clock className="h-3 w-3 mr-1" /> 審核中
+                            </Badge>
+                          )}
+                        </div>
+                        {/* 價格顏色改為南台橘 */}
+                        <p className="text-sm font-black text-[#D35400] mt-1">NT$ {product.price.toLocaleString()}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{new Date(product.created_at).toLocaleDateString()}</p>
+                      </div>
+
+                      <div className="flex justify-start mt-2 border-t pt-2 border-dashed border-orange-50">
+                        <button onClick={() => handleDelete(product.id)} className="text-xs text-red-500 font-bold flex items-center gap-1 hover:text-red-600 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" /> 刪除商品
+                        </button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </main>
   );
