@@ -71,7 +71,6 @@ export default function ExploreProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
 
   useEffect(() => {
-    // 只有在 LIFF 載入完畢且已登入時才抓資料
     if (liffLoading) return;
     
     if (!isAuthenticated) {
@@ -131,31 +130,29 @@ export default function ExploreProductsPage() {
     return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
   };
 
-  // 1. 如果還在載入 LIFF，顯示 Loading
   if (liffLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6]"><Loader2 className="animate-spin text-[#D95300]" /></div>;
+    return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
   }
 
-  // 2. 如果沒登入，顯示登入頁面
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-[#F9F8F6] flex flex-col justify-between pb-12">
+      <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
           <Navigation />
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D95300]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400]">
             <ShoppingBag className="h-5 w-5 text-white" />
           </div>
           <h1 className="text-lg font-bold text-slate-800">南台校園市集</h1>
         </header>
         <div className="flex-1 flex items-center justify-center p-4">
           <Card className="w-full max-w-sm border-none shadow-xl bg-white overflow-hidden rounded-2xl">
-            <div className="bg-gradient-to-tr from-[#D95300] to-[#FF8C00] py-8 px-6 text-center text-white space-y-2">
+            <div className="bg-gradient-to-tr from-[#D35400] to-[#E67E22] py-8 px-6 text-center text-white space-y-2">
               <Sparkles className="h-10 w-10 mx-auto text-yellow-300 animate-pulse" />
               <h2 className="text-xl font-extrabold tracking-wide">南台人限定二手市集</h2>
               <p className="text-xs text-orange-50">專屬於南台科技大學的安全校園交易平台</p>
             </div>
             <CardContent className="pt-8 pb-8 text-center space-y-6 px-6">
-              <Button onClick={() => login?.()} className="w-full bg-[#D95300] hover:bg-[#B84600] text-white font-bold py-6 rounded-xl shadow-lg transition-all text-sm">
+              <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] text-white font-bold py-6 rounded-xl shadow-lg transition-all text-sm">
                 <LogIn className="h-5 w-5 mr-2" />
                 使用 LINE 安全快速登入
               </Button>
@@ -166,19 +163,18 @@ export default function ExploreProductsPage() {
     );
   }
 
-  // 3. 正式顯示商品頁面
   return (
-    <main className="min-h-screen bg-[#F9F8F6] pb-20">
+    <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D95300] shadow-md">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
           <ShoppingBag className="h-5 w-5 text-white" />
         </div>
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
 
       <div className="mx-auto max-w-lg px-4 pt-4">
-        <div className="relative bg-gradient-to-r from-[#FF8C00] to-[#D95300] rounded-2xl p-5 text-white shadow-lg overflow-hidden">
+        <div className="relative bg-gradient-to-r from-[#E67E22] to-[#D35400] rounded-2xl p-5 text-white shadow-lg shadow-orange-100 overflow-hidden">
           <div className="space-y-1 relative z-10">
             <span className="bg-white/20 text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">✨ 南台科技大學專屬</span>
             <h2 className="text-xl font-black tracking-wide pt-1">屬於南台人的二手淘寶地</h2>
@@ -193,7 +189,7 @@ export default function ExploreProductsPage() {
           <Input
             type="search"
             placeholder="搜尋商品..."
-            className="pl-10 pr-4 py-5 bg-white border-slate-200/80 rounded-xl focus-visible:ring-[#D95300] shadow-sm text-sm"
+            className="pl-10 pr-4 py-5 bg-white border-slate-200/80 rounded-xl focus-visible:ring-[#D35400] shadow-sm text-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -204,7 +200,7 @@ export default function ExploreProductsPage() {
             <button
               key={cat.id}
               className={`rounded-full shrink-0 h-9 text-xs px-4 font-medium transition-all flex items-center ${
-                selectedCategory === cat.id ? "bg-[#D95300] text-white shadow-md" : "bg-white text-slate-600 border hover:bg-slate-100"
+                selectedCategory === cat.id ? "bg-[#D35400] text-white shadow-md" : "bg-white text-slate-600 border hover:bg-orange-50 hover:border-orange-100"
               }`}
               onClick={() => setSelectedCategory(cat.id)}
             >
@@ -217,13 +213,13 @@ export default function ExploreProductsPage() {
       <div className="mx-auto max-w-lg px-4 mt-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
-            <Flame className="h-4 w-4 text-orange-500 fill-orange-500" />熱門推薦
+            <Flame className="h-4 w-4 text-[#D35400] fill-[#D35400]" />熱門推薦
           </h3>
           <span className="text-xs text-slate-400">共 {filteredProducts.length} 件</span>
         </div>
 
         {fetching ? (
-            <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-gray-300" /></div>
+            <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => (
@@ -233,7 +229,7 @@ export default function ExploreProductsPage() {
                 className="block group active:scale-[0.98] transition-transform"
               >
                 <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col group-hover:shadow-md transition-all">
-                  <div className="aspect-square bg-slate-100 relative overflow-hidden flex items-center justify-center">
+                  <div className="aspect-square bg-[#FDFBF7] relative overflow-hidden flex items-center justify-center border-b border-orange-50">
                     <img 
                       src={getCleanImageUrl(product) || "/placeholder.png"} 
                       alt={product.name} 
@@ -241,7 +237,7 @@ export default function ExploreProductsPage() {
                       onError={(e) => e.currentTarget.src = "/placeholder.png"}
                     />
                     <div className="absolute top-2.5 left-2.5">
-                      <Badge variant="secondary" className="text-[9px] bg-[#FFF5EE] text-[#D95300] px-2 py-0.5 rounded-md font-bold shadow-sm border-none">
+                      <Badge variant="secondary" className="text-[9px] bg-orange-50 text-[#D35400] px-2 py-0.5 rounded-md font-bold shadow-sm border-none">
                         {CATEGORY_LABELS[product.category] || product.category}
                       </Badge>
                     </div>
@@ -249,7 +245,7 @@ export default function ExploreProductsPage() {
 
                   <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
                     <div>
-                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-[#D95300] transition-colors">
+                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-[#D35400] transition-colors">
                         {product.name}
                       </h4>
                       <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
@@ -258,15 +254,15 @@ export default function ExploreProductsPage() {
                     </div>
 
                     <div className="space-y-1.5 pt-1">
-                      <p className="text-base font-extrabold text-[#D95300]">
+                      <p className="text-base font-extrabold text-[#D35400]">
                         NT$ {product.price?.toLocaleString()}
                       </p>
                       
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 border-t pt-2 border-dashed border-slate-100">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 border-t pt-2 border-dashed border-orange-50">
                         <span className="flex items-center gap-0.5 font-medium">
-                          <Calendar className="h-3 w-3" /> {formatDate(product.created_at)}
+                          <Calendar className="h-3 w-3 text-orange-200" /> {formatDate(product.created_at)}
                         </span>
-                        <span className="text-[#D95300] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[#D35400] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
                           GO →
                         </span>
                       </div>
