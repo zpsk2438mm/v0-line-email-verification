@@ -129,10 +129,9 @@ export function ListingForm() {
 
       if (dbError) throw dbError;
 
-      setUploadProgress("傳送通知至您的 LINE...");
+      setUploadProgress("傳送管理員通知...");
 
       try {
-        // ✅ 這裡修正了：原本 body 裡面漏掉了 lineUserId
         await fetch("/api/notify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -141,7 +140,6 @@ export function ListingForm() {
             price: formData.price,
             imageUrl: imageUrls[0] || null,
             contact: formData.contact,
-            lineUserId: lineUserId, // 👈 關鍵！補上這行通知 API 才知道要發給誰
           }),
         });
       } catch (notifyErr) {
@@ -164,6 +162,7 @@ export function ListingForm() {
 
   return (
     <>
+      {/* 成功彈窗 - 改為南臺橘風格按鈕 */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-300">
@@ -185,8 +184,10 @@ export function ListingForm() {
         </div>
       )}
 
+      {/* 表單主體 - 背景改為米白 */}
       <form onSubmit={handleSubmit} className="p-6 space-y-6 max-w-md mx-auto bg-[#F9F8F6] min-h-screen">
         <header className="flex items-center gap-3 border-b border-orange-100 pb-4 mb-6">
+          {/* ✅ 裝飾條改為橘色 */}
           <div className="w-2 h-8 bg-[#D95300] rounded-full" />
           <h2 className="text-2xl font-black text-gray-800">刊登二手物品</h2>
         </header>
@@ -199,6 +200,7 @@ export function ListingForm() {
         )}
 
         <div className="space-y-5">
+          {/* 照片上傳 - 橘色焦點優化 */}
           <section className="space-y-3">
             <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES})</Label>
             <div className="grid grid-cols-3 gap-3">
@@ -228,6 +230,7 @@ export function ListingForm() {
             <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
           </section>
 
+          {/* 欄位 - 焦點顏色優化 */}
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="name" className="font-bold text-gray-600">商品名稱 *</Label>
@@ -261,6 +264,7 @@ export function ListingForm() {
           </div>
         </div>
 
+        {/* 提交按鈕 - ✅ 全改為南臺橘風格 */}
         <div className="pt-4 pb-12">
           <Button 
             type="submit" 
