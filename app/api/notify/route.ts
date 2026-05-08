@@ -5,62 +5,55 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    // Supabase Webhook 的標準結構是 body.record
+    // Supabase Webhook 提供的資料結構
     const record = body.record || body;
     const oldRecord = body.old_record || null;
-    const targetId = record.line_user_id || record.lineUserId;
+    const type = body.type; // INSERT, UPDATE, 或 DELETE
+    const targetId = (type === 'DELETE' ? oldRecord : record)?.line_user_id;
 
-    if (!targetId) return NextResponse.json({ error: "Missing Line ID" }, { status: 400 });
+    if (!targetId) return NextResponse.json({ error: "No Line ID" }, { status: 200 });
 
-    // --- 🛡️ 圖片路徑抓取強化版 ---
-    let imageUrl = "";
-    const rawImage = record.image_url || record.images || "";
-
-    if (typeof rawImage === 'string') {
-      if (rawImage.startsWith('[')) {
-        try {
-          const parsed = JSON.parse(rawImage);
-          imageUrl = Array.isArray(parsed) ? parsed[0] : parsed;
-        } catch (e) { imageUrl = rawImage; }
-      } else {
-        imageUrl = rawImage;
-      }
-    } else if (Array.isArray(rawImage)) {
-      imageUrl = rawImage[0];
-    }
-
-    // 清理網址：去除多餘引號與反斜槓
-    let cleanUrl = imageUrl.replace(/[\[\]"']/g, '').trim();
-
-    // 補全 Supabase Storage 網址
+    // --- 圖片處理 ---
+    const imgPath = (type === 'DELETE' ? oldRecord : record)?.image_url || "";
+    let cleanUrl = typeof imgPath === 'string' ? imgPath.replace(/[\[\]"']/g, '').trim() : "";
     if (cleanUrl && !cleanUrl.startsWith('http')) {
-      const path = cleanUrl.replace(/^\//, '');
-      // 自動判定路徑，補上你的專案域名
-      cleanUrl = path.startsWith('product-images/')
-        ? `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${path}`
-        : `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${path}`;
+      cleanUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath.replace(/^\//, '')}`;
     }
 
-    // --- 訊息內容判定 ---
+    // --- 判定訊息內容 ---
     let title = "";
     let color = "";
     let subText = "";
 
-    if (!oldRecord) {
+    if (type === 'INSERT') {
       title = "📦 商品刊登成功 (審核中)";
       color = "#3B82F6";
-      subText = "管理員已收到申請，通過後會再通知。";
-    } else {
+      subText = "管理員已收到申請，通過後會再通知您。";
+    } 
+    else if (type === 'UPDATE') {
       const isNowApproved = String(record.is_approved) === 'true';
-      const wasApproved = String(oldRecord.is_approved) === 'true';
+      const wasApproved = String(oldRecord?.is_approved) === 'true';
+      
       if (isNowApproved === wasApproved) return NextResponse.json({ message: "No change" });
-
-      title = isNowApproved ? "✅ 審核通過通知" : "❌ 審核未通過";
-      color = isNowApproved ? "#10B981" : "#EF4444";
-      subText = isNowApproved ? "您的商品已成功上架！" : "很抱歉，商品未通過審核。";
+      
+      if (isNowApproved) {
+        title = "✅ 審核通過通知";
+        color = "#10B981";
+        subText = "您的商品已成功上架！";
+      } else {
+        title = "❌ 審核未通過";
+        color = "#EF4444";
+        subText = "您的商品未通過審核，請檢查內容或重新刊登。";
+      }
+    } 
+    else if (type === 'DELETE') {
+      // 當管理員按下「拒絕並刪除」時觸發
+      title = "❌ 審核未通過 (已退回)";
+      color = "#EF4444";
+      subText = "很抱歉，您的商品未符合刊登規範，已被移除。";
     }
 
-    // --- 發送至 LINE ---
+    // --- 發送 LINE ---
     await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
@@ -81,7 +74,7 @@ export async function POST(req: Request) {
             body: {
               type: 'box', layout: 'vertical', contents: [
                 { type: 'text', text: title, weight: 'bold', color: color, size: 'sm' },
-                { type: 'text', text: record.name || "商品名稱", weight: 'bold', size: 'xl', margin: 'md', wrap: true },
+                { type: 'text', text: (type === 'DELETE' ? oldRecord : record).name || "商品通知", weight: 'bold', size: 'xl', margin: 'md', wrap: true },
                 { type: 'text', text: subText, color: '#666666', size: 'xs', margin: 'md', wrap: true }
               ]
             }
