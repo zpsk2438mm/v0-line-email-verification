@@ -17,7 +17,7 @@ interface Product {
   price: number;
   is_approved: boolean;
   created_at: string;
-  image_url: string | string[] | null;
+  image_url: any; // 改為 any 以便處理各種格式
 }
 
 export default function ProfilePage() {
@@ -34,6 +34,7 @@ export default function ProfilePage() {
     async function fetchMyProducts() {
       try {
         setIsLoadingProducts(true);
+        // 確保 image_url 欄位名稱與資料庫完全一致
         const { data, error } = await supabase
           .from("products")
           .select("id, name, price, is_approved, created_at, image_url")
@@ -51,13 +52,25 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [isAuthenticated, lineUserId]);
 
-  const getProductImage = (imageUrl: any): string => {
+  // 強化版圖片解析函數（與 ProductCard 同步）
+  const getProductImage = (url: any): string => {
     const fallback = "/placeholder-logo.png";
-    if (!imageUrl) return fallback;
+    if (!url) return fallback;
+    
     try {
-      if (Array.isArray(imageUrl)) return imageUrl[0] || fallback;
-      return typeof imageUrl === "string" ? imageUrl : fallback;
-    } catch (e) { return fallback; }
+      // 處理陣列格式
+      if (Array.isArray(url)) return url[0] || fallback;
+      
+      // 處理字串化的 JSON 格式 (例如 "[ \"url\" ]")
+      if (typeof url === "string" && url.startsWith("[")) {
+        const parsed = JSON.parse(url);
+        return Array.isArray(parsed) ? parsed[0] : url;
+      }
+      
+      return url;
+    } catch (e) {
+      return url; // 解析失敗則嘗試直接回傳字串
+    }
   };
 
   if (!isAuthenticated) {
@@ -65,7 +78,7 @@ export default function ProfilePage() {
       <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-sm p-6 text-center space-y-4 shadow-xl rounded-3xl">
           <User className="h-12 w-12 mx-auto text-slate-300" />
-          <h2 className="font-bold text-xl">請先登入</h2>
+          <h2 className="font-bold text-xl text-slate-800">請先登入</h2>
           <Button onClick={() => login?.()} className="w-full bg-blue-600 h-12 rounded-xl font-bold text-white">使用 LINE 登入</Button>
         </Card>
       </main>
@@ -74,9 +87,9 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-12">
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+      <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <h1 className="text-lg font-bold">個人中心</h1>
+        <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
@@ -88,7 +101,7 @@ export default function ProfilePage() {
                 {userProfile?.pictureUrl ? (
                   <img src={userProfile.pictureUrl} alt="Profile" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center"><User size={32} /></div>
+                  <div className="h-full w-full flex items-center justify-center bg-white/20"><User size={32} /></div>
                 )}
               </div>
               <div className="min-w-0">
@@ -102,9 +115,7 @@ export default function ProfilePage() {
           </CardHeader>
         </Card>
 
-        {/* 這裡原本的管理員按鈕已根據要求移除 */}
-
-        {/* 商品管理區塊（回復原本的列表樣式） */}
+        {/* 商品列表 */}
         <Card className="border-none shadow-sm rounded-3xl bg-white p-5">
           <div className="flex items-center justify-between border-b border-slate-50 pb-4 mb-4">
             <h3 className="font-bold flex items-center gap-2 text-slate-800">
@@ -119,7 +130,10 @@ export default function ProfilePage() {
           </div>
 
           {isLoadingProducts ? (
-            <div className="space-y-3"><Skeleton className="h-24 w-full rounded-2xl" /></div>
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full rounded-2xl" />
+              <Skeleton className="h-24 w-full rounded-2xl" />
+            </div>
           ) : myProducts.length === 0 ? (
             <div className="text-center py-12">
               <Package className="h-12 w-12 mx-auto text-slate-200 mb-3" />
@@ -128,9 +142,14 @@ export default function ProfilePage() {
           ) : (
             <div className="grid gap-3">
               {myProducts.map((product) => (
-                <div key={product.id} className="flex items-center gap-3 p-3 border rounded-2xl border-slate-50 hover:bg-slate-50 transition-all text-left">
-                  <div className="h-16 w-16 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                    <img src={getProductImage(product.image_url)} alt={product.name} className="w-full h-full object-cover" />
+                <div key={product.id} className="flex items-center gap-3 p-3 border rounded-2xl border-slate-50 hover:bg-slate-50 transition-all text-left bg-white">
+                  <div className="h-16 w-16 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-50">
+                    <img 
+                      src={getProductImage(product.image_url)} 
+                      alt={product.name} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {(e.target as HTMLImageElement).src = "/placeholder-logo.png"}}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-sm text-slate-800 truncate">{product.name}</h4>
@@ -138,9 +157,9 @@ export default function ProfilePage() {
                   </div>
                   <div className="shrink-0">
                     {product.is_approved ? (
-                      <Badge className="rounded-lg text-[10px] bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-50 shadow-none">已上架</Badge>
+                      <Badge className="rounded-lg text-[10px] bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-50">已上架</Badge>
                     ) : (
-                      <Badge className="rounded-lg text-[10px] bg-amber-50 text-amber-600 border-amber-100 hover:bg-amber-50 shadow-none">審核中</Badge>
+                      <Badge className="rounded-lg text-[10px] bg-amber-50 text-amber-600 border-amber-100 hover:bg-amber-50">審核中</Badge>
                     )}
                   </div>
                 </div>
