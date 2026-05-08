@@ -29,7 +29,7 @@ const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
-  { href: "/profile", label: "我的商品", icon: Package }, // 修正：指向個人中心以查看列表
+  { href: "/my-listings", label: "我的商品", icon: Package }, // 修正：指向獨立的商品管理頁面
 ];
 
 export function Navigation() {
@@ -63,7 +63,7 @@ export function Navigation() {
         {isAuthenticated && (
           <div className="px-4 py-4 text-left">
             <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-3 border border-slate-100">
-              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white">
+              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white text-slate-300">
                 {userProfile?.pictureUrl ? (
                   <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
