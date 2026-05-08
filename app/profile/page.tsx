@@ -8,8 +8,11 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, Mail, Plus } from "lucide-react";
+import { User, Package, Mail, Plus, ShieldCheck, ChevronRight } from "lucide-react";
 import Link from "next/link";
+
+// 👈 在這裡填入你的管理員信箱，確保驗證能跑出來
+const ADMIN_EMAILS = ["你的管理員信箱@gmail.com"];
 
 interface Product {
   id: string;
@@ -21,13 +24,17 @@ interface Product {
 }
 
 export default function ProfilePage() {
-  const { lineUserId, userProfile, userEmail, isAuthenticated, login } = useLiff();
+  const { lineUserId, userProfile, userEmail, isAuthenticated, login, isLoading: liffLoading } = useLiff();
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
+  // 判斷是否為管理員
+  const isAdmin = userEmail && ADMIN_EMAILS.includes(userEmail);
+
   useEffect(() => {
+    if (liffLoading) return;
     if (!isAuthenticated || !lineUserId) {
-      if (!isAuthenticated) setIsLoadingProducts(false);
+      setIsLoadingProducts(false);
       return;
     }
 
@@ -49,7 +56,7 @@ export default function ProfilePage() {
       }
     }
     fetchMyProducts();
-  }, [isAuthenticated, lineUserId]);
+  }, [isAuthenticated, lineUserId, liffLoading]);
 
   const getProductImage = (url: any): string => {
     const fallback = "/placeholder-logo.png";
@@ -64,6 +71,10 @@ export default function ProfilePage() {
     } catch (e) { return url; }
   };
 
+  if (liffLoading) {
+    return <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-[#D35400]">載入中...</div>;
+  }
+
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
@@ -72,7 +83,7 @@ export default function ProfilePage() {
             <User className="h-10 w-10 text-[#D35400]" />
           </div>
           <h2 className="font-bold text-2xl text-slate-800">請先登入</h2>
-          <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] h-14 rounded-2xl font-bold text-white shadow-lg transition-colors">使用 LINE 登入</Button>
+          <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] h-14 rounded-2xl font-bold text-white shadow-lg">使用 LINE 登入</Button>
         </Card>
       </main>
     );
@@ -86,8 +97,8 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
+        {/* 個人資料卡片 */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
-          {/* 修改背景漸層為南台橘色系 */}
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
             <div className="flex items-center gap-5 text-left">
               <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/10 shrink-0">
@@ -108,6 +119,24 @@ export default function ProfilePage() {
           </CardHeader>
         </Card>
 
+        {/* 🛡️ 管理員驗證入口 - 只有 ADMIN_EMAILS 內的人看得到 */}
+        {isAdmin && (
+          <Link href="/admin">
+            <Card className="border-none shadow-sm rounded-2xl bg-slate-900 p-4 flex items-center justify-between text-white hover:bg-black transition-colors mb-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-orange-500 p-2 rounded-lg">
+                  <ShieldCheck className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm">管理員後台</p>
+                  <p className="text-[10px] text-slate-400">審核商品與系統管理</p>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-500" />
+            </Card>
+          </Link>
+        )}
+
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-6">
           <div className="flex items-center justify-between border-b border-orange-50 pb-5 mb-5">
             <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
@@ -115,7 +144,6 @@ export default function ProfilePage() {
               我刊登的商品
             </h3>
             <Link href="/">
-              {/* 修改按鈕顏色為淡橘色背景+橘色文字 */}
               <Button size="sm" className="rounded-xl bg-orange-50 text-[#D35400] font-black hover:bg-orange-100 border-none px-4 h-10 shadow-none">
                 <Plus className="h-4 w-4 mr-1 stroke-[3px]" /> 我要上架
               </Button>
@@ -139,19 +167,17 @@ export default function ProfilePage() {
                       alt={product.name} 
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
-                      onError={(e) => {(e.target as HTMLImageElement).src = "/placeholder-logo.png"}}
                     />
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <h4 className="font-bold text-sm text-slate-800 truncate mb-1">{product.name}</h4>
-                    {/* 價格文字維持強調，但配合橘色調 */}
                     <p className="text-sm font-black text-[#D35400]">NT$ {product.price.toLocaleString()}</p>
                   </div>
                   <div className="shrink-0">
                     {product.is_approved ? (
-                      <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black shadow-none">已上架</Badge>
+                      <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black">已上架</Badge>
                     ) : (
-                      <Badge className="rounded-lg text-[10px] py-1 bg-orange-50 text-[#D35400] border-orange-100 font-black shadow-none">審核中</Badge>
+                      <Badge className="rounded-lg text-[10px] py-1 bg-orange-50 text-[#D35400] border-orange-100 font-black">審核中</Badge>
                     )}
                   </div>
                 </div>
