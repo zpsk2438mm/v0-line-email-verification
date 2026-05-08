@@ -4,162 +4,187 @@ import { useEffect, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
+import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Package, AlertCircle, CheckCircle2, Clock3, LogIn } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { User, Package, Mail, Plus, ShieldCheck, ChevronRight } from "lucide-react";
+import Link from "next/link";
+
+// 👈 在這裡填入你的管理員信箱，確保驗證能跑出來
+const ADMIN_EMAILS = ["你的管理員信箱@gmail.com"];
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  is_approved: boolean;
+  created_at: string;
+  image_url: any;
+}
 
 export default function ProfilePage() {
-  const { lineUserId, isAuthenticated, liff, isLoading: liffLoading } = useLiff();
-  const [myProducts, setMyProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { lineUserId, userProfile, userEmail, isAuthenticated, login, isLoading: liffLoading } = useLiff();
+  const [myProducts, setMyProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 圖片網址解析
-  const getImageUrl = (raw: any) => {
-    if (!raw) return "/placeholder-logo.png";
-    try {
-      let url = Array.isArray(raw) ? raw[0] : (typeof raw === 'string' && raw.startsWith('[') ? JSON.parse(raw)[0] : raw);
-      return url.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim() || "/placeholder-logo.png";
-    } catch (e) { return "/placeholder-logo.png"; }
-  };
+  // 判斷是否為管理員
+  const isAdmin = userEmail && ADMIN_EMAILS.includes(userEmail);
 
   useEffect(() => {
-    if (!liffLoading && isAuthenticated && lineUserId) {
-      fetchMyProducts();
-    } else if (!liffLoading) {
-      setLoading(false);
+    if (liffLoading) return;
+    if (!isAuthenticated || !lineUserId) {
+      setIsLoadingProducts(false);
+      return;
     }
-  }, [liffLoading, isAuthenticated, lineUserId]);
 
-  async function fetchMyProducts() {
-    setLoading(true);
+    async function fetchMyProducts() {
+      try {
+        setIsLoadingProducts(true);
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, price, is_approved, created_at, image_url")
+          .eq("line_user_id", lineUserId)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setMyProducts(data || []);
+      } catch (err) {
+        console.error("讀取失敗:", err);
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    }
+    fetchMyProducts();
+  }, [isAuthenticated, lineUserId, liffLoading]);
+
+  const getProductImage = (url: any): string => {
+    const fallback = "/placeholder-logo.png";
+    if (!url) return fallback;
     try {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .eq("user_id", lineUserId)
-        .order("created_at", { ascending: false });
+      if (Array.isArray(url)) return url[0] || fallback;
+      if (typeof url === "string" && url.startsWith("[")) {
+        const parsed = JSON.parse(url);
+        return Array.isArray(parsed) ? parsed[0] : url;
+      }
+      return url;
+    } catch (e) { return url; }
+  };
 
-      if (error) throw error;
-      setMyProducts(data || []);
-    } catch (err) {
-      console.error("抓取個人商品失敗:", err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // 刪除功能 (使用者可以刪除自己的商品)
-  async function handleDelete(id: string) {
-    if (!confirm("確定要刪除此商品嗎？")) return;
-    const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) alert("刪除失敗");
-    else fetchMyProducts();
-  }
-
-  // 1. 加載中狀態
   if (liffLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[#FDFBF7]">
-        <Loader2 className="animate-spin h-10 w-10 text-orange-500" />
-      </div>
-    );
+    return <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-[#D35400]">載入中...</div>;
   }
 
-  // 2. 未登入狀態 (解決個人中心不見的問題)
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-[#FDFBF7] pb-24">
-        <header className="p-6"><Navigation /></header>
-        <div className="flex flex-col items-center justify-center p-10 text-center mt-20">
-          <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mb-6">
-            <LogIn className="w-10 h-10 text-orange-600" />
+      <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
+        <Card className="w-full max-w-sm p-8 text-center space-y-6 rounded-3xl bg-white border-none shadow-xl">
+          <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto">
+            <User className="h-10 w-10 text-[#D35400]" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">尚未登入</h1>
-          <p className="text-gray-500 mb-8">登入後即可查看您的商品與審核進度</p>
-          <Button 
-            onClick={() => liff?.login()}
-            className="bg-orange-600 hover:bg-orange-700 text-white rounded-2xl px-12 h-14 text-lg font-bold shadow-lg shadow-orange-100"
-          >
-            LINE 登入
-          </Button>
-        </div>
+          <h2 className="font-bold text-2xl text-slate-800">請先登入</h2>
+          <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] h-14 rounded-2xl font-bold text-white shadow-lg">使用 LINE 登入</Button>
+        </Card>
       </main>
     );
   }
 
-  // 3. 已登入，顯示商品列表
   return (
-    <main className="min-h-screen bg-[#FDFBF7] pb-24 text-slate-800">
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b px-6 py-5 flex items-center gap-3">
+    <main className="min-h-screen bg-[#FDFBF7] pb-20">
+      <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <h1 className="font-black text-xl tracking-tight">我的商品</h1>
+        <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
       </header>
 
-      <div className="p-4 max-w-2xl mx-auto space-y-5">
-        {loading ? (
-           <div className="py-20 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-orange-500" /></div>
-        ) : myProducts.length === 0 ? (
-          <div className="py-24 text-center text-gray-400 flex flex-col items-center gap-3">
-            <Package className="w-16 h-16 opacity-10" />
-            <p className="text-lg">尚無上傳紀錄</p>
-          </div>
-        ) : (
-          myProducts.map((product) => (
-            <Card key={product.id} className="border-none shadow-xl rounded-[32px] bg-white overflow-hidden p-6">
-              <div className="flex gap-5">
-                {/* 圖片 */}
-                <div className="w-28 h-28 bg-gray-50 rounded-[24px] overflow-hidden shrink-0 border border-gray-100 shadow-inner">
-                  <img 
-                    src={getImageUrl(product.image_url)} 
-                    className="w-full h-full object-cover"
-                    alt={product.name}
-                    onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
-                  />
-                </div>
-
-                {/* 資訊 */}
-                <div className="flex-1 min-w-0 flex flex-col justify-between">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-lg font-bold truncate text-slate-900">{product.name}</h3>
-                      <p className="text-orange-600 font-black text-xl">NT$ {product.price}</p>
-                    </div>
-                    
-                    {/* 狀態標籤 */}
-                    {product.status === 'approved' && (
-                      <Badge className="bg-emerald-50 text-emerald-600 border-none px-2 py-1 rounded-lg flex gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> 已上架
-                      </Badge>
-                    )}
-                    {product.status === 'pending' && (
-                      <Badge className="bg-orange-50 text-orange-600 border-none px-2 py-1 rounded-lg flex gap-1">
-                        <Clock3 className="w-3 h-3" /> 審核中
-                      </Badge>
-                    )}
-                    {product.status === 'rejected' && (
-                      <Badge className="bg-rose-50 text-rose-600 border-none px-2 py-1 rounded-lg flex gap-1">
-                        <AlertCircle className="w-3 h-3" /> 已退回
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="flex items-end justify-between mt-2">
-                    <span className="text-[10px] text-gray-300">
-                      {new Date(product.created_at).toLocaleDateString()}
-                    </span>
-                    <button 
-                      onClick={() => handleDelete(product.id)}
-                      className="text-rose-500 text-xs font-bold flex items-center gap-1 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors"
-                    >
-                      🗑️ 刪除商品
-                    </button>
-                  </div>
+      <div className="p-4 space-y-4 max-w-md mx-auto">
+        {/* 個人資料卡片 */}
+        <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
+          <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
+            <div className="flex items-center gap-5 text-left">
+              <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/10 shrink-0">
+                {userProfile?.pictureUrl ? (
+                  <img src={userProfile.pictureUrl} alt="Profile" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center bg-white/20"><User size={32} /></div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-black text-2xl truncate tracking-tight">{userProfile?.displayName || "南台用戶"}</h2>
+                <div className="flex items-center gap-1.5 text-orange-100/80 mt-1">
+                  <Mail className="h-3.5 w-3.5" />
+                  <p className="text-xs font-semibold truncate uppercase">{userEmail || "個人檔案載入中"}</p>
                 </div>
               </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* 🛡️ 管理員驗證入口 - 只有 ADMIN_EMAILS 內的人看得到 */}
+        {isAdmin && (
+          <Link href="/admin">
+            <Card className="border-none shadow-sm rounded-2xl bg-slate-900 p-4 flex items-center justify-between text-white hover:bg-black transition-colors mb-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-orange-500 p-2 rounded-lg">
+                  <ShieldCheck className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm">管理員後台</p>
+                  <p className="text-[10px] text-slate-400">審核商品與系統管理</p>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-500" />
             </Card>
-          ))
+          </Link>
         )}
+
+        <Card className="border-none shadow-sm rounded-[32px] bg-white p-6">
+          <div className="flex items-center justify-between border-b border-orange-50 pb-5 mb-5">
+            <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
+              <Package className="h-5 w-5 text-[#D35400]" />
+              我刊登的商品
+            </h3>
+            <Link href="/">
+              <Button size="sm" className="rounded-xl bg-orange-50 text-[#D35400] font-black hover:bg-orange-100 border-none px-4 h-10 shadow-none">
+                <Plus className="h-4 w-4 mr-1 stroke-[3px]" /> 我要上架
+              </Button>
+            </Link>
+          </div>
+
+          {isLoadingProducts ? (
+            <div className="space-y-4"><Skeleton className="h-24 w-full rounded-2xl" /></div>
+          ) : myProducts.length === 0 ? (
+            <div className="text-center py-16">
+              <Package className="h-14 w-14 mx-auto text-orange-100 mb-4" />
+              <p className="text-slate-400 font-bold">目前還沒有刊登任何商品</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {myProducts.map((product) => (
+                <div key={product.id} className="flex items-center gap-4 p-3.5 border border-orange-50 rounded-2xl bg-white hover:border-orange-100 transition-all shadow-sm">
+                  <div className="h-16 w-16 rounded-xl overflow-hidden bg-[#FDFBF7] shrink-0 border border-orange-50 shadow-inner">
+                    <img 
+                      src={getProductImage(product.image_url)} 
+                      alt={product.name} 
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <h4 className="font-bold text-sm text-slate-800 truncate mb-1">{product.name}</h4>
+                    <p className="text-sm font-black text-[#D35400]">NT$ {product.price.toLocaleString()}</p>
+                  </div>
+                  <div className="shrink-0">
+                    {product.is_approved ? (
+                      <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black">已上架</Badge>
+                    ) : (
+                      <Badge className="rounded-lg text-[10px] py-1 bg-orange-50 text-[#D35400] border-orange-100 font-black">審核中</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
     </main>
   );
