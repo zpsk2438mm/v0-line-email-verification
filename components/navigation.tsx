@@ -23,25 +23,24 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-// 這裡務必與 ProfilePage 一致
 const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df", "Uf7c4668bc96315297b02b0a67fff88ea"];
 
+// 確保這裡有 "我的商品"
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
+  { href: "/profile", label: "我的商品", icon: Package }, // 指向個人中心查看列表
 ];
 
 export function Navigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { userEmail, userProfile, lineUserId, closeWindow } = useLiff();
+  const { userEmail, userProfile, lineUserId, closeWindow, isAuthenticated } = useLiff();
   const isAdmin = lineUserId && ADMIN_LINE_IDS.includes(lineUserId);
 
   const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("stust_authenticated");
-    }
+    if (typeof window !== "undefined") localStorage.removeItem("stust_authenticated");
     closeWindow();
   };
 
@@ -52,7 +51,7 @@ export function Navigation() {
           <Menu className="h-6 w-6 text-primary" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-80 p-0 flex flex-col border-r-0 shadow-2xl">
+      <SheetContent side="left" className="w-80 p-0 flex flex-col border-r-0 shadow-2xl bg-white">
         <SheetHeader className="p-6 bg-primary/5">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
@@ -62,10 +61,11 @@ export function Navigation() {
           </div>
         </SheetHeader>
 
-        {(userEmail || userProfile) && (
+        {/* 用戶資訊區塊 - 增加 isAuthenticated 判斷 */}
+        {isAuthenticated ? (
           <div className="px-4 py-4">
             <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-3 border border-slate-100">
-              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white">
+              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white text-slate-300">
                 {userProfile?.pictureUrl ? (
                   <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" />
                 ) : (
@@ -73,11 +73,13 @@ export function Navigation() {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate text-slate-800">{userProfile?.displayName || "校園用戶"}</p>
-                <p className="text-[10px] text-slate-400 truncate">{userEmail}</p>
+                <p className="text-sm font-bold truncate text-slate-800">{userProfile?.displayName || "載入中..."}</p>
+                <p className="text-[10px] text-slate-400 truncate">{userEmail || "驗證收件中..."}</p>
               </div>
             </div>
           </div>
+        ) : (
+            <div className="px-6 py-4 text-xs text-slate-400 italic">請從個人中心登入以查看完整資訊</div>
         )}
 
         <nav className="flex-1 px-4 py-2 space-y-6">
@@ -86,7 +88,7 @@ export function Navigation() {
               const Icon = item.icon;
               const isActive = pathname === item.href;
               return (
-                <li key={item.href}>
+                <li key={item.label}>
                   <Link
                     href={item.href}
                     onClick={() => setOpen(false)}
