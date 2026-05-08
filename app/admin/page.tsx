@@ -5,303 +5,194 @@ import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  CheckCircle,
-  XCircle,
-  Clock,
-  ShieldAlert,
-  Package,
-  Calendar,
+import { 
+  ShieldCheck, 
+  CheckCircle, 
+  XCircle, 
+  ExternalLink, 
+  Loader2,
+  AlertCircle
 } from "lucide-react";
+
+// 管理員信箱名單
+const ADMIN_EMAILS = ["你的管理員信箱@gmail.com"];
 
 interface Product {
   id: string;
   name: string;
   price: number;
+  description: string;
   category: string;
-  description?: string;
   is_approved: boolean;
   created_at: string;
-  image_url?: any;
-  images?: any;
+  line_user_id: string;
+  image_url: any;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  electronics: "電子產品",
-  books: "書籍教材",
-  clothing: "服飾配件",
-  furniture: "家具家電",
-  sports: "運動用品",
-  other: "其他",
-};
-
-const ADMIN_LINE_IDS = [
-  "Ued7dfd77b63273d497cebc62f1a7b1df",
-  "Uf7c4668bc96315297b02b0a67fff88ea",
-];
-
-export default function AdminReviewPage() {
-  const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
+export default function AdminPage() {
+  const { userEmail, isAuthenticated, isLoading: liffLoading } = useLiff();
   const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const isAdmin = userEmail && ADMIN_EMAILS.includes(userEmail);
 
   useEffect(() => {
-    if (!liffLoading && isAuthenticated && lineUserId) {
-      if (ADMIN_LINE_IDS.includes(lineUserId)) {
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(false);
-      }
+    if (liffLoading) return;
+    if (isAuthenticated && isAdmin) {
+      fetchPendingProducts();
+    } else {
+      setLoading(false);
     }
-  }, [lineUserId, isAuthenticated, liffLoading]);
+  }, [isAuthenticated, isAdmin, liffLoading]);
 
-  useEffect(() => {
-    if (!isAdmin) {
-      setIsLoading(false);
-      return;
-    }
-
-    async function fetchPendingProducts() {
-      try {
-        setIsLoading(true);
-        const { data, error } = await supabase
-          .from("products")
-          .select("*")
-          .eq("is_approved", false)
-          .order("created_at", { ascending: true });
-
-        if (error) {
-          console.error("獲取待審核商品失敗:", error);
-          return;
-        }
-
-        setPendingProducts(data || []);
-      } catch (err) {
-        console.error("未預期的錯誤:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    fetchPendingProducts();
-  }, [isAdmin]);
-
-  const handleReview = async (productId: string, action: "approve" | "reject") => {
+  async function fetchPendingProducts() {
     try {
-      if (action === "approve") {
-        const { error } = await supabase
-          .from("products")
-          .update({ is_approved: true })
-          .eq("id", productId);
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("is_approved", false)
+        .order("created_at", { ascending: true });
 
-        if (error) throw error;
-        alert("🎉 商品已成功核准上架！");
-      } else {
-        const { error } = await supabase
-          .from("products")
-          .delete()
-          .eq("id", productId);
-
-        if (error) throw error;
-        alert("❌ 已拒絕並刪除該商品上架申請。");
-      }
-      setPendingProducts((prev) => prev.filter((p) => p.id !== productId));
+      if (error) throw error;
+      setPendingProducts(data || []);
     } catch (err) {
-      console.error("更新審核狀態出錯:", err);
-      alert("操作失敗，請重試！");
+      console.error("抓取待審核商品失敗:", err);
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  const getCleanImageUrl = (product: Product) => {
-    let raw = product.image_url || product.images;
-    if (!raw) return "";
-    let urlString = "";
-    if (Array.isArray(raw)) {
-      urlString = raw[0] || "";
-    } else if (typeof raw === "string") {
-      if (raw.trim().startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          urlString = Array.isArray(parsed) ? parsed[0] : parsed;
-        } catch (e) {
-          urlString = raw;
-        }
-      } else {
-        urlString = raw;
-      }
-    } else {
-      urlString = String(raw);
+  async function handleApprove(id: string) {
+    try {
+      setActionLoading(id);
+      const { error } = await supabase
+        .from("products")
+        .update({ is_approved: true })
+        .eq("id", id);
+      if (error) throw error;
+      setPendingProducts((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      alert("審核失敗");
+    } finally {
+      setActionLoading(null);
     }
-    if (!urlString) return "";
-    let clean = urlString.trim().replace(/^\[['"]?/, "").replace(/['"]?\]$/, "").replace(/\\/g, "").replace(/^['"]/, "").replace(/['"]$/, "").trim();
-    if (clean.startsWith("http://") || clean.startsWith("https://")) {
-      return clean;
-    } else {
-      const cleanPath = clean.replace(/^\//, "");
-      return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath.replace("product-images/", "")}`;
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("確定要刪除此商品嗎？")) return;
+    try {
+      setActionLoading(id);
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) throw error;
+      setPendingProducts((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      alert("刪除失敗");
+    } finally {
+      setActionLoading(null);
     }
-  };
+  }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString("zh-TW", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  };
-
-  if (liffLoading || (isAuthenticated && isLoading && isAdmin)) {
+  if (liffLoading || loading) {
     return (
-      <main className="min-h-screen bg-[#FDFBF7]">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-          <Navigation />
-          <h1 className="text-lg font-bold text-slate-800">審核後台載入中...</h1>
-        </header>
-        <div className="mx-auto max-w-lg px-4 pt-12 space-y-4">
-          <Skeleton className="h-40 w-full rounded-2xl" />
-          <Skeleton className="h-40 w-full rounded-2xl" />
-        </div>
-      </main>
+      <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+      </div>
     );
   }
 
-  // 權限不足的錯誤畫面 - 也統一為橘色調
-  if (!isAuthenticated || !isAdmin) {
+  if (!isAdmin) {
     return (
-      <main className="min-h-screen bg-[#FDFBF7]">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-          <Navigation />
-          <h1 className="text-lg font-bold text-slate-800">系統管理後台</h1>
-        </header>
-        <div className="min-h-[75vh] flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm border-none shadow-lg bg-white rounded-3xl overflow-hidden">
-            <div className="h-2 bg-[#D35400]" /> {/* 頂部橘色條 */}
-            <CardContent className="pt-8 pb-8 text-center space-y-4 px-6">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-50 mx-auto">
-                <ShieldAlert className="h-8 w-8 text-[#D35400]" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-black text-slate-800">⚠️ 存取權限不足</h2>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  本頁面僅限系統管理員進入。<br/>若您是管理員，請確認已正確登入。
-                </p>
-              </div>
-              <Button asChild className="w-full bg-[#D35400] hover:bg-[#E67E22] rounded-xl font-bold">
-                <Link href="/">返回市集首頁</Link>
-              </Button>
-            </CardContent>
-          </Card>
+      <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6 text-center">
+        <div className="space-y-4">
+          <AlertCircle className="h-16 w-16 text-rose-500 mx-auto" />
+          <h1 className="text-2xl font-bold text-slate-800">權限不足</h1>
+          <p className="text-slate-500">此頁面僅供系統管理員訪問</p>
+          <Button asChild className="bg-[#D35400] text-white rounded-xl">
+            <a href="/">返回首頁</a>
+          </Button>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#FDFBF7] pb-12 text-left">
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+    <main className="min-h-screen bg-[#FDFBF7] pb-20">
+      <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
-          <CheckCircle className="h-5 w-5 text-white" />
+        <div className="bg-slate-900 p-2 rounded-lg">
+          <ShieldCheck className="h-5 w-5 text-white" />
         </div>
-        <div>
-          <h1 className="text-sm font-bold text-slate-800">商品審核中心</h1>
-          <p className="text-[10px] text-[#D35400] font-black uppercase tracking-tighter">System Administrator</p>
-        </div>
+        <h1 className="text-lg font-bold text-slate-800">管理員審核</h1>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 pt-6 space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#D35400]" />
-            待處理申請 ({pendingProducts.length})
-          </h3>
+      <div className="p-4 max-w-2xl mx-auto space-y-4">
+        <div className="flex items-center justify-between px-2">
+          <h2 className="font-bold text-slate-600">待審核列表 ({pendingProducts.length})</h2>
+          <Button onClick={fetchPendingProducts} variant="ghost" size="sm" className="text-[#D35400] text-xs">
+            重新整理
+          </Button>
         </div>
 
         {pendingProducts.length === 0 ? (
-          <Card className="py-20 text-center border-2 border-dashed border-orange-100 bg-white rounded-3xl shadow-sm">
-            <CardContent className="space-y-4">
-              <div className="h-16 w-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle className="h-10 w-10 text-emerald-500" />
-              </div>
-              <div>
-                <p className="text-base font-bold text-slate-800">暫無待審核商品</p>
-                <p className="text-xs text-slate-400 mt-1">目前所有同學提交的物件都已處理完畢。</p>
-              </div>
-            </CardContent>
+          <Card className="p-12 text-center border-dashed border-2 border-slate-200 bg-white/50 rounded-[32px]">
+            <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-4 opacity-20" />
+            <p className="text-slate-400 font-medium">目前沒有待審核的商品</p>
           </Card>
         ) : (
-          <div className="space-y-5">
-            {pendingProducts.map((product) => {
-              const imageUrl = getCleanImageUrl(product);
-              return (
-                <Card key={product.id} className="overflow-hidden bg-white border border-orange-50 shadow-sm rounded-3xl">
-                  <div className="aspect-[16/9] bg-slate-100 relative overflow-hidden flex items-center justify-center">
-                    {imageUrl ? (
-                      <img
-                        src={imageUrl}
-                        alt={product.name}
-                        className="h-full w-full object-cover"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "/placeholder-logo.png";
-                        }}
+          <div className="grid gap-4">
+            {pendingProducts.map((product) => (
+              <Card key={product.id} className="overflow-hidden border-none shadow-sm rounded-3xl bg-white">
+                <div className="p-4 flex gap-4">
+                  <div className="h-24 w-24 rounded-2xl bg-orange-50 shrink-0 overflow-hidden border border-orange-100">
+                    {product.image_url ? (
+                      <img 
+                        src={Array.isArray(product.image_url) ? product.image_url[0] : product.image_url} 
+                        className="h-full w-full object-cover" 
+                        alt="Preview" 
                       />
                     ) : (
-                      <Package className="h-12 w-12 text-slate-300" />
+                      <div className="h-full w-full flex items-center justify-center"><AlertCircle className="text-orange-200" /></div>
                     )}
-                    <div className="absolute top-3 left-3">
-                      <Badge className="bg-white/90 backdrop-blur-sm text-[#D35400] font-black hover:bg-white text-[10px] shadow-sm border-none px-3 py-1 rounded-lg">
-                        {CATEGORY_LABELS[product.category] || product.category}
-                      </Badge>
-                    </div>
                   </div>
-
-                  <CardContent className="p-5 space-y-4">
-                    <div className="space-y-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <h4 className="font-bold text-lg text-slate-800 line-clamp-1">
-                          {product.name}
-                        </h4>
-                        <span className="text-xl font-black text-[#D35400] shrink-0">
-                          ${product.price.toLocaleString()}
-                        </span>
-                      </div>
-                      {product.description && (
-                        <div className="bg-[#FDFBF7] p-3 rounded-2xl border border-orange-50/50">
-                          <p className="text-xs text-slate-500 leading-relaxed italic">
-                            "{product.description}"
-                          </p>
-                        </div>
-                      )}
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between">
+                      <Badge className="mb-1 bg-orange-50 text-[#D35400] border-none hover:bg-orange-50 text-[10px]">
+                        {product.category}
+                      </Badge>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(product.created_at).toLocaleDateString()}
+                      </span>
                     </div>
+                    <h3 className="font-bold text-slate-800 truncate">{product.name}</h3>
+                    <p className="text-[#D35400] font-black text-sm">NT$ {product.price.toLocaleString()}</p>
+                    <p className="text-xs text-slate-400 line-clamp-1 mt-1">{product.description}</p>
+                  </div>
+                </div>
 
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold border-t pt-4 border-dashed border-slate-100">
-                      <Calendar className="h-3 w-3 text-orange-300" />
-                      提交於：{formatDate(product.created_at)}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                      <Button
-                        onClick={() => handleReview(product.id, "reject")}
-                        variant="outline"
-                        className="border-rose-100 text-rose-500 hover:bg-rose-50 hover:text-rose-600 font-bold rounded-2xl h-12"
-                      >
-                        <XCircle className="h-4 w-4 mr-2" />
-                        拒絕申請
-                      </Button>
-                      <Button
-                        onClick={() => handleReview(product.id, "approve")}
-                        className="bg-[#D35400] hover:bg-[#E67E22] text-white font-bold rounded-2xl h-12 shadow-lg shadow-orange-100"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        核准上架
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                <div className="px-4 pb-4 flex gap-2">
+                  <Button 
+                    onClick={() => handleApprove(product.id)}
+                    disabled={!!actionLoading}
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-11 font-bold shadow-sm"
+                  >
+                    {actionLoading === product.id ? <Loader2 className="animate-spin" /> : "准許上架"}
+                  </Button>
+                  <Button 
+                    onClick={() => handleDelete(product.id)}
+                    disabled={!!actionLoading}
+                    variant="ghost"
+                    className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl h-11 font-bold"
+                  >
+                    拒絕並刪除
+                  </Button>
+                </div>
+              </Card>
+            ))}
           </div>
         )}
       </div>
