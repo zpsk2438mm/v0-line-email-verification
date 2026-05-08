@@ -34,10 +34,10 @@ interface UserProfile {
 interface LiffContextType {
   isReady: boolean;
   isAuthenticated: boolean;
-  userEmail: string | null;
+  userEmail: string | null;      // 👈 確保導出驗證後的信箱
   lineUserId: string | null;
   userProfile: UserProfile | null; 
-  login: () => void;
+  login: () => void;             // 👈 導出登入方法
   sendLineMessage: (productName: string, price: number) => Promise<boolean>;
   closeWindow: () => void;
 }
@@ -71,6 +71,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     async function initialize() {
       const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
       
+      // 開發環境模擬資料
       if (isLocal) {
         setUserProfile({ 
           displayName: "南台測試員", 
@@ -87,10 +88,12 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       try {
         await liff.init({ liffId: LIFF_ID });
         if (!liff.isLoggedIn()) {
+          // 不在初始化時自動強制 login，交給頁面上的按鈕觸發更好
           setIsLoading(false);
           return;
         }
 
+        // 獲取 LINE 個人資料與 Token 資訊
         const [profile, token] = await Promise.all([
           liff.getProfile(),
           liff.getDecodedIDToken()
@@ -102,10 +105,12 @@ export function LiffProvider({ children }: { children: ReactNode }) {
         setLineUserId(profile.userId);
         setUserEmail(email);
 
+        // 自動驗證：如果 LINE 帳號本身就有學校信箱則直接過關
         if (email?.toLowerCase().endsWith(ALLOWED_DOMAIN)) {
           setIsAuthenticated(true);
           setIsReady(true);
         } else {
+          // 否則需要進行手動 Email 驗證流程
           setNeedsVerification(true);
         }
       } catch (err) {
@@ -125,12 +130,14 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     setNeedsVerification(false);
   };
 
+  // 封裝登入方法
   const login = () => liff.login();
 
   if (isLoading && !needsVerification) {
     return <LoadingScreen />;
   }
   
+  // 如果需要驗證且尚未通過認證，顯示驗證表單
   if (needsVerification && !isAuthenticated) {
     return <VerificationForm onVerified={handleVerified} />;
   }
@@ -152,7 +159,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
 }
 
 // ==========================================
-// Verification Form - 南臺橘配色版
+// Verification Form (UI 邏輯優化版)
 // ==========================================
 function VerificationForm({ onVerified }: { onVerified: (email: string) => void }) {
   const [schoolEmail, setSchoolEmail] = useState("");
@@ -179,17 +186,16 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6] p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
       <div className="mb-8 text-center">
-        {/* 圖示顏色改為橘色 */}
-        <div className="w-16 h-16 bg-[#D95300] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-100">
+        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
           <GraduationCap className="w-9 h-9 text-white" />
         </div>
         <h1 className="text-xl font-bold text-slate-900">南台二手物平台</h1>
         <p className="text-slate-500 text-sm">請驗證您的學校信箱以繼續</p>
       </div>
 
-      <div className="w-full max-w-sm bg-white p-6 rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50">
+      <div className="w-full max-w-sm bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700 ml-1">學校信箱</label>
@@ -199,16 +205,12 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
                 placeholder="學號@stust.edu.tw"
                 value={schoolEmail}
                 onChange={(e) => { setSchoolEmail(e.target.value); setError(""); }}
-                className="pl-10 h-11 rounded-xl focus-visible:ring-[#D95300] border-slate-200"
+                className="pl-10 h-11 rounded-xl"
               />
             </div>
             {error && !showOtpDialog && <p className="text-xs text-red-500 ml-1 font-medium">{error}</p>}
           </div>
-          {/* 按鈕顏色改為橘色 */}
-          <Button 
-            onClick={handleSendCode} 
-            className="w-full h-11 rounded-xl font-bold bg-[#D95300] hover:bg-[#B84600] transition-all active:scale-[0.98] text-white"
-          >
+          <Button onClick={handleSendCode} className="w-full h-11 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 transition-colors">
             <ShieldCheck className="w-4 h-4 mr-2" /> 發送驗證碼
           </Button>
           <p className="text-[10px] text-center text-slate-400 pt-2 font-medium tracking-widest uppercase">STUST Campus Only</p>
@@ -225,13 +227,13 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
             <DialogTitle className="text-xl">驗證碼已發送</DialogTitle>
             <DialogDescription className="text-center pt-2">
               <p className="text-sm mb-4">系統已將驗證碼寄至您的信箱：<br/><span className="font-bold text-slate-900">{schoolEmail}</span></p>
-              <div className="bg-orange-50/50 p-4 rounded-2xl border-2 border-dashed border-orange-200">
-                <p className="text-[10px] text-orange-400 font-bold uppercase tracking-widest mb-1">測試環境驗證碼</p>
-                <p className="text-3xl font-black text-[#D95300] tracking-[0.2em]">{VERIFICATION_CODE}</p>
+              <div className="bg-slate-50 p-4 rounded-2xl border-2 border-dashed border-slate-200">
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">測試環境驗證碼</p>
+                <p className="text-3xl font-black text-blue-600 tracking-[0.2em]">{VERIFICATION_CODE}</p>
               </div>
             </DialogDescription>
           </DialogHeader>
-          <Button onClick={() => { setShowTipDialog(false); setShowOtpDialog(true); }} className="w-full rounded-xl h-12 font-bold bg-[#D95300] hover:bg-[#B84600] mt-4 text-white">
+          <Button onClick={() => { setShowTipDialog(false); setShowOtpDialog(true); }} className="w-full rounded-xl h-12 font-bold bg-blue-600 mt-4">
             前往輸入
           </Button>
         </DialogContent>
@@ -248,11 +250,7 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
             <InputOTP maxLength={6} value={otpValue} onChange={setOtpValue}>
               <InputOTPGroup className="gap-2">
                 {[...Array(6)].map((_, i) => (
-                  <InputOTPSlot 
-                    key={i} 
-                    index={i} 
-                    className="w-11 h-14 text-xl font-bold rounded-xl border-slate-200 focus:ring-[#D95300] focus:border-[#D95300]" 
-                  />
+                  <InputOTPSlot key={i} index={i} className="w-11 h-14 text-xl font-bold rounded-xl border-slate-200" />
                 ))}
               </InputOTPGroup>
             </InputOTP>
@@ -260,7 +258,7 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
             <Button 
               onClick={handleVerify} 
               disabled={otpValue.length !== 6} 
-              className="w-full h-12 rounded-xl font-bold bg-[#D95300] hover:bg-[#B84600] text-white"
+              className="w-full h-12 rounded-xl font-bold bg-blue-600"
             >
               確認驗證
             </Button>
@@ -274,7 +272,7 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
 function LoadingScreen() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4">
-      <Loader2 className="w-10 h-10 animate-spin text-[#D95300]" />
+      <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
       <p className="text-sm text-slate-400 font-medium animate-pulse">正在與 LINE 連線...</p>
     </div>
   );
