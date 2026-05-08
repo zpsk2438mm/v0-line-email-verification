@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ShieldAlert, Clock, CheckCircle } from "lucide-react";
+import { ShieldAlert, Package, CheckCircle } from "lucide-react";
 
 const ADMIN_LINE_IDS = [
   "Ued7dfd77b63273d497cebc62f1a7b1df",
@@ -31,17 +31,26 @@ export default function AdminReviewPage() {
     }
   }, [isAdmin]);
 
-  // 審核動作：只需更新資料庫，讓 Webhook 去觸發通知
+  // 🛠️ 圖片網址處理函數
+  const getImageUrl = (path: any) => {
+    if (!path) return "";
+    let cleanPath = typeof path === 'string' ? path : JSON.stringify(path);
+    cleanPath = cleanPath.replace(/[\[\]"']/g, '').trim().replace(/^\//, '');
+    
+    if (cleanPath.startsWith('http')) return cleanPath;
+    
+    // 請確認你的 Bucket 名稱是否為 product-images
+    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
+  };
+
   const handleReview = async (productId: string, isApprove: boolean) => {
     try {
       if (isApprove) {
         await supabase.from("products").update({ is_approved: true }).eq("id", productId);
-        alert("已核准！LINE 通知將透過 Webhook 發送。");
+        alert("✅ 已核准，Webhook 將發送 LINE 通知");
       } else {
-        // 如果拒絕，為了觸發通知，建議先 update 再 delete，或直接 update 成 rejected 狀態
-        // 這裡我們直接刪除 (注意：刪除可能不會觸發含有 old_record 的通知，視 Webhook 設定而定)
         await supabase.from("products").delete().eq("id", productId);
-        alert("已拒絕並刪除。");
+        alert("❌ 已拒絕並刪除");
       }
       setProducts(prev => prev.filter(p => p.id !== productId));
     } catch (err) {
@@ -49,24 +58,35 @@ export default function AdminReviewPage() {
     }
   };
 
-  if (!isAdmin) return <div className="p-20 text-center"><ShieldAlert className="mx-auto h-12 w-12 text-red-500"/><p className="mt-4">權限不足 (ID: {lineUserId})</p></div>;
+  if (!isAdmin) return <div className="p-20 text-center"><ShieldAlert className="mx-auto h-12 w-12 text-red-500"/><p>權限不足</p></div>;
 
   return (
-    <main className="p-4 max-w-lg mx-auto pb-20">
-      <div className="flex items-center gap-2 mb-6"><Navigation /><h1 className="font-bold">審核中心 ({products.length})</h1></div>
+    <main className="p-4 max-w-lg mx-auto">
+      <div className="flex items-center gap-2 mb-6"><Navigation /><h1 className="font-bold">審核中心</h1></div>
       <div className="space-y-4">
-        {products.map(p => (
-          <Card key={p.id} className="overflow-hidden border-none shadow-sm">
-            <CardContent className="p-4">
-              <h3 className="font-bold mb-2">{p.name}</h3>
-              <div className="flex gap-2">
-                <Button onClick={() => handleReview(p.id, true)} className="flex-1 bg-emerald-500 text-white">核准</Button>
-                <Button onClick={() => handleReview(p.id, false)} variant="outline" className="flex-1 text-red-500 border-red-100">拒絕</Button>
+        {products.map(p => {
+          const imgUrl = getImageUrl(p.image_url || p.images);
+          return (
+            <Card key={p.id} className="overflow-hidden border shadow-sm">
+              <div className="aspect-video bg-gray-100 flex items-center justify-center overflow-hidden">
+                {imgUrl ? (
+                  <img src={imgUrl} alt="product" className="w-full h-full object-cover" />
+                ) : (
+                  <Package className="text-gray-300 h-10 w-10" />
+                )}
               </div>
-            </CardContent>
-          </Card>
-        ))}
-        {products.length === 0 && <div className="text-center py-20 text-gray-400"><CheckCircle className="mx-auto mb-2"/>全部處理完畢</div>}
+              <CardContent className="p-4">
+                <h3 className="font-bold text-lg mb-1">{p.name}</h3>
+                <p className="text-rose-500 font-bold mb-4">NT$ {p.price}</p>
+                <div className="flex gap-2">
+                  <Button onClick={() => handleReview(p.id, true)} className="flex-1 bg-emerald-500 text-white">核准</Button>
+                  <Button onClick={() => handleReview(p.id, false)} variant="outline" className="flex-1 text-red-500 border-red-100">拒絕</Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {products.length === 0 && <div className="text-center py-20 text-gray-400">目前無待審核商品</div>}
       </div>
     </main>
   );
