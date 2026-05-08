@@ -11,10 +11,11 @@ import {
   ShieldCheck, 
   CheckCircle, 
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Image as ImageIcon
 } from "lucide-react";
 
-// 🛡️ 已填入你的專屬 LINE User ID
+// 🛡️ 管理員 ID 名單
 const ADMIN_IDS = ["Uf7c4668bc96315297b02b0a67fff88ea"];
 
 interface Product {
@@ -35,7 +36,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // 驗證邏輯
+  // 驗證權限
   const isAdmin = lineUserId && ADMIN_IDS.includes(lineUserId);
 
   useEffect(() => {
@@ -65,6 +66,24 @@ export default function AdminPage() {
       setLoading(false);
     }
   }
+
+  // 圖片解析函數：解決破圖關鍵
+  const getImageUrl = (url: any) => {
+    const fallback = "/placeholder-logo.png";
+    if (!url) return fallback;
+    try {
+      // 如果是陣列
+      if (Array.isArray(url)) return url[0] || fallback;
+      // 如果是字串格式的 JSON 陣列 '["http..."]'
+      if (typeof url === 'string' && url.startsWith('[')) {
+        const parsed = JSON.parse(url);
+        return Array.isArray(parsed) ? parsed[0] : fallback;
+      }
+      return url;
+    } catch (e) {
+      return url;
+    }
+  };
 
   async function handleApprove(id: string) {
     try {
@@ -111,7 +130,7 @@ export default function AdminPage() {
           <AlertCircle className="h-16 w-16 text-rose-500 mx-auto" />
           <h1 className="text-2xl font-bold text-slate-800">權限不足</h1>
           <p className="text-slate-500">此頁面僅供管理員訪問</p>
-          <Button asChild className="bg-[#D35400] text-white rounded-xl">
+          <Button asChild className="bg-[#D35400] text-white rounded-xl px-8 h-12">
             <a href="/">返回首頁</a>
           </Button>
         </div>
@@ -126,19 +145,19 @@ export default function AdminPage() {
         <div className="bg-slate-900 p-2 rounded-lg">
           <ShieldCheck className="h-5 w-5 text-white" />
         </div>
-        <h1 className="text-lg font-bold text-slate-800">管理員審核</h1>
+        <h1 className="text-lg font-bold text-slate-800">管理員審核系統</h1>
       </header>
 
       <div className="p-4 max-w-2xl mx-auto space-y-4">
         <div className="flex items-center justify-between px-2">
           <h2 className="font-bold text-slate-600">待審核列表 ({pendingProducts.length})</h2>
-          <Button onClick={fetchPendingProducts} variant="ghost" size="sm" className="text-[#D35400] text-xs font-bold">
+          <Button onClick={fetchPendingProducts} variant="ghost" size="sm" className="text-[#D35400] font-bold">
             重新整理
           </Button>
         </div>
 
         {pendingProducts.length === 0 ? (
-          <Card className="p-12 text-center border-dashed border-2 border-slate-200 bg-white/50 rounded-[32px]">
+          <Card className="p-16 text-center border-dashed border-2 border-slate-200 bg-white/50 rounded-[32px]">
             <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-4 opacity-20" />
             <p className="text-slate-400 font-medium">目前沒有待審核的商品</p>
           </Card>
@@ -147,26 +166,32 @@ export default function AdminPage() {
             {pendingProducts.map((product) => (
               <Card key={product.id} className="overflow-hidden border-none shadow-sm rounded-3xl bg-white">
                 <div className="p-4 flex gap-4 text-left">
-                  <div className="h-24 w-24 rounded-2xl bg-orange-50 shrink-0 overflow-hidden border border-orange-100">
-                    <img 
-                      src={Array.isArray(product.image_url) ? product.image_url[0] : (typeof product.image_url === 'string' && product.image_url.startsWith('[') ? JSON.parse(product.image_url)[0] : product.image_url)} 
-                      className="h-full w-full object-cover" 
-                      alt="Preview" 
-                      onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
-                    />
+                  {/* 圖片區塊：加入自動解析與預防破圖 */}
+                  <div className="h-24 w-24 rounded-2xl bg-orange-50 shrink-0 overflow-hidden border border-orange-100 flex items-center justify-center">
+                    {product.image_url ? (
+                      <img 
+                        src={getImageUrl(product.image_url)} 
+                        className="h-full w-full object-cover" 
+                        alt="Preview" 
+                        onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
+                      />
+                    ) : (
+                      <ImageIcon className="text-orange-200 h-8 w-8" />
+                    )}
                   </div>
                   
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
-                      <Badge className="mb-1 bg-orange-50 text-[#D35400] border-none text-[10px]">
+                      <Badge className="mb-1 bg-orange-50 text-[#D35400] border-none text-[10px] px-2 py-0.5">
                         {product.category}
                       </Badge>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-[10px] text-slate-400 font-medium">
                         {new Date(product.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    <h3 className="font-bold text-slate-800 truncate">{product.name}</h3>
-                    <p className="text-[#D35400] font-black text-sm">NT$ {product.price.toLocaleString()}</p>
+                    <h3 className="font-bold text-slate-800 truncate text-base">{product.name}</h3>
+                    <p className="text-[#D35400] font-black text-sm mt-1">NT$ {product.price.toLocaleString()}</p>
+                    <p className="text-[11px] text-slate-400 line-clamp-1 mt-1">{product.description}</p>
                   </div>
                 </div>
 
@@ -174,15 +199,15 @@ export default function AdminPage() {
                   <Button 
                     onClick={() => handleApprove(product.id)}
                     disabled={!!actionLoading}
-                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-11 font-bold shadow-sm"
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-11 font-bold shadow-sm transition-all"
                   >
-                    {actionLoading === product.id ? <Loader2 className="animate-spin h-4 w-4" /> : "准許上架"}
+                    {actionLoading === product.id ? <Loader2 className="animate-spin h-5 w-5" /> : "准許上架"}
                   </Button>
                   <Button 
                     onClick={() => handleDelete(product.id)}
                     disabled={!!actionLoading}
                     variant="ghost"
-                    className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl h-11 font-bold"
+                    className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl h-11 font-bold transition-all"
                   >
                     拒絕刪除
                   </Button>
