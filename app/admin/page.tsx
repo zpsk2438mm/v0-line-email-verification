@@ -109,7 +109,6 @@ export default function AdminReviewPage() {
         if (error) throw error;
         alert("❌ 已拒絕並刪除該商品上架申請。");
       }
-
       setPendingProducts((prev) => prev.filter((p) => p.id !== productId));
     } catch (err) {
       console.error("更新審核狀態出錯:", err);
@@ -127,11 +126,7 @@ export default function AdminReviewPage() {
       if (raw.trim().startsWith("[")) {
         try {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            urlString = parsed[0] || "";
-          } else {
-            urlString = parsed;
-          }
+          urlString = Array.isArray(parsed) ? parsed[0] : parsed;
         } catch (e) {
           urlString = raw;
         }
@@ -142,34 +137,18 @@ export default function AdminReviewPage() {
       urlString = String(raw);
     }
     if (!urlString) return "";
-    let clean = urlString
-      .trim()
-      .replace(/^\[['"]?/, "")
-      .replace(/['"]?\]$/, "")
-      .replace(/\\/g, "")
-      .replace(/^['"]/, "")
-      .replace(/['"]$/, "")
-      .trim();
+    let clean = urlString.trim().replace(/^\[['"]?/, "").replace(/['"]?\]$/, "").replace(/\\/g, "").replace(/^['"]/, "").replace(/['"]$/, "").trim();
     if (clean.startsWith("http://") || clean.startsWith("https://")) {
       return clean;
     } else {
       const cleanPath = clean.replace(/^\//, "");
-      if (cleanPath.startsWith("product-images/")) {
-        return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/${cleanPath}`;
-      } else {
-        return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
-      }
+      return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath.replace("product-images/", "")}`;
     }
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleString("zh-TW", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return date.toLocaleString("zh-TW", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
   if (liffLoading || (isAuthenticated && isLoading && isAdmin)) {
@@ -187,6 +166,7 @@ export default function AdminReviewPage() {
     );
   }
 
+  // 權限不足的錯誤畫面 - 也統一為橘色調
   if (!isAuthenticated || !isAdmin) {
     return (
       <main className="min-h-screen bg-[#FDFBF7]">
@@ -195,17 +175,21 @@ export default function AdminReviewPage() {
           <h1 className="text-lg font-bold text-slate-800">系統管理後台</h1>
         </header>
         <div className="min-h-[75vh] flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm border-none shadow-lg bg-white rounded-2xl">
+          <Card className="w-full max-w-sm border-none shadow-lg bg-white rounded-3xl overflow-hidden">
+            <div className="h-2 bg-[#D35400]" /> {/* 頂部橘色條 */}
             <CardContent className="pt-8 pb-8 text-center space-y-4 px-6">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50 mx-auto">
-                <ShieldAlert className="h-8 w-8 text-red-500" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-50 mx-auto">
+                <ShieldAlert className="h-8 w-8 text-[#D35400]" />
               </div>
-              <div className="space-y-1.5">
-                <h2 className="text-base font-bold text-slate-800">⚠️ 存取權限不足</h2>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  本頁面僅限系統管理員進入。
+              <div className="space-y-2">
+                <h2 className="text-lg font-black text-slate-800">⚠️ 存取權限不足</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  本頁面僅限系統管理員進入。<br/>若您是管理員，請確認已正確登入。
                 </p>
               </div>
+              <Button asChild className="w-full bg-[#D35400] hover:bg-[#E67E22] rounded-xl font-bold">
+                <Link href="/">返回市集首頁</Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -214,106 +198,103 @@ export default function AdminReviewPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#FDFBF7] pb-12">
+    <main className="min-h-screen bg-[#FDFBF7] pb-12 text-left">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        {/* 改為主題橘色 */}
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
           <CheckCircle className="h-5 w-5 text-white" />
         </div>
         <div>
           <h1 className="text-sm font-bold text-slate-800">商品審核中心</h1>
-          <p className="text-[10px] text-[#D35400] font-medium">系統管理員專屬</p>
+          <p className="text-[10px] text-[#D35400] font-black uppercase tracking-tighter">System Administrator</p>
         </div>
       </header>
 
       <div className="mx-auto max-w-lg px-4 pt-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
             <Clock className="h-4 w-4 text-[#D35400]" />
-            待處理商品 ({pendingProducts.length})
+            待處理申請 ({pendingProducts.length})
           </h3>
         </div>
 
         {pendingProducts.length === 0 ? (
-          <Card className="py-16 text-center border-2 border-dashed border-slate-200 bg-white rounded-2xl">
-            <CardContent className="space-y-3">
-              <CheckCircle className="h-12 w-12 mx-auto text-emerald-500" />
-              <p className="text-sm font-bold text-slate-700">太棒了，目前沒有待審核商品！</p>
-              <p className="text-xs text-slate-400">所有同學提交的物件均已處理完畢。</p>
+          <Card className="py-20 text-center border-2 border-dashed border-orange-100 bg-white rounded-3xl shadow-sm">
+            <CardContent className="space-y-4">
+              <div className="h-16 w-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle className="h-10 w-10 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-base font-bold text-slate-800">暫無待審核商品</p>
+                <p className="text-xs text-slate-400 mt-1">目前所有同學提交的物件都已處理完畢。</p>
+              </div>
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {pendingProducts.map((product) => {
               const imageUrl = getCleanImageUrl(product);
-
               return (
-                <Card key={product.id} className="overflow-hidden bg-white border-none shadow-sm rounded-2xl">
-                  <div className="aspect-[16/10] bg-slate-50 relative overflow-hidden flex items-center justify-center">
+                <Card key={product.id} className="overflow-hidden bg-white border border-orange-50 shadow-sm rounded-3xl">
+                  <div className="aspect-[16/9] bg-slate-100 relative overflow-hidden flex items-center justify-center">
                     {imageUrl ? (
                       <img
                         src={imageUrl}
                         alt={product.name}
                         className="h-full w-full object-cover"
+                        referrerPolicy="no-referrer"
                         onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                          const parent = e.currentTarget.parentElement;
-                          if (parent) {
-                            parent.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-slate-50"><svg class="h-8 w-8 text-slate-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
-                          }
+                          (e.target as HTMLImageElement).src = "/placeholder-logo.png";
                         }}
                       />
                     ) : (
                       <Package className="h-12 w-12 text-slate-300" />
                     )}
                     <div className="absolute top-3 left-3">
-                      <Badge className="bg-white/95 text-slate-700 font-bold hover:bg-white text-xs shadow-sm border-none">
+                      <Badge className="bg-white/90 backdrop-blur-sm text-[#D35400] font-black hover:bg-white text-[10px] shadow-sm border-none px-3 py-1 rounded-lg">
                         {CATEGORY_LABELS[product.category] || product.category}
                       </Badge>
                     </div>
                   </div>
 
-                  <CardContent className="p-4 space-y-3">
+                  <CardContent className="p-5 space-y-4">
                     <div className="space-y-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-bold text-base text-slate-800 line-clamp-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <h4 className="font-bold text-lg text-slate-800 line-clamp-1">
                           {product.name}
                         </h4>
-                        {/* 價格顏色改為深橘紅色 */}
-                        <span className="text-lg font-black text-[#D35400] shrink-0">
-                          NT$ {product.price.toLocaleString()}
+                        <span className="text-xl font-black text-[#D35400] shrink-0">
+                          ${product.price.toLocaleString()}
                         </span>
                       </div>
                       {product.description && (
-                        <p className="text-xs text-slate-500 leading-relaxed bg-[#FDFBF7] p-2.5 rounded-lg border border-slate-100">
-                          {product.description}
-                        </p>
+                        <div className="bg-[#FDFBF7] p-3 rounded-2xl border border-orange-50/50">
+                          <p className="text-xs text-slate-500 leading-relaxed italic">
+                            "{product.description}"
+                          </p>
+                        </div>
                       )}
                     </div>
 
-                    <div className="flex flex-col gap-1 text-[10px] text-slate-400 border-t pt-2.5 border-dashed border-slate-100">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        申請時間：{formatDate(product.created_at)}
-                      </span>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold border-t pt-4 border-dashed border-slate-100">
+                      <Calendar className="h-3 w-3 text-orange-300" />
+                      提交於：{formatDate(product.created_at)}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3 pt-1">
                       <Button
                         onClick={() => handleReview(product.id, "reject")}
                         variant="outline"
-                        className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-bold rounded-xl h-11"
+                        className="border-rose-100 text-rose-500 hover:bg-rose-50 hover:text-rose-600 font-bold rounded-2xl h-12"
                       >
-                        <XCircle className="h-4 w-4 mr-1.5" />
-                        拒絕上架
+                        <XCircle className="h-4 w-4 mr-2" />
+                        拒絕申請
                       </Button>
                       <Button
                         onClick={() => handleReview(product.id, "approve")}
-                        {/* 核准按鈕改為主題橘色 */}
-                        className="bg-[#D35400] hover:bg-[#E67E22] text-white font-bold rounded-xl h-11 shadow-sm shadow-orange-100"
+                        className="bg-[#D35400] hover:bg-[#E67E22] text-white font-bold rounded-2xl h-12 shadow-lg shadow-orange-100"
                       >
-                        <CheckCircle className="h-4 w-4 mr-1.5" />
+                        <CheckCircle className="h-4 w-4 mr-2" />
                         核准上架
                       </Button>
                     </div>
