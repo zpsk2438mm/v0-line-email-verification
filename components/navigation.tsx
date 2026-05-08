@@ -25,11 +25,12 @@ import {
 
 const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df", "Uf7c4668bc96315297b02b0a67fff88ea"];
 
+// 導航選項
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
-  { href: "/profile", label: "我的商品", icon: Package }, // 指向個人中心查看列表
+  { href: "/profile", label: "我的商品", icon: Package }, // 手機版點擊這裡會跳轉到個人中心看列表
 ];
 
 export function Navigation() {
@@ -60,6 +61,7 @@ export function Navigation() {
           </div>
         </SheetHeader>
 
+        {/* 側邊欄用戶資訊 */}
         {isAuthenticated && (
           <div className="px-4 py-4 text-left">
             <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-3 border border-slate-100">
@@ -82,6 +84,7 @@ export function Navigation() {
           <ul className="space-y-1.5">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
+              // 修正：只有路徑完全相同才顯示 active 樣式，避免個人中心與我的商品同時變色
               const isActive = pathname === item.href;
               return (
                 <li key={item.label}>
