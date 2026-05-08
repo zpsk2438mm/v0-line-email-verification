@@ -16,8 +16,8 @@ import {
   AlertCircle
 } from "lucide-react";
 
-// 管理員信箱名單
-const ADMIN_EMAILS = ["你的管理員信箱@gmail.com"];
+// 👈 請在這裡填入你的 LINE User ID (格式通常是 U1234abcd...)
+const ADMIN_IDS = ["你的LINE_USER_ID"];
 
 interface Product {
   id: string;
@@ -32,15 +32,18 @@ interface Product {
 }
 
 export default function AdminPage() {
-  const { userEmail, isAuthenticated, isLoading: liffLoading } = useLiff();
+  // 這裡改為解構出 lineUserId
+  const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
   const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const isAdmin = userEmail && ADMIN_EMAILS.includes(userEmail);
+  // 核心邏輯修改：改用 ID 判定
+  const isAdmin = lineUserId && ADMIN_IDS.includes(lineUserId);
 
   useEffect(() => {
     if (liffLoading) return;
+    
     if (isAuthenticated && isAdmin) {
       fetchPendingProducts();
     } else {
@@ -60,7 +63,7 @@ export default function AdminPage() {
       if (error) throw error;
       setPendingProducts(data || []);
     } catch (err) {
-      console.error("抓取待審核商品失敗:", err);
+      console.error("抓取失敗:", err);
     } finally {
       setLoading(false);
     }
@@ -104,13 +107,14 @@ export default function AdminPage() {
     );
   }
 
+  // 這裡會攔截非管理員用戶
   if (!isAdmin) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6 text-center">
         <div className="space-y-4">
           <AlertCircle className="h-16 w-16 text-rose-500 mx-auto" />
           <h1 className="text-2xl font-bold text-slate-800">權限不足</h1>
-          <p className="text-slate-500">此頁面僅供系統管理員訪問</p>
+          <p className="text-slate-500">此頁面僅供管理員 ({lineUserId?.slice(0,6)}...) 訪問</p>
           <Button asChild className="bg-[#D35400] text-white rounded-xl">
             <a href="/">返回首頁</a>
           </Button>
@@ -150,7 +154,7 @@ export default function AdminPage() {
                   <div className="h-24 w-24 rounded-2xl bg-orange-50 shrink-0 overflow-hidden border border-orange-100">
                     {product.image_url ? (
                       <img 
-                        src={Array.isArray(product.image_url) ? product.image_url[0] : product.image_url} 
+                        src={Array.isArray(product.image_url) ? product.image_url[0] : (typeof product.image_url === 'string' && product.image_url.startsWith('[') ? JSON.parse(product.image_url)[0] : product.image_url)} 
                         className="h-full w-full object-cover" 
                         alt="Preview" 
                       />
@@ -170,7 +174,6 @@ export default function AdminPage() {
                     </div>
                     <h3 className="font-bold text-slate-800 truncate">{product.name}</h3>
                     <p className="text-[#D35400] font-black text-sm">NT$ {product.price.toLocaleString()}</p>
-                    <p className="text-xs text-slate-400 line-clamp-1 mt-1">{product.description}</p>
                   </div>
                 </div>
 
@@ -188,7 +191,7 @@ export default function AdminPage() {
                     variant="ghost"
                     className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl h-11 font-bold"
                   >
-                    拒絕並刪除
+                    拒絕刪除
                   </Button>
                 </div>
               </Card>
