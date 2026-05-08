@@ -5,38 +5,16 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    // 支援多種 payload 格式 (Supabase Webhook vs 手動 Fetch)
-    const record = body.record || body;
-    const oldRecord = body.old_record || null;
-    const targetLineId = record.line_user_id || record.lineUserId || body.lineUserId;
+    // 兼容所有可能的欄位名稱，抓到 ID 為止
+    const targetId = body.lineUserId || body.line_user_id || body.record?.line_user_id;
+    const product = body.record || body;
+    
+    if (!targetId) return NextResponse.json({ error: "找不到 ID" }, { status: 400 });
 
-    if (!targetLineId) {
-      console.error("❌ 錯誤：找不到 Line ID");
-      return NextResponse.json({ error: "Missing Line ID" }, { status: 400 });
-    }
+    const isApprove = String(product.is_approved) === 'true';
+    const title = isApprove ? "✅ 審核通過通知" : "❌ 審核未通過";
+    const subText = isApprove ? "您的商品已成功上架！" : "很抱歉，您的商品未通過審核。";
 
-    // 邏輯：判斷是「新提交」還是「審核結果」
-    let title = "📦 商品狀態更新";
-    let color = "#D95300";
-    let subText = "您的申請正在處理中";
-
-    const isNowApproved = String(record.is_approved) === 'true';
-
-    if (!oldRecord) {
-      // INSERT 模式：剛上架
-      title = "📦 商品提交成功";
-      subText = "管理員已收到您的申請，請耐心等候審核。";
-    } else {
-      // UPDATE 模式：審核動作
-      const wasApproved = String(oldRecord.is_approved) === 'true';
-      if (isNowApproved === wasApproved) return NextResponse.json({ message: "No change" });
-
-      title = isNowApproved ? "✅ 審核通過通知" : "❌ 審核未通過";
-      color = isNowApproved ? "#1DB446" : "#E53E3E";
-      subText = isNowApproved ? "您的商品已成功上架！" : "很抱歉，您的商品未通過審核。";
-    }
-
-    // 發送 LINE
     const lineResponse = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
@@ -44,17 +22,17 @@ export async function POST(req: Request) {
         'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}`,
       },
       body: JSON.stringify({
-        to: targetLineId,
+        to: targetId,
         messages: [{
-          type: 'flex', altText: title,
+          type: 'flex',
+          altText: '商品審核結果通知',
           contents: {
             type: 'bubble',
-            hero: { type: 'image', url: record.image_url || "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=1000", size: 'full', aspectRatio: '20:13', aspectMode: 'cover' },
             body: {
               type: 'box', layout: 'vertical', contents: [
-                { type: 'text', text: title, weight: 'bold', color: color, size: 'sm' },
-                { type: 'text', text: record.name || "商品名稱", weight: 'bold', size: 'xl', margin: 'md', wrap: true },
-                { type: 'text', text: subText, color: '#666666', size: 'xs', margin: 'md', wrap: true }
+                { type: 'text', text: title, weight: 'bold', size: 'lg', color: isApprove ? "#1DB446" : "#E53E3E" },
+                { type: 'text', text: product.name || "商品通知", margin: 'md', weight: 'bold' },
+                { type: 'text', text: subText, size: 'sm', color: '#666666', margin: 'sm' }
               ]
             }
           }
