@@ -97,23 +97,23 @@ export default function MyListingsPage() {
     return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath.replace("product-images/", "")}`;
   };
 
-  // --- 修改標頭區塊：加入 Navigation ---
+  // --- 修改標頭區塊：加入 Navigation，調整顏色 ---
   const Header = () => (
     <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
       <Navigation /> {/* 👈 三條線漢堡選單放在這裡 */}
       <Link href="/products">
-        <Button variant="ghost" size="icon" className="h-10 w-10">
+        <Button variant="ghost" size="icon" className="h-10 w-10 text-[#D35400]">
           <ChevronLeft className="h-5 w-5" />
         </Button>
       </Link>
-      <div className="h-6 w-[1px] bg-slate-200 mx-1" /> {/* 分隔線，讓視覺更整齊 */}
+      <div className="h-6 w-[1px] bg-slate-200 mx-1" /> {/* 分隔線 */}
       <h1 className="text-lg font-bold text-slate-800">我的商品</h1>
     </header>
   );
 
   if (liffLoading || isLoadingProducts) {
     return (
-      <main className="min-h-screen bg-slate-50">
+      <main className="min-h-screen bg-[#FDFBF7]">
         <Header />
         <div className="p-4 space-y-4 max-w-md mx-auto">
           <Skeleton className="h-32 w-full rounded-2xl" />
@@ -124,16 +124,16 @@ export default function MyListingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-12">
+    <main className="min-h-screen bg-[#FDFBF7] pb-12">
       <Header />
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
         {myProducts.length === 0 ? (
-          <div className="text-center py-20 space-y-3 bg-white rounded-2xl p-6 shadow-sm">
-            <Package className="h-12 w-12 mx-auto text-slate-300" />
+          <div className="text-center py-20 space-y-3 bg-white rounded-2xl p-6 shadow-sm border border-orange-100">
+            <Package className="h-12 w-12 mx-auto text-orange-200" />
             <p className="text-sm font-medium text-slate-400">目前沒有刊登中的商品喔</p>
             <Link href="/">
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-6">
+              <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22] text-white font-bold rounded-xl px-6">
                 前往上架商品
               </Button>
             </Link>
@@ -147,11 +147,11 @@ export default function MyListingsPage() {
               return (
                 <Card key={product.id} className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
                   <CardContent className="p-4 flex gap-4">
-                    <div className="relative h-24 w-24 flex-shrink-0 bg-slate-50 rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center">
+                    <div className="relative h-24 w-24 flex-shrink-0 bg-[#FDFBF7] rounded-xl overflow-hidden border border-orange-50 flex items-center justify-center">
                       {imageUrl ? (
                         <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
                       ) : (
-                        <Package className="h-8 w-8 text-slate-300" />
+                        <Package className="h-8 w-8 text-orange-200" />
                       )}
                     </div>
 
@@ -160,21 +160,22 @@ export default function MyListingsPage() {
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-bold text-sm text-slate-800 truncate pr-2">{product.name}</h3>
                           {isApproved ? (
-                            <Badge className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border-emerald-200">
+                            <Badge className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border-emerald-100 border shadow-none">
                               <CheckCircle className="h-3 w-3 mr-1" /> 已上架
                             </Badge>
                           ) : (
-                            <Badge className="text-[10px] font-bold text-amber-600 bg-amber-50 border-amber-200">
+                            <Badge className="text-[10px] font-bold text-[#D35400] bg-orange-50 border-orange-100 border shadow-none">
                               <Clock className="h-3 w-3 mr-1" /> 審核中
                             </Badge>
                           )}
                         </div>
-                        <p className="text-sm font-black text-blue-600 mt-1">NT$ {product.price.toLocaleString()}</p>
+                        {/* 價格顏色改為南台橘 */}
+                        <p className="text-sm font-black text-[#D35400] mt-1">NT$ {product.price.toLocaleString()}</p>
                         <p className="text-[10px] text-slate-400 mt-0.5">{new Date(product.created_at).toLocaleDateString()}</p>
                       </div>
 
-                      <div className="flex justify-start mt-2 border-t pt-2 border-dashed border-slate-100">
-                        <button onClick={() => handleDelete(product.id)} className="text-xs text-red-500 font-bold flex items-center gap-1">
+                      <div className="flex justify-start mt-2 border-t pt-2 border-dashed border-orange-50">
+                        <button onClick={() => handleDelete(product.id)} className="text-xs text-red-500 font-bold flex items-center gap-1 hover:text-red-600 transition-colors">
                           <Trash2 className="h-3.5 w-3.5" /> 刪除商品
                         </button>
                       </div>
