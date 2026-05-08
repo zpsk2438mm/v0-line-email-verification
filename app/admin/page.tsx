@@ -10,14 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { 
   ShieldCheck, 
   CheckCircle, 
-  XCircle, 
-  ExternalLink, 
   Loader2,
   AlertCircle
 } from "lucide-react";
 
-// 👈 請在這裡填入你的 LINE User ID (格式通常是 U1234abcd...)
-const ADMIN_IDS = ["你的LINE_USER_ID"];
+// 🛡️ 已填入你的專屬 LINE User ID
+const ADMIN_IDS = ["Uf7c4668bc96315297b02b0a67fff88ea"];
 
 interface Product {
   id: string;
@@ -32,13 +30,12 @@ interface Product {
 }
 
 export default function AdminPage() {
-  // 這裡改為解構出 lineUserId
   const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
   const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // 核心邏輯修改：改用 ID 判定
+  // 驗證邏輯
   const isAdmin = lineUserId && ADMIN_IDS.includes(lineUserId);
 
   useEffect(() => {
@@ -107,14 +104,13 @@ export default function AdminPage() {
     );
   }
 
-  // 這裡會攔截非管理員用戶
   if (!isAdmin) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6 text-center">
         <div className="space-y-4">
           <AlertCircle className="h-16 w-16 text-rose-500 mx-auto" />
           <h1 className="text-2xl font-bold text-slate-800">權限不足</h1>
-          <p className="text-slate-500">此頁面僅供管理員 ({lineUserId?.slice(0,6)}...) 訪問</p>
+          <p className="text-slate-500">此頁面僅供管理員訪問</p>
           <Button asChild className="bg-[#D35400] text-white rounded-xl">
             <a href="/">返回首頁</a>
           </Button>
@@ -136,7 +132,7 @@ export default function AdminPage() {
       <div className="p-4 max-w-2xl mx-auto space-y-4">
         <div className="flex items-center justify-between px-2">
           <h2 className="font-bold text-slate-600">待審核列表 ({pendingProducts.length})</h2>
-          <Button onClick={fetchPendingProducts} variant="ghost" size="sm" className="text-[#D35400] text-xs">
+          <Button onClick={fetchPendingProducts} variant="ghost" size="sm" className="text-[#D35400] text-xs font-bold">
             重新整理
           </Button>
         </div>
@@ -150,22 +146,19 @@ export default function AdminPage() {
           <div className="grid gap-4">
             {pendingProducts.map((product) => (
               <Card key={product.id} className="overflow-hidden border-none shadow-sm rounded-3xl bg-white">
-                <div className="p-4 flex gap-4">
+                <div className="p-4 flex gap-4 text-left">
                   <div className="h-24 w-24 rounded-2xl bg-orange-50 shrink-0 overflow-hidden border border-orange-100">
-                    {product.image_url ? (
-                      <img 
-                        src={Array.isArray(product.image_url) ? product.image_url[0] : (typeof product.image_url === 'string' && product.image_url.startsWith('[') ? JSON.parse(product.image_url)[0] : product.image_url)} 
-                        className="h-full w-full object-cover" 
-                        alt="Preview" 
-                      />
-                    ) : (
-                      <div className="h-full w-full flex items-center justify-center"><AlertCircle className="text-orange-200" /></div>
-                    )}
+                    <img 
+                      src={Array.isArray(product.image_url) ? product.image_url[0] : (typeof product.image_url === 'string' && product.image_url.startsWith('[') ? JSON.parse(product.image_url)[0] : product.image_url)} 
+                      className="h-full w-full object-cover" 
+                      alt="Preview" 
+                      onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
+                    />
                   </div>
                   
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
-                      <Badge className="mb-1 bg-orange-50 text-[#D35400] border-none hover:bg-orange-50 text-[10px]">
+                      <Badge className="mb-1 bg-orange-50 text-[#D35400] border-none text-[10px]">
                         {product.category}
                       </Badge>
                       <span className="text-[10px] text-slate-400">
@@ -183,7 +176,7 @@ export default function AdminPage() {
                     disabled={!!actionLoading}
                     className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-11 font-bold shadow-sm"
                   >
-                    {actionLoading === product.id ? <Loader2 className="animate-spin" /> : "准許上架"}
+                    {actionLoading === product.id ? <Loader2 className="animate-spin h-4 w-4" /> : "准許上架"}
                   </Button>
                   <Button 
                     onClick={() => handleDelete(product.id)}
