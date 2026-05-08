@@ -10,11 +10,12 @@ import { Menu, Home, User, Package, LogOut, ShoppingBag, GraduationCap, ShieldCh
 
 const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df", "Uf7c4668bc96315297b02b0a67fff88ea"];
 
+// 導航配置：確保 href 完全對應你的資料夾名稱
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
-  { href: "/my-products", label: "我的商品", icon: Package }, // ← 這裡改回獨立路徑，請確認是 /my-products 還是 /my-listings
+  { href: "/my-listings", label: "我的商品", icon: Package }, // ← 修正為 my-listings
 ];
 
 export function Navigation() {
@@ -51,10 +52,10 @@ export function Navigation() {
                     href={item.href}
                     onClick={() => setOpen(false)}
                     className={`flex items-center gap-4 rounded-2xl px-5 py-4 text-sm font-bold transition-all ${
-                      isActive ? "bg-blue-600 text-white shadow-md" : "text-slate-500 hover:bg-slate-50"
+                      isActive ? "bg-blue-600 text-white shadow-md shadow-blue-200" : "text-slate-500 hover:bg-slate-50"
                     }`}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className={`h-5 w-5 ${isActive ? "text-white" : "text-slate-400"}`} />
                     {item.label}
                   </Link>
                 </li>
@@ -76,10 +77,10 @@ export function Navigation() {
           )}
         </nav>
 
-        <div className="p-8 bg-slate-50 border-t">
+        <div className="p-8 bg-slate-50 border-t space-y-4">
           <Button 
             variant="outline" 
-            className="w-full h-12 border-slate-200 rounded-2xl font-bold text-slate-600" 
+            className="w-full h-12 border-slate-200 rounded-2xl font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600" 
             onClick={() => {
               if (typeof window !== "undefined") localStorage.removeItem("stust_authenticated");
               closeWindow();
