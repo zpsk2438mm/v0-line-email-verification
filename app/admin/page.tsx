@@ -23,7 +23,7 @@ interface Product {
   price: number;
   category: string;
   description?: string;
-  is_approved: boolean; // 👈 完美對接你的資料表欄位
+  is_approved: boolean;
   created_at: string;
   image_url?: any;
   images?: any;
@@ -38,10 +38,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "其他",
 };
 
-// 🔒 管理員 LINE ID 白名單
 const ADMIN_LINE_IDS = [
-  "Ued7dfd77b63273d497cebc62f1a7b1df", // 👈 你的專屬管理員 ID
-  "Uf7c4668bc96315297b02b0a67fff88ea", // 👈 你的專屬管理員 ID
+  "Ued7dfd77b63273d497cebc62f1a7b1df",
+  "Uf7c4668bc96315297b02b0a67fff88ea",
 ];
 
 export default function AdminReviewPage() {
@@ -50,7 +49,6 @@ export default function AdminReviewPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // 1. 驗證管理員身份
   useEffect(() => {
     if (!liffLoading && isAuthenticated && lineUserId) {
       if (ADMIN_LINE_IDS.includes(lineUserId)) {
@@ -61,7 +59,6 @@ export default function AdminReviewPage() {
     }
   }, [lineUserId, isAuthenticated, liffLoading]);
 
-  // 2. 獲取所有「待審核」商品 (也就是 is_approved 為 false 的商品)
   useEffect(() => {
     if (!isAdmin) {
       setIsLoading(false);
@@ -74,7 +71,7 @@ export default function AdminReviewPage() {
         const { data, error } = await supabase
           .from("products")
           .select("*")
-          .eq("is_approved", false) // 👈 撈出所有尚未審核通過的商品
+          .eq("is_approved", false)
           .order("created_at", { ascending: true });
 
         if (error) {
@@ -93,11 +90,9 @@ export default function AdminReviewPage() {
     fetchPendingProducts();
   }, [isAdmin]);
 
-  // 💡 審核動作：更新 is_approved 狀態
   const handleReview = async (productId: string, action: "approve" | "reject") => {
     try {
       if (action === "approve") {
-        // 核准：將 is_approved 改為 true
         const { error } = await supabase
           .from("products")
           .update({ is_approved: true })
@@ -106,7 +101,6 @@ export default function AdminReviewPage() {
         if (error) throw error;
         alert("🎉 商品已成功核准上架！");
       } else {
-        // 拒絕：直接從資料表刪除該商品，或你可以選擇保留（此處設為直接刪除，避免佔空間）
         const { error } = await supabase
           .from("products")
           .delete()
@@ -116,7 +110,6 @@ export default function AdminReviewPage() {
         alert("❌ 已拒絕並刪除該商品上架申請。");
       }
 
-      // 從畫面上移除該筆已處理的資料
       setPendingProducts((prev) => prev.filter((p) => p.id !== productId));
     } catch (err) {
       console.error("更新審核狀態出錯:", err);
@@ -127,9 +120,7 @@ export default function AdminReviewPage() {
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
     if (!raw) return "";
-
     let urlString = "";
-
     if (Array.isArray(raw)) {
       urlString = raw[0] || "";
     } else if (typeof raw === "string") {
@@ -150,9 +141,7 @@ export default function AdminReviewPage() {
     } else {
       urlString = String(raw);
     }
-
     if (!urlString) return "";
-
     let clean = urlString
       .trim()
       .replace(/^\[['"]?/, "")
@@ -161,7 +150,6 @@ export default function AdminReviewPage() {
       .replace(/^['"]/, "")
       .replace(/['"]$/, "")
       .trim();
-
     if (clean.startsWith("http://") || clean.startsWith("https://")) {
       return clean;
     } else {
@@ -186,7 +174,7 @@ export default function AdminReviewPage() {
 
   if (liffLoading || (isAuthenticated && isLoading && isAdmin)) {
     return (
-      <main className="min-h-screen bg-slate-50">
+      <main className="min-h-screen bg-[#FDFBF7]">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
           <Navigation />
           <h1 className="text-lg font-bold text-slate-800">審核後台載入中...</h1>
@@ -201,7 +189,7 @@ export default function AdminReviewPage() {
 
   if (!isAuthenticated || !isAdmin) {
     return (
-      <main className="min-h-screen bg-slate-50">
+      <main className="min-h-screen bg-[#FDFBF7]">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
           <Navigation />
           <h1 className="text-lg font-bold text-slate-800">系統管理後台</h1>
@@ -226,22 +214,23 @@ export default function AdminReviewPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-12">
+    <main className="min-h-screen bg-[#FDFBF7] pb-12">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 shadow-md shadow-indigo-100">
+        {/* 改為主題橘色 */}
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
           <CheckCircle className="h-5 w-5 text-white" />
         </div>
         <div>
           <h1 className="text-sm font-bold text-slate-800">商品審核中心</h1>
-          <p className="text-[10px] text-indigo-600 font-medium">系統管理員專屬</p>
+          <p className="text-[10px] text-[#D35400] font-medium">系統管理員專屬</p>
         </div>
       </header>
 
       <div className="mx-auto max-w-lg px-4 pt-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Clock className="h-4 w-4 text-amber-500" />
+            <Clock className="h-4 w-4 text-[#D35400]" />
             待處理商品 ({pendingProducts.length})
           </h3>
         </div>
@@ -261,7 +250,7 @@ export default function AdminReviewPage() {
 
               return (
                 <Card key={product.id} className="overflow-hidden bg-white border-none shadow-sm rounded-2xl">
-                  <div className="aspect-[16/10] bg-slate-100 relative overflow-hidden flex items-center justify-center">
+                  <div className="aspect-[16/10] bg-slate-50 relative overflow-hidden flex items-center justify-center">
                     {imageUrl ? (
                       <img
                         src={imageUrl}
@@ -271,7 +260,7 @@ export default function AdminReviewPage() {
                           e.currentTarget.style.display = "none";
                           const parent = e.currentTarget.parentElement;
                           if (parent) {
-                            parent.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-slate-100"><svg class="h-8 w-8 text-slate-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
+                            parent.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-slate-50"><svg class="h-8 w-8 text-slate-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></div>';
                           }
                         }}
                       />
@@ -291,12 +280,13 @@ export default function AdminReviewPage() {
                         <h4 className="font-bold text-base text-slate-800 line-clamp-2">
                           {product.name}
                         </h4>
-                        <span className="text-lg font-black text-rose-500 shrink-0">
+                        {/* 價格顏色改為深橘紅色 */}
+                        <span className="text-lg font-black text-[#D35400] shrink-0">
                           NT$ {product.price.toLocaleString()}
                         </span>
                       </div>
                       {product.description && (
-                        <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                        <p className="text-xs text-slate-500 leading-relaxed bg-[#FDFBF7] p-2.5 rounded-lg border border-slate-100">
                           {product.description}
                         </p>
                       )}
@@ -320,7 +310,8 @@ export default function AdminReviewPage() {
                       </Button>
                       <Button
                         onClick={() => handleReview(product.id, "approve")}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl h-11 shadow-sm shadow-emerald-100"
+                        {/* 核准按鈕改為主題橘色 */}
+                        className="bg-[#D35400] hover:bg-[#E67E22] text-white font-bold rounded-xl h-11 shadow-sm shadow-orange-100"
                       >
                         <CheckCircle className="h-4 w-4 mr-1.5" />
                         核准上架
