@@ -29,7 +29,7 @@ const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
-  { href: "/my-listings", label: "我的商品", icon: Package }, // 修正：指向獨立的商品管理頁面
+  { href: "/profile", label: "我的商品", icon: Package }, // 指向個人中心查看列表
 ];
 
 export function Navigation() {
@@ -56,21 +56,21 @@ export function Navigation() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
               <GraduationCap className="h-6 w-6 text-white" />
             </div>
-            <SheetTitle className="text-xl font-black text-primary text-left">南台二手交易</SheetTitle>
+            <SheetTitle className="text-xl font-black text-primary">南台二手交易</SheetTitle>
           </div>
         </SheetHeader>
 
         {isAuthenticated && (
           <div className="px-4 py-4 text-left">
             <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-3 border border-slate-100">
-              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white text-slate-300">
+              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white">
                 {userProfile?.pictureUrl ? (
                   <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center bg-primary/10 text-primary"><User /></div>
                 )}
               </div>
-              <div className="flex-1 min-w-0 text-left">
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold truncate text-slate-800">{userProfile?.displayName || "載入中..."}</p>
                 <p className="text-[10px] text-slate-400 truncate">{userEmail}</p>
               </div>
