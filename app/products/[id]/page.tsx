@@ -1,192 +1,40 @@
+// app/products/[id]/page.tsx
 "use client";
 
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
-import { Navigation } from "@/components/navigation"; // 👈 確保引入 Navigation
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Package,
-  CheckCircle,
-  Clock,
-  Trash2,
-  ChevronLeft
-} from "lucide-react";
-import Link from "next/link";
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  description?: string;
-  category: string;
-  image_url?: any;
-  images?: any;
-  is_approved: boolean; 
-  created_at: string;
-}
+export default function ProductDetailPage() {
+  const { id } = useParams(); // 取得網址上的 UUID
+  const [product, setProduct] = useState<any>(null);
 
-export default function MyListingsPage() {
-  const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
-  const [myProducts, setMyProducts] = useState<Product[]>([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
-
-  // 獲取使用者自己上架的商品
   useEffect(() => {
-    if (liffLoading) return;
-
-    async function fetchMyProducts() {
-      try {
-        setIsLoadingProducts(true);
-        const { data, error } = await supabase
-          .from("products")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          console.error("讀取商品失敗:", error);
-          return;
-        }
-
-        const userProducts = lineUserId 
-          ? (data || []).filter((p: any) => p.line_user_id === lineUserId || p.user_id === lineUserId)
-          : (data || []);
-
-        setMyProducts(userProducts.length > 0 ? userProducts : (data || []));
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoadingProducts(false);
-      }
-    }
-
-    fetchMyProducts();
-  }, [liffLoading, lineUserId]);
-
-  const handleDelete = async (productId: string) => {
-    if (!confirm("確定要刪除這項商品嗎？此動作無法復原。")) return;
-
-    try {
-      const { error } = await supabase
+    async function getDetail() {
+      const { data } = await supabase
         .from("products")
-        .delete()
-        .eq("id", productId);
-
-      if (error) {
-        alert("刪除失敗：" + error.message);
-        return;
-      }
-
-      setMyProducts(myProducts.filter((p) => p.id !== productId));
-      alert("商品已成功刪除！");
-    } catch (err) {
-      console.error(err);
+        .select("*")
+        .eq("id", id)
+        .single();
+      setProduct(data);
     }
-  };
+    if (id) getDetail();
+  }, [id]);
 
-  const getCleanImageUrl = (product: Product) => {
-    let raw = product.image_url || product.images;
-    if (!raw) return "";
-    let urlString = Array.isArray(raw) ? raw[0] : String(raw);
-    let clean = urlString.trim().replace(/[\[\]"']/g, "");
-    if (clean.startsWith("http")) return clean;
-    const cleanPath = clean.replace(/^\//, "");
-    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath.replace("product-images/", "")}`;
-  };
-
-  // --- 修改標頭區塊：加入 Navigation，調整顏色 ---
-  const Header = () => (
-    <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-      <Navigation /> {/* 👈 三條線漢堡選單放在這裡 */}
-      <Link href="/products">
-        <Button variant="ghost" size="icon" className="h-10 w-10 text-[#D35400]">
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-      </Link>
-      <div className="h-6 w-[1px] bg-slate-200 mx-1" /> {/* 分隔線 */}
-      <h1 className="text-lg font-bold text-slate-800">我的商品</h1>
-    </header>
-  );
-
-  if (liffLoading || isLoadingProducts) {
-    return (
-      <main className="min-h-screen bg-[#FDFBF7]">
-        <Header />
-        <div className="p-4 space-y-4 max-w-md mx-auto">
-          <Skeleton className="h-32 w-full rounded-2xl" />
-          <Skeleton className="h-32 w-full rounded-2xl" />
-        </div>
-      </main>
-    );
-  }
+  if (!product) return <div className="p-10 text-center">載入中...</div>;
 
   return (
-    <main className="min-h-screen bg-[#FDFBF7] pb-12">
-      <Header />
-
-      <div className="p-4 space-y-4 max-w-md mx-auto">
-        {myProducts.length === 0 ? (
-          <div className="text-center py-20 space-y-3 bg-white rounded-2xl p-6 shadow-sm border border-orange-100">
-            <Package className="h-12 w-12 mx-auto text-orange-200" />
-            <p className="text-sm font-medium text-slate-400">目前沒有刊登中的商品喔</p>
-            <Link href="/">
-              <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22] text-white font-bold rounded-xl px-6">
-                前往上架商品
-              </Button>
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {myProducts.map((product) => {
-              const isApproved = product.is_approved === true || String(product.is_approved).toLowerCase() === "true";
-              const imageUrl = getCleanImageUrl(product);
-
-              return (
-                <Card key={product.id} className="border-none shadow-sm rounded-2xl overflow-hidden bg-white">
-                  <CardContent className="p-4 flex gap-4">
-                    <div className="relative h-24 w-24 flex-shrink-0 bg-[#FDFBF7] rounded-xl overflow-hidden border border-orange-50 flex items-center justify-center">
-                      {imageUrl ? (
-                        <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <Package className="h-8 w-8 text-orange-200" />
-                      )}
-                    </div>
-
-                    <div className="flex-1 flex flex-col justify-between min-w-0">
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-bold text-sm text-slate-800 truncate pr-2">{product.name}</h3>
-                          {isApproved ? (
-                            <Badge className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border-emerald-100 border shadow-none">
-                              <CheckCircle className="h-3 w-3 mr-1" /> 已上架
-                            </Badge>
-                          ) : (
-                            <Badge className="text-[10px] font-bold text-[#D35400] bg-orange-50 border-orange-100 border shadow-none">
-                              <Clock className="h-3 w-3 mr-1" /> 審核中
-                            </Badge>
-                          )}
-                        </div>
-                        {/* 價格顏色改為南台橘 */}
-                        <p className="text-sm font-black text-[#D35400] mt-1">NT$ {product.price.toLocaleString()}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">{new Date(product.created_at).toLocaleDateString()}</p>
-                      </div>
-
-                      <div className="flex justify-start mt-2 border-t pt-2 border-dashed border-orange-50">
-                        <button onClick={() => handleDelete(product.id)} className="text-xs text-red-500 font-bold flex items-center gap-1 hover:text-red-600 transition-colors">
-                          <Trash2 className="h-3.5 w-3.5" /> 刪除商品
-                        </button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+    <div className="max-w-md mx-auto p-4">
+      {/* 這裡才是商品詳情 */}
+      <img src={product.image_url} className="w-full rounded-2xl" />
+      <h1 className="text-2xl font-bold mt-4">{product.name}</h1>
+      <p className="text-[#D35400] text-xl font-bold">NT$ {product.price}</p>
+      <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+        <p className="text-slate-600">{product.description}</p>
       </div>
-    </main>
+      <button className="w-full bg-[#D35400] text-white py-4 rounded-xl mt-6 font-bold">
+        聯繫賣家
+      </button>
+    </div>
   );
 }
