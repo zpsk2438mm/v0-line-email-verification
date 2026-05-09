@@ -111,13 +111,21 @@ export default function ProductDetailPage() {
         </div>
 
         {/* ✨ 修改重點：按鈕直接抓取 product.contact */}
-        <Button 
-          className="w-full bg-[#D35400] hover:bg-[#A04000] text-white py-8 rounded-2xl text-lg font-bold shadow-lg transition-all active:scale-95"
-          onClick={handleContact}
-        >
-          <MessageCircle className="mr-2 h-6 w-6" />
-          聯繫賣家 ({product.contact || "未提供 ID"})
-        </Button>
+       <Button 
+  className="w-full bg-[#D35400] hover:bg-[#A04000] text-white py-10 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-1"
+  onClick={handleContact}
+>
+  {/* 第一行：圖示 + 文字 */}
+  <div className="flex items-center text-lg">
+    <MessageCircle className="mr-2 h-6 w-6" />
+    聯繫賣家
+  </div>
+  
+  {/* 第二行：ID 小字 */}
+  <div className="text-sm opacity-90 font-medium">
+    ({product.contact || "未提供 ID"})
+  </div>
+</Button>
       </div>
     </main>
   );
