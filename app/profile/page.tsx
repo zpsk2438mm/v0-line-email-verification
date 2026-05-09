@@ -8,14 +8,16 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, Mail, Plus } from "lucide-react";
+import { User, Package, Mail, Plus, CheckCircle2, Clock3, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
+// 1. 更新介面定義，加入 status
 interface Product {
   id: string;
   name: string;
   price: number;
   is_approved: boolean;
+  status: string; // 新增這行
   created_at: string;
   image_url: any;
 }
@@ -26,6 +28,8 @@ export default function ProfilePage() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
   useEffect(() => {
+    // 注意：這裡要確認你的資料庫欄位名稱是 line_user_id 還是 user_id
+    // 剛才的 SQL 指令通常預設是 user_id，請根據你資料庫實際名稱修改下面這行
     if (!isAuthenticated || !lineUserId) {
       if (!isAuthenticated) setIsLoadingProducts(false);
       return;
@@ -36,8 +40,8 @@ export default function ProfilePage() {
         setIsLoadingProducts(true);
         const { data, error } = await supabase
           .from("products")
-          .select("id, name, price, is_approved, created_at, image_url")
-          .eq("line_user_id", lineUserId)
+          .select("id, name, price, is_approved, status, created_at, image_url") // 2. 這裡要抓 status
+          .eq("line_user_id", lineUserId) // 如果抓不到，請改成 .eq("user_id", lineUserId)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -87,7 +91,6 @@ export default function ProfilePage() {
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
-          {/* 修改背景漸層為南台橘色系 */}
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
             <div className="flex items-center gap-5 text-left">
               <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/10 shrink-0">
@@ -115,7 +118,6 @@ export default function ProfilePage() {
               我刊登的商品
             </h3>
             <Link href="/">
-              {/* 修改按鈕顏色為淡橘色背景+橘色文字 */}
               <Button size="sm" className="rounded-xl bg-orange-50 text-[#D35400] font-black hover:bg-orange-100 border-none px-4 h-10 shadow-none">
                 <Plus className="h-4 w-4 mr-1 stroke-[3px]" /> 我要上架
               </Button>
@@ -144,14 +146,22 @@ export default function ProfilePage() {
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <h4 className="font-bold text-sm text-slate-800 truncate mb-1">{product.name}</h4>
-                    {/* 價格文字維持強調，但配合橘色調 */}
                     <p className="text-sm font-black text-[#D35400]">NT$ {product.price.toLocaleString()}</p>
                   </div>
                   <div className="shrink-0">
-                    {product.is_approved ? (
-                      <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black shadow-none">已上架</Badge>
+                    {/* 3. 修改狀態判斷邏輯 */}
+                    {product.status === 'approved' ? (
+                      <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black shadow-none flex gap-1 items-center">
+                        <CheckCircle2 className="w-3 h-3" /> 已上架
+                      </Badge>
+                    ) : product.status === 'rejected' ? (
+                      <Badge className="rounded-lg text-[10px] py-1 bg-rose-50 text-rose-600 border-rose-100 font-black shadow-none flex gap-1 items-center">
+                        <AlertCircle className="w-3 h-3" /> 已退回
+                      </Badge>
                     ) : (
-                      <Badge className="rounded-lg text-[10px] py-1 bg-orange-50 text-[#D35400] border-orange-100 font-black shadow-none">審核中</Badge>
+                      <Badge className="rounded-lg text-[10px] py-1 bg-orange-50 text-[#D35400] border-orange-100 font-black shadow-none flex gap-1 items-center">
+                        <Clock3 className="w-3 h-3" /> 審核中
+                      </Badge>
                     )}
                   </div>
                 </div>
