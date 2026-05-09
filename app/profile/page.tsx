@@ -8,16 +8,24 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, Mail, Plus, CheckCircle2, Clock3, AlertCircle } from "lucide-react";
+import { 
+  User, 
+  Package, 
+  Mail, 
+  Plus, 
+  CheckCircle2, 
+  Clock3, 
+  AlertCircle, 
+  Trash2 
+} from "lucide-react";
 import Link from "next/link";
 
-// 1. 更新介面定義，加入 status
 interface Product {
   id: string;
   name: string;
   price: number;
   is_approved: boolean;
-  status: string; // 新增這行
+  status: string;
   created_at: string;
   image_url: any;
 }
@@ -27,33 +35,53 @@ export default function ProfilePage() {
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  useEffect(() => {
-    // 注意：這裡要確認你的資料庫欄位名稱是 line_user_id 還是 user_id
-    // 剛才的 SQL 指令通常預設是 user_id，請根據你資料庫實際名稱修改下面這行
+  // 讀取商品列表
+  const fetchMyProducts = async () => {
     if (!isAuthenticated || !lineUserId) {
       if (!isAuthenticated) setIsLoadingProducts(false);
       return;
     }
 
-    async function fetchMyProducts() {
-      try {
-        setIsLoadingProducts(true);
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, is_approved, status, created_at, image_url") // 2. 這裡要抓 status
-          .eq("line_user_id", lineUserId) // 如果抓不到，請改成 .eq("user_id", lineUserId)
-          .order("created_at", { ascending: false });
+    try {
+      setIsLoadingProducts(true);
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, price, is_approved, status, created_at, image_url")
+        .eq("line_user_id", lineUserId)
+        .order("created_at", { ascending: false });
 
-        if (error) throw error;
-        setMyProducts(data || []);
-      } catch (err) {
-        console.error("讀取失敗:", err);
-      } finally {
-        setIsLoadingProducts(false);
-      }
+      if (error) throw error;
+      setMyProducts(data || []);
+    } catch (err) {
+      console.error("讀取失敗:", err);
+    } finally {
+      setIsLoadingProducts(false);
     }
+  };
+
+  useEffect(() => {
     fetchMyProducts();
   }, [isAuthenticated, lineUserId]);
+
+  // 刪除商品功能
+  const handleDelete = async (id: string) => {
+    if (!confirm("確定要刪除這項商品嗎？")) return;
+
+    try {
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      
+      // 更新 UI 列表
+      setMyProducts(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      console.error("刪除失敗:", err);
+      alert("刪除失敗，請稍後再試");
+    }
+  };
 
   const getProductImage = (url: any): string => {
     const fallback = "/placeholder-logo.png";
@@ -90,6 +118,7 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
+        {/* 用戶資訊卡片 */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
             <div className="flex items-center gap-5 text-left">
@@ -101,7 +130,7 @@ export default function ProfilePage() {
                 )}
               </div>
               <div className="min-w-0">
-                <h2 className="font-black text-2xl truncate tracking-tight">{userProfile?.displayName || "南台用戶"}</h2>
+                <h2 className="font-black text-2xl truncate tracking-tight">{userProfile?.displayName || "用戶"}</h2>
                 <div className="flex items-center gap-1.5 text-orange-100/80 mt-1">
                   <Mail className="h-3.5 w-3.5" />
                   <p className="text-xs font-semibold truncate uppercase">{userEmail || "個人檔案載入中"}</p>
@@ -111,6 +140,7 @@ export default function ProfilePage() {
           </CardHeader>
         </Card>
 
+        {/* 商品列表卡片 */}
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-6">
           <div className="flex items-center justify-between border-b border-orange-50 pb-5 mb-5">
             <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
@@ -134,35 +164,53 @@ export default function ProfilePage() {
           ) : (
             <div className="grid gap-4">
               {myProducts.map((product) => (
-                <div key={product.id} className="flex items-center gap-4 p-3.5 border border-orange-50 rounded-2xl bg-white hover:border-orange-100 transition-all shadow-sm">
-                  <div className="h-16 w-16 rounded-xl overflow-hidden bg-[#FDFBF7] shrink-0 border border-orange-50 shadow-inner">
-                    <img 
-                      src={getProductImage(product.image_url)} 
-                      alt={product.name} 
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {(e.target as HTMLImageElement).src = "/placeholder-logo.png"}}
-                    />
+                <div key={product.id} className="flex flex-col p-4 border border-orange-50 rounded-[28px] bg-white shadow-sm">
+                  <div className="flex items-center gap-4">
+                    {/* 商品圖片 */}
+                    <div className="h-16 w-16 rounded-xl overflow-hidden bg-[#FDFBF7] shrink-0 border border-orange-50">
+                      <img 
+                        src={getProductImage(product.image_url)} 
+                        alt={product.name} 
+                        className="w-full h-full object-cover"
+                        onError={(e) => {(e.target as HTMLImageElement).src = "/placeholder-logo.png"}}
+                      />
+                    </div>
+
+                    {/* 商品文字資訊 */}
+                    <div className="flex-1 min-w-0 text-left">
+                      <h4 className="font-bold text-sm text-slate-800 truncate">{product.name}</h4>
+                      <p className="text-base font-black text-[#D35400] mt-0.5">NT$ {product.price.toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {new Date(product.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+
+                    {/* 狀態標籤 */}
+                    <div className="shrink-0">
+                      {product.status === 'approved' ? (
+                        <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black shadow-none flex gap-1 items-center">
+                          <CheckCircle2 className="w-3 h-3" /> 已上架
+                        </Badge>
+                      ) : product.status === 'rejected' ? (
+                        <Badge className="rounded-lg text-[10px] py-1 bg-rose-50 text-rose-600 border-rose-100 font-black shadow-none flex gap-1 items-center">
+                          <AlertCircle className="w-3 h-3" /> 已退回
+                        </Badge>
+                      ) : (
+                        <Badge className="rounded-lg text-[10px] py-1 bg-orange-50 text-[#D35400] border-orange-100 font-black shadow-none flex gap-1 items-center">
+                          <Clock3 className="w-3 h-3" /> 審核中
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <h4 className="font-bold text-sm text-slate-800 truncate mb-1">{product.name}</h4>
-                    <p className="text-sm font-black text-[#D35400]">NT$ {product.price.toLocaleString()}</p>
-                  </div>
-                  <div className="shrink-0">
-                    {/* 3. 修改狀態判斷邏輯 */}
-                    {product.status === 'approved' ? (
-                      <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black shadow-none flex gap-1 items-center">
-                        <CheckCircle2 className="w-3 h-3" /> 已上架
-                      </Badge>
-                    ) : product.status === 'rejected' ? (
-                      <Badge className="rounded-lg text-[10px] py-1 bg-rose-50 text-rose-600 border-rose-100 font-black shadow-none flex gap-1 items-center">
-                        <AlertCircle className="w-3 h-3" /> 已退回
-                      </Badge>
-                    ) : (
-                      <Badge className="rounded-lg text-[10px] py-1 bg-orange-50 text-[#D35400] border-orange-100 font-black shadow-none flex gap-1 items-center">
-                        <Clock3 className="w-3 h-3" /> 審核中
-                      </Badge>
-                    )}
+
+                  {/* 刪除按鈕區域 */}
+                  <div className="mt-3 pt-3 border-t border-dashed border-orange-100">
+                    <button 
+                      onClick={() => handleDelete(product.id)}
+                      className="text-rose-500 text-xs font-bold flex items-center gap-1 hover:opacity-70 transition-opacity"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> 刪除商品
+                    </button>
                   </div>
                 </div>
               ))}
