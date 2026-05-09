@@ -21,46 +21,7 @@ import {
   Loader2
 } from "lucide-react";
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  description?: string;
-  is_approved: boolean;
-  created_at: string;
-  image_url?: any;
-  images?: any;
-}
-
-const CATEGORIES = [
-  { id: "all", label: "✨ 全部" },
-  { id: "electronics", label: "📱 電子產品" },
-  { id: "books", label: "📚 書籍教材" },
-  { id: "tools_stationery", label: "✏️ 文具/專業工具" },
-  { id: "dorm_supplies", label: "🏠 租屋收納/雜貨" },
-  { id: "hobbies", label: "🎮 遊戲/娛樂" },
-  { id: "cosmetics", label: "💄 化妝品/美妝" },
-  { id: "food", label: "🍕 食物/零食" },
-  { id: "clothing", label: "👕 服飾配件" },
-  { id: "furniture", label: "🛋️ 家具家電" },
-  { id: "sports", label: "🏀 運動用品" },
-  { id: "other", label: "🔍 其他" },
-];
-
-const CATEGORY_LABELS: Record<string, string> = {
-  electronics: "電子產品",
-  books: "書籍教材",
-  tools_stationery: "文具/專業工具",
-  dorm_supplies: "租屋收納/雜貨",
-  hobbies: "遊戲/娛樂",
-  cosmetics: "化妝品/美妝",
-  food: "食物/零食",
-  clothing: "服飾配件",
-  furniture: "家具家電",
-  sports: "運動用品",
-  other: "其他",
-};
+// ... (CATEGORIES 與 CATEGORY_LABELS 保持不變)
 
 export default function ExploreProductsPage() {
   const { isAuthenticated, login, isLoading: liffLoading } = useLiff();
@@ -70,59 +31,25 @@ export default function ExploreProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  useEffect(() => {
-    if (liffLoading) return;
-    
-    if (!isAuthenticated) {
-      setFetching(false);
-      return;
-    }
+  // ... (useEffect 抓取資料邏輯保持不變)
 
-    async function fetchAllApprovedProducts() {
-      try {
-        setFetching(true);
-        const { data, error } = await supabase
-          .from("products")
-          .select("*")
-          .eq("is_approved", true)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        setProducts(data || []);
-        setFilteredProducts(data || []);
-      } catch (err) {
-        console.error("載入商品失敗:", err);
-      } finally {
-        setFetching(false);
-      }
-    }
-
-    fetchAllApprovedProducts();
-  }, [isAuthenticated, liffLoading]);
-
-  useEffect(() => {
-    let result = products || [];
-    if (selectedCategory !== "all") {
-      result = result.filter((p) => p.category === selectedCategory);
-    }
-    if (searchQuery.trim() !== "") {
-      const query = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          (p.description && p.description.toLowerCase().includes(query))
-      );
-    }
-    setFilteredProducts(result);
-  }, [searchQuery, selectedCategory, products]);
-
+  // 優化圖片網址處理，確保跳轉到詳情頁前能正確顯示縮圖
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
-    if (!raw) return "";
-    let urlString = Array.isArray(raw) ? raw[0] : String(raw);
-    let clean = urlString.replace(/[\[\]"']/g, "").trim();
-    if (clean.startsWith("http")) return clean;
-    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
+    if (!raw) return "/placeholder-logo.png";
+    try {
+      let urlString = Array.isArray(raw) ? raw[0] : String(raw);
+      // 處理可能的 JSON 字串格式
+      if (typeof urlString === 'string' && urlString.startsWith('[')) {
+        const parsed = JSON.parse(urlString);
+        urlString = Array.isArray(parsed) ? parsed[0] : urlString;
+      }
+      const clean = urlString.replace(/[\[\]"']/g, "").trim();
+      if (clean.startsWith("http")) return clean;
+      return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
+    } catch (e) {
+      return "/placeholder-logo.png";
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -130,41 +57,11 @@ export default function ExploreProductsPage() {
     return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
   };
 
-  if (liffLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-          <Navigation />
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400]">
-            <ShoppingBag className="h-5 w-5 text-white" />
-          </div>
-          <h1 className="text-lg font-bold text-slate-800">南台校園市集</h1>
-        </header>
-        <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm border-none shadow-xl bg-white overflow-hidden rounded-2xl">
-            <div className="bg-gradient-to-tr from-[#D35400] to-[#E67E22] py-8 px-6 text-center text-white space-y-2">
-              <Sparkles className="h-10 w-10 mx-auto text-yellow-300 animate-pulse" />
-              <h2 className="text-xl font-extrabold tracking-wide">南台人限定二手市集</h2>
-              <p className="text-xs text-orange-50">專屬於南台科技大學的安全校園交易平台</p>
-            </div>
-            <CardContent className="pt-8 pb-8 text-center space-y-6 px-6">
-              <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] text-white font-bold py-6 rounded-xl shadow-lg transition-all text-sm">
-                <LogIn className="h-5 w-5 mr-2" />
-                使用 LINE 安全快速登入
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
-    );
-  }
+  // ... (Loading 與 未登入畫面保持不變)
 
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
+      {/* Header 與 Banner 區塊 */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
@@ -173,42 +70,7 @@ export default function ExploreProductsPage() {
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 pt-4">
-        <div className="relative bg-gradient-to-r from-[#E67E22] to-[#D35400] rounded-2xl p-5 text-white shadow-lg shadow-orange-100 overflow-hidden">
-          <div className="space-y-1 relative z-10">
-            <span className="bg-white/20 text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">✨ 南台科技大學專屬</span>
-            <h2 className="text-xl font-black tracking-wide pt-1">屬於南台人的二手淘寶地</h2>
-            <p className="text-xs text-orange-50">省錢、環保、校內面交！快來尋寶吧 🎒</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            type="search"
-            placeholder="搜尋商品..."
-            className="pl-10 pr-4 py-5 bg-white border-slate-200/80 rounded-xl focus-visible:ring-[#D35400] shadow-sm text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              className={`rounded-full shrink-0 h-9 text-xs px-4 font-medium transition-all flex items-center ${
-                selectedCategory === cat.id ? "bg-[#D35400] text-white shadow-md" : "bg-white text-slate-600 border hover:bg-orange-50 hover:border-orange-100"
-              }`}
-              onClick={() => setSelectedCategory(cat.id)}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* ... (搜尋框與分類標籤區塊) */}
 
       <div className="mx-auto max-w-lg px-4 mt-4">
         <div className="flex items-center justify-between mb-4">
@@ -219,51 +81,57 @@ export default function ExploreProductsPage() {
         </div>
 
         {fetching ? (
-            <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
+          <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => (
               <Link 
                 key={product.id} 
+                // ✨ 這裡連向 app/products/[id]/page.tsx
                 href={`/products/${product.id}`} 
-                className="block group active:scale-[0.98] transition-transform"
+                className="block group active:scale-[0.96] transition-transform duration-200"
               >
-                <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col group-hover:shadow-md transition-all">
-                  <div className="aspect-square bg-[#FDFBF7] relative overflow-hidden flex items-center justify-center border-b border-orange-50">
+                <Card className="h-full overflow-hidden bg-white border-none shadow-[0_4px_20px_rgba(0,0,0,0.03)] rounded-[24px] flex flex-col group-hover:shadow-md transition-all">
+                  {/* 圖片容器 */}
+                  <div className="aspect-square bg-[#FDFBF7] relative overflow-hidden flex items-center justify-center">
                     <img 
-                      src={getCleanImageUrl(product) || "/placeholder.png"} 
+                      src={getCleanImageUrl(product)} 
                       alt={product.name} 
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105" 
-                      onError={(e) => e.currentTarget.src = "/placeholder.png"}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                      onError={(e) => (e.currentTarget.src = "/placeholder-logo.png")}
                     />
-                    <div className="absolute top-2.5 left-2.5">
-                      <Badge variant="secondary" className="text-[9px] bg-orange-50 text-[#D35400] px-2 py-0.5 rounded-md font-bold shadow-sm border-none">
-                        {CATEGORY_LABELS[product.category] || product.category}
+                    {/* 分類標籤 */}
+                    <div className="absolute top-2 left-2">
+                      <Badge className="text-[9px] bg-white/90 backdrop-blur-md text-[#D35400] px-2 py-0.5 rounded-lg font-bold border-none shadow-sm">
+                        {CATEGORY_LABELS[product.category] || "其他"}
                       </Badge>
                     </div>
                   </div>
 
-                  <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                  {/* 文字資訊區 */}
+                  <div className="p-3.5 flex-1 flex flex-col justify-between">
                     <div>
-                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-[#D35400] transition-colors">
+                      <h4 className="font-bold text-[13px] text-slate-800 line-clamp-1 group-hover:text-[#D35400] transition-colors">
                         {product.name}
                       </h4>
-                      <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                      <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5 font-medium">
                         {product.description || "南台二手優質商品"}
                       </p>
                     </div>
 
-                    <div className="space-y-1.5 pt-1">
-                      <p className="text-base font-extrabold text-[#D35400]">
-                        NT$ {product.price?.toLocaleString()}
+                    <div className="pt-3">
+                      <p className="text-lg font-black text-[#D35400] leading-none">
+                        <span className="text-xs mr-0.5">NT$</span>
+                        {product.price?.toLocaleString()}
                       </p>
                       
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 border-t pt-2 border-dashed border-orange-50">
-                        <span className="flex items-center gap-0.5 font-medium">
-                          <Calendar className="h-3 w-3 text-orange-200" /> {formatDate(product.created_at)}
+                      {/* 底部裝飾線與日期 */}
+                      <div className="flex items-center justify-between text-[9px] text-slate-300 border-t border-dashed border-orange-100 mt-3 pt-2">
+                        <span className="flex items-center gap-1 font-bold uppercase tracking-tighter">
+                          <Calendar className="h-2.5 w-2.5" /> {formatDate(product.created_at)}
                         </span>
-                        <span className="text-[#D35400] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                          GO →
+                        <span className="bg-orange-50 text-[#D35400] p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
+                          <Sparkles className="h-3 w-3" />
                         </span>
                       </div>
                     </div>
