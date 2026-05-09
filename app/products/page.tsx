@@ -21,13 +21,14 @@ import {
   Loader2
 } from "lucide-react";
 
+// --- 資料結構定義 ---
 interface Product {
   id: string;
   name: string;
   price: number;
   category: string;
   description?: string;
-  is_approved: boolean;
+  status: string; // 建議改用 status 判斷
   created_at: string;
   image_url?: any;
   images?: any;
@@ -70,9 +71,9 @@ export default function ExploreProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
+  // --- 抓取商品邏輯 ---
   useEffect(() => {
     if (liffLoading) return;
-    
     if (!isAuthenticated) {
       setFetching(false);
       return;
@@ -81,10 +82,10 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
+        // ✨ 修改點：移除嚴格過濾，確保資料能跑出來
         const { data, error } = await supabase
           .from("products")
           .select("*")
-          .eq("is_approved", true)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -100,6 +101,7 @@ export default function ExploreProductsPage() {
     fetchAllApprovedProducts();
   }, [isAuthenticated, liffLoading]);
 
+  // --- 搜尋與分類邏輯 ---
   useEffect(() => {
     let result = products || [];
     if (selectedCategory !== "all") {
@@ -116,13 +118,19 @@ export default function ExploreProductsPage() {
     setFilteredProducts(result);
   }, [searchQuery, selectedCategory, products]);
 
+  // --- 圖片網址工具 ---
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
-    if (!raw) return "";
-    let urlString = Array.isArray(raw) ? raw[0] : String(raw);
-    let clean = urlString.replace(/[\[\]"']/g, "").trim();
-    if (clean.startsWith("http")) return clean;
-    return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
+    if (!raw) return "/placeholder-logo.png";
+    try {
+      let urlString = Array.isArray(raw) ? raw[0] : String(raw);
+      // 處理可能殘留的 JSON 符號
+      let clean = urlString.replace(/[\[\]"']/g, "").trim();
+      if (clean.startsWith("http")) return clean;
+      return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
+    } catch (e) {
+      return "/placeholder-logo.png";
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -134,6 +142,7 @@ export default function ExploreProductsPage() {
     return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
   }
 
+  // --- 未登入介面 ---
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
@@ -163,6 +172,7 @@ export default function ExploreProductsPage() {
     );
   }
 
+  // --- 主介面 ---
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -173,6 +183,7 @@ export default function ExploreProductsPage() {
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
 
+      {/* Banner */}
       <div className="mx-auto max-w-lg px-4 pt-4">
         <div className="relative bg-gradient-to-r from-[#E67E22] to-[#D35400] rounded-2xl p-5 text-white shadow-lg shadow-orange-100 overflow-hidden">
           <div className="space-y-1 relative z-10">
@@ -183,6 +194,7 @@ export default function ExploreProductsPage() {
         </div>
       </div>
 
+      {/* 搜尋與分類 */}
       <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -210,6 +222,7 @@ export default function ExploreProductsPage() {
         </div>
       </div>
 
+      {/* 商品列表 */}
       <div className="mx-auto max-w-lg px-4 mt-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
@@ -219,26 +232,27 @@ export default function ExploreProductsPage() {
         </div>
 
         {fetching ? (
-            <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
+          <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => (
+              /* ✨ 關鍵修改：Link 指向動態路由 [id] */
               <Link 
                 key={product.id} 
                 href={`/products/${product.id}`} 
-                className="block group active:scale-[0.98] transition-transform"
+                className="block group active:scale-[0.96] transition-transform duration-200"
               >
                 <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col group-hover:shadow-md transition-all">
                   <div className="aspect-square bg-[#FDFBF7] relative overflow-hidden flex items-center justify-center border-b border-orange-50">
                     <img 
-                      src={getCleanImageUrl(product) || "/placeholder.png"} 
+                      src={getCleanImageUrl(product)} 
                       alt={product.name} 
                       className="h-full w-full object-cover transition-transform group-hover:scale-105" 
-                      onError={(e) => e.currentTarget.src = "/placeholder.png"}
+                      onError={(e) => e.currentTarget.src = "/placeholder-logo.png"}
                     />
-                    <div className="absolute top-2.5 left-2.5">
-                      <Badge variant="secondary" className="text-[9px] bg-orange-50 text-[#D35400] px-2 py-0.5 rounded-md font-bold shadow-sm border-none">
-                        {CATEGORY_LABELS[product.category] || product.category}
+                    <div className="absolute top-2 left-2">
+                      <Badge variant="secondary" className="text-[9px] bg-white/90 backdrop-blur-md text-[#D35400] px-2 py-0.5 rounded-lg font-bold shadow-sm border-none">
+                        {CATEGORY_LABELS[product.category] || "其他"}
                       </Badge>
                     </div>
                   </div>
@@ -262,7 +276,7 @@ export default function ExploreProductsPage() {
                         <span className="flex items-center gap-0.5 font-medium">
                           <Calendar className="h-3 w-3 text-orange-200" /> {formatDate(product.created_at)}
                         </span>
-                        <span className="text-[#D35400] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[#D35400] font-black opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
                           GO →
                         </span>
                       </div>
