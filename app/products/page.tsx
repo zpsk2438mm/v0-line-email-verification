@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
+import Link from "next/link"; // 確保引入 Next.js 的 Link
 import {
   Search,
   ShoppingBag,
@@ -28,7 +28,7 @@ interface Product {
   price: number;
   category: string;
   description?: string;
-  status: string; // 建議改用 status 判斷
+  status: string;
   created_at: string;
   image_url?: any;
   images?: any;
@@ -82,7 +82,7 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
-        // ✨ 修改點：移除嚴格過濾，確保資料能跑出來
+        // 抓取所有商品（不限狀態，確保開發時看得到）
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -124,7 +124,6 @@ export default function ExploreProductsPage() {
     if (!raw) return "/placeholder-logo.png";
     try {
       let urlString = Array.isArray(raw) ? raw[0] : String(raw);
-      // 處理可能殘留的 JSON 符號
       let clean = urlString.replace(/[\[\]"']/g, "").trim();
       if (clean.startsWith("http")) return clean;
       return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
@@ -172,27 +171,15 @@ export default function ExploreProductsPage() {
     );
   }
 
-  // --- 主介面 ---
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md">
           <ShoppingBag className="h-5 w-5 text-white" />
         </div>
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
-
-      {/* Banner */}
-      <div className="mx-auto max-w-lg px-4 pt-4">
-        <div className="relative bg-gradient-to-r from-[#E67E22] to-[#D35400] rounded-2xl p-5 text-white shadow-lg shadow-orange-100 overflow-hidden">
-          <div className="space-y-1 relative z-10">
-            <span className="bg-white/20 text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">✨ 南台科技大學專屬</span>
-            <h2 className="text-xl font-black tracking-wide pt-1">屬於南台人的二手淘寶地</h2>
-            <p className="text-xs text-orange-50">省錢、環保、校內面交！快來尋寶吧 🎒</p>
-          </div>
-        </div>
-      </div>
 
       {/* 搜尋與分類 */}
       <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
@@ -201,18 +188,18 @@ export default function ExploreProductsPage() {
           <Input
             type="search"
             placeholder="搜尋商品..."
-            className="pl-10 pr-4 py-5 bg-white border-slate-200/80 rounded-xl focus-visible:ring-[#D35400] shadow-sm text-sm"
+            className="pl-10 pr-4 py-5 bg-white border-slate-200 rounded-xl focus-visible:ring-[#D35400]"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.id}
-              className={`rounded-full shrink-0 h-9 text-xs px-4 font-medium transition-all flex items-center ${
-                selectedCategory === cat.id ? "bg-[#D35400] text-white shadow-md" : "bg-white text-slate-600 border hover:bg-orange-50 hover:border-orange-100"
+              className={`rounded-full shrink-0 h-9 text-xs px-4 font-medium transition-all ${
+                selectedCategory === cat.id ? "bg-[#D35400] text-white shadow-md" : "bg-white text-slate-600 border"
               }`}
               onClick={() => setSelectedCategory(cat.id)}
             >
@@ -226,7 +213,7 @@ export default function ExploreProductsPage() {
       <div className="mx-auto max-w-lg px-4 mt-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
-            <Flame className="h-4 w-4 text-[#D35400] fill-[#D35400]" />熱門推薦
+            <Flame className="h-4 w-4 text-[#D35400] fill-[#D35400]" />推薦商品
           </h3>
           <span className="text-xs text-slate-400">共 {filteredProducts.length} 件</span>
         </div>
@@ -236,14 +223,14 @@ export default function ExploreProductsPage() {
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => (
-              /* ✨ 關鍵修改：Link 指向動態路由 [id] */
+              /* ✨ 關鍵連結點：href 指向你的動態路由 */
               <Link 
                 key={product.id} 
                 href={`/products/${product.id}`} 
-                className="block group active:scale-[0.96] transition-transform duration-200"
+                className="block group active:scale-[0.97] transition-all duration-200"
               >
-                <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col group-hover:shadow-md transition-all">
-                  <div className="aspect-square bg-[#FDFBF7] relative overflow-hidden flex items-center justify-center border-b border-orange-50">
+                <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col hover:shadow-md transition-shadow">
+                  <div className="aspect-square bg-slate-50 relative overflow-hidden flex items-center justify-center">
                     <img 
                       src={getCleanImageUrl(product)} 
                       alt={product.name} 
@@ -251,33 +238,29 @@ export default function ExploreProductsPage() {
                       onError={(e) => e.currentTarget.src = "/placeholder-logo.png"}
                     />
                     <div className="absolute top-2 left-2">
-                      <Badge variant="secondary" className="text-[9px] bg-white/90 backdrop-blur-md text-[#D35400] px-2 py-0.5 rounded-lg font-bold shadow-sm border-none">
+                      <Badge variant="secondary" className="text-[9px] bg-white/90 backdrop-blur-md text-[#D35400] font-bold border-none">
                         {CATEGORY_LABELS[product.category] || "其他"}
                       </Badge>
                     </div>
                   </div>
 
-                  <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                  <div className="p-3 flex-1 flex flex-col justify-between">
                     <div>
-                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-[#D35400] transition-colors">
+                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-[#D35400]">
                         {product.name}
                       </h4>
                       <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
-                        {product.description || "南台二手優質商品"}
+                        {product.description || "校園二手好物"}
                       </p>
                     </div>
 
-                    <div className="space-y-1.5 pt-1">
+                    <div className="mt-3">
                       <p className="text-base font-extrabold text-[#D35400]">
                         NT$ {product.price?.toLocaleString()}
                       </p>
-                      
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 border-t pt-2 border-dashed border-orange-50">
-                        <span className="flex items-center gap-0.5 font-medium">
-                          <Calendar className="h-3 w-3 text-orange-200" /> {formatDate(product.created_at)}
-                        </span>
-                        <span className="text-[#D35400] font-black opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
-                          GO →
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                        <span className="flex items-center gap-0.5">
+                          <Calendar className="h-3 w-3" /> {formatDate(product.created_at)}
                         </span>
                       </div>
                     </div>
