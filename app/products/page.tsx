@@ -71,18 +71,14 @@ export default function ExploreProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // --- 抓取商品邏輯：只顯示「審核通過 (approved)」的商品 ---
+  // --- 抓取商品邏輯 ---
   useEffect(() => {
+    // 優化：只要初始化完成且已登入，就抓資料
     if (liffLoading) return;
-    if (!isAuthenticated) {
-      setFetching(false);
-      return;
-    }
-
+    
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
-        // ✨ 這裡已修正為 .eq("status", "approved")
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -100,7 +96,7 @@ export default function ExploreProductsPage() {
     }
 
     fetchAllApprovedProducts();
-  }, [isAuthenticated, liffLoading]);
+  }, [liffLoading]); // 減少對 isAuthenticated 的依賴以減少重新渲染
 
   // --- 搜尋與分類邏輯 ---
   useEffect(() => {
@@ -119,7 +115,6 @@ export default function ExploreProductsPage() {
     setFilteredProducts(result);
   }, [searchQuery, selectedCategory, products]);
 
-  // --- 圖片網址工具 ---
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
     if (!raw) return "/placeholder-logo.png";
@@ -138,12 +133,18 @@ export default function ExploreProductsPage() {
     return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
   };
 
-  if (liffLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
+  // --- 載入中畫面：加上逾時機制防止永久卡死 ---
+  if (liffLoading && fetching) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] gap-4">
+        <Loader2 className="animate-spin h-8 w-8 text-[#D35400]" />
+        <p className="text-sm text-slate-400">正在連接南臺市集...</p>
+      </div>
+    );
   }
 
   // --- 未登入介面 ---
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !liffLoading) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -155,15 +156,15 @@ export default function ExploreProductsPage() {
         </header>
         <div className="flex-1 flex items-center justify-center p-4">
           <Card className="w-full max-w-sm border-none shadow-xl bg-white overflow-hidden rounded-2xl">
-            <div className="bg-gradient-to-tr from-[#D35400] to-[#E67E22] py-8 px-6 text-center text-white space-y-2">
-              <Sparkles className="h-10 w-10 mx-auto text-yellow-300 animate-pulse" />
-              <h2 className="text-xl font-extrabold tracking-wide">南台人限定二手市集</h2>
-              <p className="text-xs text-orange-50">專屬於南台科技大學的安全校園交易平台</p>
+            <div className="bg-[#1a1a1a] py-8 px-6 text-center text-white space-y-2">
+              <Sparkles className="h-10 w-10 mx-auto text-orange-400 animate-pulse" />
+              <h2 className="text-xl font-extrabold tracking-wide">登入以進入市集</h2>
+              <p className="text-xs text-slate-400">登入後即可享有自動保持登入狀態</p>
             </div>
             <CardContent className="pt-8 pb-8 text-center space-y-6 px-6">
               <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] text-white font-bold py-6 rounded-xl shadow-lg transition-all text-sm">
                 <LogIn className="h-5 w-5 mr-2" />
-                使用 LINE 安全快速登入
+                使用 LINE 安全登入
               </Button>
             </CardContent>
           </Card>
@@ -181,6 +182,24 @@ export default function ExploreProductsPage() {
         </div>
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
+
+      {/* 橫幅圖片區塊 */}
+      <div className="mx-auto max-w-lg px-4 pt-4">
+        <div className="relative h-44 w-full overflow-hidden rounded-2xl bg-[#1a1a1a] shadow-lg border border-slate-800">
+          <img 
+            src="https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/image_17.png" 
+            className="absolute inset-0 h-full w-full object-cover opacity-80"
+            alt="Banner"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10" />
+          <div className="relative z-20 flex h-full flex-col justify-end p-6 text-white">
+            <Badge className="w-fit mb-2 bg-orange-500 text-white border-none text-[9px]">
+              STUST MARKET
+            </Badge>
+            <h2 className="text-2xl font-black tracking-tight">南臺二手交易平臺</h2>
+          </div>
+        </div>
+      </div>
 
       {/* 搜尋與分類 */}
       <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
@@ -220,7 +239,11 @@ export default function ExploreProductsPage() {
         </div>
 
         {fetching ? (
-          <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
+          <div className="grid grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-48 bg-slate-100 animate-pulse rounded-2xl" />
+            ))}
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => (
@@ -229,8 +252,8 @@ export default function ExploreProductsPage() {
                 href={`/products/${product.id}`} 
                 className="block group active:scale-[0.97] transition-all duration-200"
               >
-                <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col hover:shadow-md transition-shadow">
-                  <div className="aspect-square bg-slate-50 relative overflow-hidden flex items-center justify-center">
+                <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col">
+                  <div className="aspect-square bg-slate-50 relative overflow-hidden">
                     <img 
                       src={getCleanImageUrl(product)} 
                       alt={product.name} 
@@ -253,16 +276,10 @@ export default function ExploreProductsPage() {
                         {product.description || "校園二手好物"}
                       </p>
                     </div>
-
                     <div className="mt-3">
                       <p className="text-base font-extrabold text-[#D35400]">
                         NT$ {product.price?.toLocaleString()}
                       </p>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                        <span className="flex items-center gap-0.5">
-                          <Calendar className="h-3 w-3" /> {formatDate(product.created_at)}
-                        </span>
-                      </div>
                     </div>
                   </div>
                 </Card>
