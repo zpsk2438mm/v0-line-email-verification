@@ -7,205 +7,118 @@ import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import {
-  Search,
-  ShoppingBag,
-  LogIn,
-  Flame,
-  Loader2,
-  Mail
-} from "lucide-react";
-
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  description?: string;
-  status: string;
-  created_at: string;
-  image_url?: any;
-}
-
-const CATEGORIES = [
-  { id: "all", label: "✨ 全部" },
-  { id: "electronics", label: "📱 電子產品" },
-  { id: "books", label: "📚 書籍教材" },
-  { id: "tools_stationery", label: "✏️ 文具/專業工具" },
-  { id: "dorm_supplies", label: "🏠 租屋收納/雜貨" },
-  { id: "hobbies", label: "🎮 遊戲/娛樂" },
-  { id: "cosmetics", label: "💄 化妝品/美妝" },
-  { id: "food", label: "🍕 食物/零食" },
-  { id: "clothing", label: "👕 服飾配件" },
-  { id: "furniture", label: "🛋️ 家具家電" },
-  { id: "sports", label: "🏀 運動用品" },
-  { id: "other", label: "🔍 其他" },
-];
+import { Search, ShoppingBag, Flame, Loader2, Mail } from "lucide-react";
 
 export default function ExploreProductsPage() {
-  const { isAuthenticated: liffAuthenticated, login, isLoading: liffLoading } = useLiff();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  // 雖然引入 useLiff，但我們只在「真的沒登入」時才用它的 login
+  const { login, isLoading: liffLoading } = useLiff();
+  const [products, setProducts] = useState<any[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
   const [fetching, setFetching] = useState(true);
-  const [hasSupabaseSession, setHasSupabaseSession] = useState(false); // 新增：檢查快取狀態
+  const [authStatus, setAuthStatus] = useState<'loading' | 'unauthenticated' | 'authenticated'>('loading');
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
 
   useEffect(() => {
-    async function init() {
-      // 1. 優先檢查 Supabase 本地是否有快取的 Session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setHasSupabaseSession(true);
-      }
-      
-      // 2. 獲取商品（即便沒登入也可以先抓，減少等待感）
+    async function checkAuthAndData() {
       try {
-        setFetching(true);
-        const { data, error } = await supabase
+        // 1. 優先檢查 Supabase Session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          setAuthStatus('authenticated');
+        } else {
+          setAuthStatus('unauthenticated');
+        }
+
+        // 2. 不管有沒有登入，先抓資料（這樣頁面才不會一直轉）
+        const { data } = await supabase
           .from("products")
           .select("*")
-          .eq("status", "approved") 
+          .eq("status", "approved")
           .order("created_at", { ascending: false });
-
-        if (!error) {
-          setProducts(data || []);
-          setFilteredProducts(data || []);
-        }
+        
+        setProducts(data || []);
+        setFilteredProducts(data || []);
       } catch (err) {
-        console.error("載入失敗:", err);
+        console.error("初始化失敗:", err);
       } finally {
         setFetching(false);
       }
     }
-    init();
-  }, []);
+    checkAuthAndData();
 
-  // 監聽 Supabase 登入狀態變化（例如從信箱點連結回來時）
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) setHasSupabaseSession(true);
+    // 監聽登入狀態轉變
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) setAuthStatus('authenticated');
+      else setAuthStatus('unauthenticated');
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
+  // --- 搜尋邏輯 ---
   useEffect(() => {
-    let result = products || [];
-    if (selectedCategory !== "all") {
-      result = result.filter((p) => p.category === selectedCategory);
-    }
-    if (searchQuery.trim() !== "") {
-      const query = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          (p.description && p.description.toLowerCase().includes(query))
-      );
-    }
-    setFilteredProducts(result);
-  }, [searchQuery, selectedCategory, products]);
-
-  const getCleanImageUrl = (product: Product) => {
-    let raw = product.image_url;
-    if (!raw) return "/placeholder-logo.png";
-    try {
-      let urlString = Array.isArray(raw) ? raw[0] : String(raw);
-      let clean = urlString.replace(/[\[\]"']/g, "").trim();
-      if (clean.startsWith("http")) return clean;
-      return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
-    } catch (e) { return "/placeholder-logo.png"; }
-  };
-
-  // ✨ 關鍵判斷：只要 LINE 或 Supabase 其中一個有登入，就過關
-  const isUserAuthenticated = liffAuthenticated || hasSupabaseSession;
-
-  // 載入中畫面
-  if (fetching && products.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]">
-        <Loader2 className="animate-spin h-8 w-8 text-[#D35400]" />
-      </div>
+    const query = searchQuery.toLowerCase().trim();
+    const result = products.filter(p => 
+      p.name.toLowerCase().includes(query) || 
+      (p.description && p.description.toLowerCase().includes(query))
     );
+    setFilteredProducts(result);
+  }, [searchQuery, products]);
+
+  // 1. 最優先顯示：如果正在初始化 Auth 或抓第一波資料，轉圈圈
+  if (authStatus === 'loading' && fetching) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
   }
 
-  // 只有在確定沒有快取、也沒有 LINE 登入時，才顯示登入畫面
-  if (!isUserAuthenticated && !liffLoading) {
+  // 2. 如果沒登入，顯示登入按鈕
+  if (authStatus === 'unauthenticated') {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-center p-6 text-center">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full space-y-6">
-          <div className="h-16 w-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
-            <Mail className="h-8 w-8 text-[#D35400]" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800">歡迎回到南臺市集</h2>
-          <p className="text-sm text-slate-500">登入後我們會記住您的狀態，刷新不需再驗證。</p>
-          <Button onClick={() => login?.()} className="w-full bg-[#D35400] py-6 rounded-xl font-bold text-white shadow-lg">
-            立即登入
-          </Button>
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full space-y-4">
+          <Mail className="h-12 w-12 text-[#D35400] mx-auto" />
+          <h2 className="text-xl font-bold">歡迎回來</h2>
+          <p className="text-sm text-slate-500">請完成最後一次登入，系統將會自動記住您。</p>
+          <Button onClick={() => login?.()} className="w-full bg-[#D35400] text-white py-6 rounded-xl">立即登入</Button>
         </div>
       </main>
     );
   }
 
+  // 3. 已登入，顯示正常首頁
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md">
-          <ShoppingBag className="h-5 w-5 text-white" />
-        </div>
-        <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400]"><ShoppingBag className="h-5 w-5 text-white" /></div>
+        <h1 className="text-lg font-bold">市集首頁</h1>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 pt-6 space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            type="search"
-            placeholder="搜尋商品..."
-            className="pl-10 pr-4 py-5 bg-white border-slate-200 rounded-xl focus-visible:ring-[#D35400]"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
+      <div className="p-4 max-w-lg mx-auto space-y-6">
+        <Input 
+          placeholder="搜尋商品..." 
+          className="rounded-xl py-6"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
 
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              className={`rounded-full shrink-0 h-9 text-xs px-4 font-medium transition-all ${
-                selectedCategory === cat.id ? "bg-[#D35400] text-white shadow-md" : "bg-white text-slate-600 border"
-              }`}
-              onClick={() => setSelectedCategory(cat.id)}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-lg px-4 mt-6">
-        <div className="flex items-center justify-between mb-4 px-1">
-          <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
-            <Flame className="h-4 w-4 text-[#D35400]" /> 推薦商品
-          </h3>
-          <span className="text-[10px] text-slate-400 font-mono">ITEMS: {filteredProducts.length}</span>
+        <div className="flex items-center gap-2 mb-2">
+          <Flame className="h-4 w-4 text-[#D35400]" />
+          <span className="font-bold text-sm">推薦商品</span>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           {filteredProducts.map((product) => (
-            <Link key={product.id} href={`/products/${product.id}`} className="block active:scale-95 transition-transform duration-200">
-              <Card className="h-full border-none shadow-sm rounded-2xl overflow-hidden bg-white">
-                <div className="aspect-square relative bg-slate-100">
-                  <img src={getCleanImageUrl(product)} alt="" className="object-cover h-full w-full" />
+            <Link key={product.id} href={`/products/${product.id}`}>
+              <Card className="overflow-hidden border-none shadow-sm rounded-2xl bg-white p-3">
+                <div className="aspect-square bg-slate-100 rounded-xl mb-2 overflow-hidden">
+                  <img src={product.image_url || "/placeholder-logo.png"} className="object-cover h-full w-full" />
                 </div>
-                <div className="p-3">
-                  <h4 className="font-bold text-sm text-slate-800 line-clamp-1">{product.name}</h4>
-                  <p className="text-base font-black text-[#D35400] mt-1">NT$ {product.price?.toLocaleString()}</p>
-                </div>
+                <h4 className="font-bold text-sm line-clamp-1">{product.name}</h4>
+                <p className="text-[#D35400] font-black mt-1">NT$ {product.price}</p>
               </Card>
             </Link>
           ))}
