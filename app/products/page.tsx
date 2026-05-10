@@ -71,7 +71,7 @@ export default function ExploreProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // --- 抓取商品邏輯：只顯示「已上架」的商品 ---
+  // --- 抓取商品邏輯：只顯示「審核通過 (approved)」的商品 ---
   useEffect(() => {
     if (liffLoading) return;
     if (!isAuthenticated) {
@@ -82,12 +82,11 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
-        // ✨ 修改重點：加上了 .eq("status", "已上架") 
-        // 確保只有管理員審核過的商品才會出現在這裡
+        // ✨ 這裡已修正為 .eq("status", "approved")
         const { data, error } = await supabase
           .from("products")
           .select("*")
-          .eq("status", "已上架") 
+          .eq("status", "approved") 
           .order("created_at", { ascending: false });
 
         if (error) throw error;
