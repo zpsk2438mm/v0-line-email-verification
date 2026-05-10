@@ -11,5 +11,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(
   supabaseUrl || '',
-  supabaseAnonKey || ''
+  supabaseAnonKey || '',
+  {
+    auth: {
+      persistSession: true,      // 啟動持久化快取，把登入狀態存在瀏覽器
+      autoRefreshToken: true,    // 當 Token 過期時自動幫你刷新
+      detectSessionInUrl: true,  // 自動偵測網址中的登入回傳資訊
+      storageKey: 'stust-market-auth-token', // 設定存放在本地的名稱
+    },
+  }
 )
