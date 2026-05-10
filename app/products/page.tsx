@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link"; // 確保引入 Next.js 的 Link
+import Link from "next/link";
 import {
   Search,
   ShoppingBag,
@@ -71,7 +71,7 @@ export default function ExploreProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // --- 抓取商品邏輯 ---
+  // --- 抓取商品邏輯：只顯示「已上架」的商品 ---
   useEffect(() => {
     if (liffLoading) return;
     if (!isAuthenticated) {
@@ -82,10 +82,12 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
-        // 抓取所有商品（不限狀態，確保開發時看得到）
+        // ✨ 修改重點：加上了 .eq("status", "已上架") 
+        // 確保只有管理員審核過的商品才會出現在這裡
         const { data, error } = await supabase
           .from("products")
           .select("*")
+          .eq("status", "已上架") 
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -223,7 +225,6 @@ export default function ExploreProductsPage() {
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => (
-              /* ✨ 關鍵連結點：href 指向你的動態路由 */
               <Link 
                 key={product.id} 
                 href={`/products/${product.id}`} 
