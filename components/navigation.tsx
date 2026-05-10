@@ -23,7 +23,11 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df", "Uf7c4668bc96315297b02b0a67fff88ea"];
+const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df",
+                        "Uf7c4668bc96315297b02b0a67fff88ea",
+                        "U2de7ff464169d43893343929cb130cce",
+                        "U6d1c1541184ea9202c0d0acc07e92a4e"
+                       ];
 
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
