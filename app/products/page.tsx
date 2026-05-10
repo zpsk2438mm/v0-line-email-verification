@@ -82,7 +82,6 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
-        // ✨ 這裡已修正為 .eq("status", "approved")
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -119,7 +118,6 @@ export default function ExploreProductsPage() {
     setFilteredProducts(result);
   }, [searchQuery, selectedCategory, products]);
 
-  // --- 圖片網址工具 ---
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
     if (!raw) return "/placeholder-logo.png";
@@ -142,7 +140,6 @@ export default function ExploreProductsPage() {
     return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
   }
 
-  // --- 未登入介面 ---
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
@@ -181,6 +178,29 @@ export default function ExploreProductsPage() {
         </div>
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
+
+      {/* ✨ 新增：橫幅圖片區塊 ✨ */}
+      <div className="mx-auto max-w-lg px-4 pt-4">
+        <div className="relative h-40 w-full overflow-hidden rounded-2xl bg-[#D35400] shadow-lg">
+          {/* 背景漸層與點綴圖片 */}
+          <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent z-10" />
+          <img 
+            src="https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&q=80&w=800" 
+            className="absolute inset-0 h-full w-full object-cover"
+            alt="Banner"
+          />
+          {/* 文字內容 */}
+          <div className="relative z-20 flex h-full flex-col justify-center px-6 text-white">
+            <Badge className="w-fit mb-2 bg-white/20 backdrop-blur-md text-white border-none text-[10px]">
+              南台科技大學
+            </Badge>
+            <h2 className="text-2xl font-black tracking-tight">南台二手交易平台</h2>
+            <p className="text-[11px] font-medium opacity-90 mt-1">
+              讓好東西重獲新生，校園交易安全便利
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* 搜尋與分類 */}
       <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
