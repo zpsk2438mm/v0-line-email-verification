@@ -181,21 +181,21 @@ export default function ExploreProductsPage() {
 
       {/* ✨ 新增：橫幅圖片區塊 ✨ */}
       <div className="mx-auto max-w-lg px-4 pt-4">
-        <div className="relative h-40 w-full overflow-hidden rounded-2xl bg-[#D35400] shadow-lg">
-          {/* 背景漸層與點綴圖片 */}
-          <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent z-10" />
-          <img 
-            src="https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&q=80&w=800" 
-            className="absolute inset-0 h-full w-full object-cover"
-            alt="Banner"
+        {/* ✨ 修改重點：h-48，讓圖片顯示完整一點，並加上了灰框和陰影 ✨ */}
+        <div className="relative h-48 w-full overflow-hidden rounded-2xl bg-white shadow-lg border border-slate-200">
+          {/* 背景圖片 */}
+          <img 
+            src={image_28.png} // 這裡會由 LIFF 自動替換為上傳的圖片網址
+            className="absolute inset-0 h-full w-full object-cover z-0"
+            alt="Banner Illustration"
           />
-          {/* 文字內容 */}
-          <div className="relative z-20 flex h-full flex-col justify-center px-6 text-white">
-            <Badge className="w-fit mb-2 bg-white/20 backdrop-blur-md text-white border-none text-[10px]">
+          {/* 文字內容區塊：移到左側，加上背景遮罩以確保文字清晰 */}
+          <div className="absolute left-0 top-0 bottom-0 z-10 w-2/3 flex h-full flex-col justify-center px-8 text-white bg-gradient-to-r from-black/70 to-transparent">
+            <Badge className="w-fit mb-3 bg-white/20 backdrop-blur-sm text-white border-none text-[10px] shadow-sm">
               南台科技大學
             </Badge>
-            <h2 className="text-2xl font-black tracking-tight">南台二手交易平台</h2>
-            <p className="text-[11px] font-medium opacity-90 mt-1">
+            <h2 className="text-3xl font-black tracking-tight leading-tight shadow-text">南台二手交易平台</h2>
+            <p className="text-[12px] font-medium opacity-90 mt-2 shadow-text">
               讓好東西重獲新生，校園交易安全便利
             </p>
           </div>
