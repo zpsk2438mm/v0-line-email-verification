@@ -25,12 +25,11 @@ import {
 
 const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df", "Uf7c4668bc96315297b02b0a67fff88ea"];
 
-// 導航鏈結
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
-  { href: "/my-listings", label: "我的商品", icon: Package }, // 確保路徑正確
+  { href: "/my-listings", label: "我的商品", icon: Package },
 ];
 
 export function Navigation() {
@@ -55,17 +54,17 @@ export function Navigation() {
       </SheetTrigger>
       
       <SheetContent side="left" className="w-[300px] p-0 flex flex-col border-r-0 shadow-2xl bg-white">
-        {/* 標題區 */}
+        {/* 標題區：藍色改為主題橘色 */}
         <SheetHeader className="p-6 bg-slate-50 text-left border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-200">
+            {/* ✨ 這裡改為 bg-[#D35400] */}
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-lg shadow-orange-100">
               <GraduationCap className="h-6 w-6 text-white" />
             </div>
             <SheetTitle className="text-xl font-black text-slate-800 tracking-tight">南台二手交易</SheetTitle>
           </div>
         </SheetHeader>
 
-        {/* --- 找回來的驗證資訊區塊 --- */}
         {isAuthenticated && (
           <div className="px-4 py-4">
             <div className="bg-slate-50/80 rounded-2xl p-4 flex items-center gap-3 border border-slate-100 shadow-sm">
@@ -78,7 +77,8 @@ export function Navigation() {
                     referrerPolicy="no-referrer" 
                   />
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-blue-50 text-blue-600">
+                  /* ✨ 預設頭像背景改為橘色系 */
+                  <div className="h-full w-full flex items-center justify-center bg-orange-50 text-[#D35400]">
                     <User size={20} />
                   </div>
                 )}
@@ -94,7 +94,6 @@ export function Navigation() {
             </div>
           </div>
         )}
-        {/* ------------------------- */}
 
         <nav className="flex-1 px-4 py-2 space-y-8 text-left overflow-y-auto">
           <ul className="space-y-1.5">
@@ -106,9 +105,10 @@ export function Navigation() {
                   <Link
                     href={item.href}
                     onClick={() => setOpen(false)}
+                    /* ✨ 選中狀態改為 bg-[#D35400] */
                     className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-bold transition-all ${
                       isActive 
-                        ? "bg-blue-600 text-white shadow-md shadow-blue-100" 
+                        ? "bg-[#D35400] text-white shadow-md shadow-orange-100" 
                         : "text-slate-500 hover:bg-slate-50"
                     }`}
                   >
