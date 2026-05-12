@@ -1,40 +1,46 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
-// 注意 1：必須使用 export async function POST
-// 不能用 export default，也不能用 handler
+// 強制不使用快取，確保 Vercel 讀取到最新的環境變數
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
-    const { email, code } = await req.json();
+    // 1. 取得資料
+    const body = await req.json();
+    const { email, code } = body;
 
-    // 檢查變數
-    if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) {
-      return NextResponse.json({ error: "環境變數未設定" }, { status: 500 });
+    // 2. 檢查環境變數
+    const user = process.env.GMAIL_USER;
+    const pass = process.env.GMAIL_PASS;
+
+    if (!user || !pass) {
+      return NextResponse.json({ error: "Gmail 帳號或密碼未設定" }, { status: 500 });
     }
 
+    // 3. 建立傳送器
     const transporter = nodemailer.createTransport({
       service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_PASS,
-      },
+      auth: { user, pass },
     });
 
+    // 4. 寄信
     await transporter.sendMail({
-      from: process.env.GMAIL_USER,
+      from: user,
       to: email,
       subject: '【南臺市集】您的驗證碼',
+      text: `您的驗證碼是：${code}`,
       html: `<p>您的驗證碼是：<strong>${code}</strong></p>`,
     });
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("發送失敗:", error);
+    console.error("發送失敗:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// 注意 2：不要寫 GET 函式，或明確標記 GET 不可用
+// 預防萬一，若有 GET 請求也回傳成功，測試路徑是否暢通
 export async function GET() {
-  return NextResponse.json({ error: "請使用 POST" }, { status: 405 });
+  return NextResponse.json({ status: "API 運行中，請使用 POST 方法" });
 }
