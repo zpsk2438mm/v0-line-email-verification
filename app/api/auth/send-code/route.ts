@@ -1,29 +1,35 @@
-import { NextResponse } from "next/server";
-import { Resend } from "resend";
+import nodemailer from 'nodemailer';
 
-// 這一行會去抓你在 image_fdb1e0.png 設定的那個 Key
-const resend = new Resend(process.env.RESEND_API_KEY);
+export default async function handler(req, res) {
+  const { email, code } = req.body;
 
-export async function POST(req: Request) {
+  // 1. 設定 Gmail 傳送器
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_PASS,
+    },
+  });
+
   try {
-    const { email, code } = await req.json();
-
-    await resend.emails.send({
-      from: "STUST Market <onboarding@resend.dev>",
-      to: email,
-      subject: "南臺市集 - 您的驗證碼",
+    // 2. 寄送郵件
+    await transporter.sendMail({
+      from: `"南臺市集" <${process.env.GMAIL_USER}>`,
+      to: email, // 現在可以寄給任何人了！
+      subject: '【南臺市集】您的登入驗證碼',
       html: `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2>您的驗證碼是：</h2>
-          <h1 style="color: #D35400; font-size: 40px;">${code}</h1>
-          <p>請回網頁輸入此代碼，驗證您的南臺學生身分。</p>
+        <div style="padding: 20px; border: 1px solid #eee;">
+          <h2>驗證您的身份</h2>
+          <p>您的驗證碼是：<strong style="font-size: 24px; color: #2563eb;">${code}</strong></p>
+          <p>請於 10 分鐘內輸入此代碼。</p>
         </div>
       `,
     });
 
-    return NextResponse.json({ success: true });
+    return res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Resend Error:", error);
-    return NextResponse.json({ error: "發送失敗" }, { status: 500 });
+    console.error('Gmail Error:', error);
+    return res.status(500).json({ error: '郵件發送失敗' });
   }
 }
