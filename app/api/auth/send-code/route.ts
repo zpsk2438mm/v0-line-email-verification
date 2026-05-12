@@ -11,15 +11,7 @@ export async function POST(req: Request) {
       from: "STUST Market <onboarding@resend.dev>",
       to: email,
       subject: "南臺市集 - 您的驗證碼",
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #333;">您好！這是您的身分驗證碼：</h2>
-          <h1 style="color: #D35400; font-size: 40px; letter-spacing: 5px;">${code}</h1>
-          <p style="color: #666;">請在網頁輸入此代碼以完成南臺學生身分驗證。</p>
-          <hr />
-          <p style="font-size: 12px; color: #999;">如果這不是您本人的操作，請忽略此郵件。</p>
-        </div>
-      `,
+      html: `<h1>您的驗證碼是：${code}</h1>`,
     });
 
     return NextResponse.json({ success: true });
