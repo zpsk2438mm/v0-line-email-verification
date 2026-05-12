@@ -1,15 +1,30 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('[v0] Missing Supabase environment variables:')
-  console.error('[v0] NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? 'set' : 'NOT SET')
-  console.error('[v0] NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'set' : 'NOT SET')
-}
-
-export const supabase = createClient(
-  supabaseUrl || '',
-  supabaseAnonKey || ''
-)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    // 強制指定儲存 Key 並明確指向 window.localStorage
+    storageKey: 'stust-market-auth-v3', 
+    storage: {
+      getItem: (key) => {
+        if (typeof window === 'undefined') return null;
+        return window.localStorage.getItem(key);
+      },
+      setItem: (key, value) => {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(key, value);
+        }
+      },
+      removeItem: (key) => {
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(key);
+        }
+      },
+    },
+  },
+})
