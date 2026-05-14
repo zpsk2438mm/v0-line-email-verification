@@ -12,7 +12,7 @@ import {
 import { Mail, ShieldCheck, Loader2, GraduationCap, AlertCircle } from "lucide-react";
 
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
-const ALLOWED_DOMAIN = "@stust.edu.tw";
+const ALLOWED_DOMAIN = "@gmail.com";
 
 // 擴充 Context 類型以符合 ListingForm 的需求
 interface LiffContextType {
