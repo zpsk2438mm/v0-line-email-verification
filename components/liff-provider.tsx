@@ -13,9 +13,8 @@ import { Mail, ShieldCheck, Loader2, GraduationCap, AlertCircle } from "lucide-r
 
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
 const ALLOWED_DOMAIN = "@stust.edu.tw";
-// 這裡填入你在 Resend 側邊欄左下角看到的那個 Gmail
-const DEVELOPER_EMAIL = "wu8888712@gmail.com"; 
 
+// 擴充 Context 類型以符合 ListingForm 的需求
 interface LiffContextType {
   isAuthenticated: boolean;
   userEmail: string | null;
@@ -48,14 +47,15 @@ export function LiffProvider({ children }: { children: ReactNode }) {
           setLineUserId(profile.userId);
           
           const token = liff.getDecodedIDToken();
-          // 如果是南臺信箱或是開發者本人信箱，直接通過
-          if (token?.email?.endsWith(ALLOWED_DOMAIN) || token?.email === DEVELOPER_EMAIL) {
-            setUserEmail(token.email || DEVELOPER_EMAIL);
+          // 如果 LINE 帳號本身就綁定學校信箱，直接通過
+          if (token?.email?.endsWith(ALLOWED_DOMAIN)) {
+            setUserEmail(token.email);
             setIsAuthenticated(true);
           } else {
             setNeedsVerification(true);
           }
         } else {
+          // 未登入 LINE 則強制進入驗證流程
           setNeedsVerification(true);
         }
       } catch (e) {
@@ -75,12 +75,14 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     </div>
   );
 
+  // 如果需要驗證且尚未通過身分檢查
   if (needsVerification && !isAuthenticated) {
     return (
       <VerificationForm 
         onVerified={(email) => { 
           setUserEmail(email); 
           setIsAuthenticated(true); 
+          // 確保即便手動驗證也能嘗試拿 LINE ID
           if (liff.isLoggedIn()) {
             liff.getProfile().then(p => setLineUserId(p.userId));
           }
@@ -111,18 +113,15 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
 
   const sendCode = async () => {
     const targetEmail = email.trim().toLowerCase();
-    
-    // 修改驗證邏輯：必須是南臺信箱 OR 開發者白名單信箱
-    const isStust = targetEmail.endsWith(ALLOWED_DOMAIN);
-    const isDev = targetEmail === DEVELOPER_EMAIL;
-
-    if (!isStust && !isDev) {
+    if (!targetEmail.endsWith(ALLOWED_DOMAIN)) {
       setError("請使用南臺學校信箱 (@stust.edu.tw)");
       return;
     }
     
     setError("");
     setLoading(true);
+    
+    // 生成 6 位數驗證碼
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     
     try {
@@ -132,21 +131,12 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
         body: JSON.stringify({ email: targetEmail, code }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "發送失敗");
-      }
+      if (!res.ok) throw new Error("發送失敗，請稍後再試");
 
       setCorrectCode(code);
       setStep(2);
     } catch (e: any) {
-      // 這裡增加一個友善提示，告知為什麼會失敗
-      if (targetEmail.endsWith(ALLOWED_DOMAIN)) {
-        setError("目前為開發模式，暫時只能寄送給開發者 Gmail 測試");
-      } else {
-        setError(e.message || "系統錯誤");
-      }
+      setError(e.message || "系統錯誤，無法發送郵件");
     } finally {
       setLoading(false);
     }
@@ -160,10 +150,7 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
             <GraduationCap className="w-12 h-12 text-white -rotate-3" />
           </div>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">南臺市集身分驗證</h2>
-          <p className="text-slate-400 text-sm mt-2 font-medium">
-            測試期間請輸入：<br/>
-            <span className="text-[#D35400] font-mono">{DEVELOPER_EMAIL}</span>
-          </p>
+          <p className="text-slate-400 text-sm mt-2 font-medium">請使用 STUST 學生信箱完成認證</p>
         </div>
 
         {error && (
@@ -176,9 +163,9 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
         {step === 1 ? (
           <div className="space-y-5">
             <div className="space-y-1.5">
-              <label className="text-xs font-black text-slate-400 ml-1 uppercase tracking-widest">Email Address</label>
+              <label className="text-xs font-black text-slate-400 ml-1 uppercase tracking-widest">School Email</label>
               <Input 
-                placeholder="請輸入註冊 Resend 的 Email" 
+                placeholder="學號@stust.edu.tw" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
                 className="h-14 rounded-2xl border-slate-100 bg-slate-50/50 focus-visible:ring-[#D35400] text-lg font-medium" 
@@ -191,7 +178,7 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
             >
               {loading ? <Loader2 className="animate-spin" /> : "獲取驗證碼"}
             </Button>
-            <p className="text-center text-[10px] text-slate-300 font-bold tracking-tighter uppercase">Developer Sandbox Mode Enabled</p>
+            <p className="text-center text-[10px] text-slate-300 font-bold tracking-tighter uppercase">Security Powered by STUST Market</p>
           </div>
         ) : (
           <div className="space-y-8 animate-in fade-in zoom-in-95">
