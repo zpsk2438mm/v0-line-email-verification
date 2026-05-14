@@ -12,7 +12,7 @@ import {
 import { Mail, ShieldCheck, Loader2, GraduationCap, AlertCircle } from "lucide-react";
 
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
-const ALLOWED_DOMAIN = "@gmail.com";
+const ALLOWED_DOMAIN = "@stust.edu.tw";
 
 // 擴充 Context 類型以符合 ListingForm 的需求
 interface LiffContextType {
@@ -165,7 +165,7 @@ function VerificationForm({ onVerified }: { onVerified: (email: string) => void 
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-400 ml-1 uppercase tracking-widest">School Email</label>
               <Input 
-                placeholder="學號@gmail.com" 
+                placeholder="學號@stust.edu.tw" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
                 className="h-14 rounded-2xl border-slate-100 bg-slate-50/50 focus-visible:ring-[#D35400] text-lg font-medium" 
