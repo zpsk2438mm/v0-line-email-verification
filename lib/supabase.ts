@@ -9,10 +9,22 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: true,               // ✨ 記住登入狀態
-    autoRefreshToken: true,             // 自動刷新 Token
-    detectSessionInUrl: true,           // 從信箱連結回來時自動偵測
-    storageKey: 'stust-market-auth-v3', // 儲存名稱
+    // ✨ 核心：持久化登入狀態，確保不會重整後就不見
+    persistSession: true,
+    
+    // ✨ 核心：自動刷新權杖，避免使用者操作到一半被踢出
+    autoRefreshToken: true,
+    
+    // ✨ 關鍵：Resend 信箱點擊連結回來時，自動解析 URL 中的 access_token
+    detectSessionInUrl: true,
+    
+    // 自定義儲存名稱，避免與其他專案衝突
+    storageKey: 'stust-market-auth-v3',
+    
+    // 確保在客戶端環境（window）才啟用 localStorage
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    
+    // 額外增加：鎖定流程，避免在非必要時觸發 Auth 狀態變更
+    flowType: 'pkce', 
   },
 })
