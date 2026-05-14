@@ -30,13 +30,14 @@ interface Product {
 }
 
 export default function ProfilePage() {
+  // 從 Liff Provider 獲取雙重認證資訊
   const { lineUserId, userProfile, userEmail, isAuthenticated, login } = useLiff();
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 使用 useCallback 封裝，增加靈活性
+  // 核心：雙重識別查詢邏輯
   const fetchMyProducts = useCallback(async () => {
-    // 只要有驗證且 (有 LINE ID 或 有 Email) 就可以查詢
+    // 必須通過認證，且至少擁有一種識別碼 (LINE ID 或 Email)
     if (!isAuthenticated || (!lineUserId && !userEmail)) {
       if (!isAuthenticated) setIsLoadingProducts(false);
       return;
@@ -45,17 +46,18 @@ export default function ProfilePage() {
     try {
       setIsLoadingProducts(true);
       
-      // 構建查詢：使用 or 同時匹配 line_user_id 或 email
       let query = supabase
         .from("products")
         .select("id, name, price, status, created_at, image_url");
 
+      // 雙重認證查詢策略：確保跨平台資料一致性
       if (lineUserId && userEmail) {
+        // 同時匹配兩者，增加資料檢索的穩定性
         query = query.or(`line_user_id.eq.${lineUserId},email.eq.${userEmail}`);
-      } else if (lineUserId) {
-        query = query.eq("line_user_id", lineUserId);
-      } else {
+      } else if (userEmail) {
         query = query.eq("email", userEmail);
+      } else {
+        query = query.eq("line_user_id", lineUserId);
       }
 
       const { data, error } = await query.order("created_at", { ascending: false });
@@ -63,7 +65,7 @@ export default function ProfilePage() {
       if (error) throw error;
       setMyProducts(data || []);
     } catch (err) {
-      console.error("讀取失敗:", err);
+      console.error("資料讀取失敗:", err);
     } finally {
       setIsLoadingProducts(false);
     }
@@ -73,6 +75,7 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [fetchMyProducts]);
 
+  // 刪除商品邏輯
   const handleDelete = async (id: string) => {
     if (!confirm("確定要刪除這項商品嗎？")) return;
 
@@ -85,11 +88,12 @@ export default function ProfilePage() {
       if (error) throw error;
       setMyProducts(prev => prev.filter(p => p.id !== id));
     } catch (err) {
-      console.error("刪除失敗:", err);
-      alert("刪除失敗，請檢查網路連線或 RLS 權限設定");
+      console.error("刪除操作失敗:", err);
+      alert("刪除失敗，請檢查 RLS 權限或網路連線");
     }
   };
 
+  // 圖片處理邏輯
   const getProductImage = (url: any): string => {
     const fallback = "/placeholder-logo.png";
     if (!url) return fallback;
@@ -106,6 +110,7 @@ export default function ProfilePage() {
     } catch (e) { return fallback; }
   };
 
+  // 1. 未登入狀態
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
@@ -113,9 +118,14 @@ export default function ProfilePage() {
           <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto">
             <User className="h-10 w-10 text-[#D35400]" />
           </div>
-          <h2 className="font-bold text-2xl text-slate-800">請先登入</h2>
-          <p className="text-slate-500 text-sm">登入後即可管理您的刊登商品</p>
-          <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] h-14 rounded-2xl font-bold text-white shadow-lg transition-all active:scale-95">
+          <div className="space-y-2">
+            <h2 className="font-bold text-2xl text-slate-800">請先登入</h2>
+            <p className="text-slate-500 text-sm">登入 LINE 或驗證 Email 以管理商品</p>
+          </div>
+          <Button 
+            onClick={() => login?.()} 
+            className="w-full bg-[#D35400] hover:bg-[#E67E22] h-14 rounded-2xl font-bold text-white shadow-lg transition-all active:scale-95"
+          >
             使用 LINE 登入
           </Button>
         </Card>
@@ -123,6 +133,7 @@ export default function ProfilePage() {
     );
   }
 
+  // 2. 已登入狀態介面
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -131,7 +142,7 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* 用戶資訊卡片 */}
+        {/* 使用者資訊卡片 */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
             <div className="flex items-center gap-5 text-left">
@@ -143,12 +154,15 @@ export default function ProfilePage() {
                 )}
               </div>
               <div className="min-w-0">
+                {/* 顯示 LINE 名稱，若無則顯示 Email 帳號部分 */}
                 <h2 className="font-black text-2xl truncate tracking-tight">
-                  {userProfile?.displayName || userEmail?.split('@')[0] || "驗證用戶"}
+                  {userProfile?.displayName || (userEmail ? userEmail.split('@')[0] : "驗證用戶")}
                 </h2>
                 <div className="flex items-center gap-1.5 text-orange-100/80 mt-1">
                   <Mail className="h-3.5 w-3.5" />
-                  <p className="text-xs font-semibold truncate uppercase">{userEmail || "Email 載入中..."}</p>
+                  <p className="text-xs font-semibold truncate uppercase">
+                    {userEmail || "身分驗證中..."}
+                  </p>
                 </div>
               </div>
             </div>
@@ -171,7 +185,8 @@ export default function ProfilePage() {
 
           {isLoadingProducts ? (
             <div className="space-y-4">
-              {[1, 2].map(i => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
+              <Skeleton className="h-24 w-full rounded-2xl" />
+              <Skeleton className="h-24 w-full rounded-2xl" />
             </div>
           ) : myProducts.length === 0 ? (
             <div className="text-center py-16">
@@ -185,6 +200,7 @@ export default function ProfilePage() {
               {myProducts.map((product) => (
                 <div key={product.id} className="flex flex-col p-4 border border-orange-50 rounded-[28px] bg-white shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-4">
+                    {/* 商品圖片 */}
                     <div className="h-16 w-16 rounded-xl overflow-hidden bg-[#FDFBF7] shrink-0 border border-orange-50">
                       <img 
                         src={getProductImage(product.image_url)} 
@@ -194,6 +210,7 @@ export default function ProfilePage() {
                       />
                     </div>
 
+                    {/* 文字資訊 */}
                     <div className="flex-1 min-w-0 text-left">
                       <h4 className="font-bold text-sm text-slate-800 truncate">{product.name}</h4>
                       <p className="text-base font-black text-[#D35400] mt-0.5">NT$ {product.price.toLocaleString()}</p>
@@ -202,6 +219,7 @@ export default function ProfilePage() {
                       </p>
                     </div>
 
+                    {/* 狀態標籤 */}
                     <div className="shrink-0">
                       {product.status === 'approved' ? (
                         <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black shadow-none flex gap-1 items-center">
@@ -219,6 +237,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
 
+                  {/* 刪除操作按鈕 */}
                   <div className="mt-3 pt-3 border-t border-dashed border-orange-100">
                     <button 
                       onClick={() => handleDelete(product.id)}
