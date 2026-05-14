@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import liff from "@line/liff";
-import { supabase } from "@/lib/supabase"; // 引入你設定好的 supabase
+import { supabase } from "@/lib/supabase";
 import { Loader2 } from "lucide-react";
 
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
@@ -15,7 +15,7 @@ interface LiffContextType {
 }
 
 const LiffContext = createContext<LiffContextType>({
-  isAuthenticated: false,
+  isAuthenticated: true, // 測試模式：預設為 true
   userEmail: null,
   lineUserId: null,
   login: () => {},
@@ -24,60 +24,40 @@ const LiffContext = createContext<LiffContextType>({
 export const useLiff = () => useContext(LiffContext);
 
 export function LiffProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [lineUserId, setLineUserId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // 🟢 暴力開門：預設直接通過驗證
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  
+  // 🟢 模擬資料：這樣你的 ListingForm 才能抓到東西跑出來
+  const [userEmail, setUserEmail] = useState<string | null>("test-user@stust.edu.tw");
+  const [lineUserId, setLineUserId] = useState<string | null>("test_line_user_id_999");
+  
+  // 🟢 直接關閉載入狀態
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    // 測試模式下，我們暫時不執行複雜的檢查邏輯
     async function init() {
       try {
-        // 1. 優先檢查 Supabase 的快取 Session
-        const { data: { session } } = await supabase.auth.getSession();
+        console.log("🛠️ 目前處於測試後門模式：已跳過所有驗證");
         
-        if (session) {
-          // 如果 Supabase 有快取，直接放行！
-          setUserEmail(session.user.email ?? null);
-          setIsAuthenticated(true);
-          // 嘗試背景初始化 LIFF (不強制跳轉)
+        // 雖然跳過驗證，但還是背景初始化一下 LIFF 避免其他地方噴錯
+        if (LIFF_ID) {
           await liff.init({ liffId: LIFF_ID });
-          if (liff.isLoggedIn()) {
-            const profile = await liff.getProfile();
-            setLineUserId(profile.userId);
-          }
-        } else {
-          // 2. 如果沒有 Supabase Session，才去跑 LIFF
-          await liff.init({ liffId: LIFF_ID });
-          if (liff.isLoggedIn()) {
-            const profile = await liff.getProfile();
-            setLineUserId(profile.userId);
-            // 這裡可以導向你的登入頁面
-          }
         }
       } catch (e) {
-        console.error("Auth Init Error:", e);
-      } finally {
-        setIsLoading(false);
+        console.warn("LIFF 背景初始化失敗，但不影響測試。");
       }
     }
     init();
   }, []);
 
-  if (isLoading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white">
-      <Loader2 className="w-10 h-10 animate-spin text-[#D35400] mb-4" />
-      <p className="text-slate-500 font-medium italic">校園市集檢查權限中...</p>
-    </div>
-  );
-
-  // 如果沒登入，我們不要在這個 Provider 裡寫死 VerificationForm
-  // 而是讓外部的 Page 決定要去哪裡登入
+  // 測試模式直接回傳內容，不顯示任何載入畫面
   return (
     <LiffContext.Provider value={{ 
       isAuthenticated, 
       userEmail, 
       lineUserId,
-      login: () => liff.login() 
+      login: () => console.log("測試模式：不需執行登入") 
     }}>
       {children}
     </LiffContext.Provider>
