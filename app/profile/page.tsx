@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
@@ -24,7 +24,6 @@ interface Product {
   id: string;
   name: string;
   price: number;
-  is_approved: boolean;
   status: string;
   created_at: string;
   image_url: any;
@@ -35,20 +34,31 @@ export default function ProfilePage() {
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 讀取商品列表
-  const fetchMyProducts = async () => {
-    if (!isAuthenticated || !lineUserId) {
+  // 使用 useCallback 封裝，增加靈活性
+  const fetchMyProducts = useCallback(async () => {
+    // 只要有驗證且 (有 LINE ID 或 有 Email) 就可以查詢
+    if (!isAuthenticated || (!lineUserId && !userEmail)) {
       if (!isAuthenticated) setIsLoadingProducts(false);
       return;
     }
 
     try {
       setIsLoadingProducts(true);
-      const { data, error } = await supabase
+      
+      // 構建查詢：使用 or 同時匹配 line_user_id 或 email
+      let query = supabase
         .from("products")
-        .select("id, name, price, is_approved, status, created_at, image_url")
-        .eq("line_user_id", lineUserId)
-        .order("created_at", { ascending: false });
+        .select("id, name, price, status, created_at, image_url");
+
+      if (lineUserId && userEmail) {
+        query = query.or(`line_user_id.eq.${lineUserId},email.eq.${userEmail}`);
+      } else if (lineUserId) {
+        query = query.eq("line_user_id", lineUserId);
+      } else {
+        query = query.eq("email", userEmail);
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
 
       if (error) throw error;
       setMyProducts(data || []);
@@ -57,13 +67,12 @@ export default function ProfilePage() {
     } finally {
       setIsLoadingProducts(false);
     }
-  };
+  }, [isAuthenticated, lineUserId, userEmail]);
 
   useEffect(() => {
     fetchMyProducts();
-  }, [isAuthenticated, lineUserId]);
+  }, [fetchMyProducts]);
 
-  // 刪除商品功能
   const handleDelete = async (id: string) => {
     if (!confirm("確定要刪除這項商品嗎？")) return;
 
@@ -74,12 +83,10 @@ export default function ProfilePage() {
         .eq("id", id);
 
       if (error) throw error;
-      
-      // 更新 UI 列表
       setMyProducts(prev => prev.filter(p => p.id !== id));
     } catch (err) {
       console.error("刪除失敗:", err);
-      alert("刪除失敗，請稍後再試");
+      alert("刪除失敗，請檢查網路連線或 RLS 權限設定");
     }
   };
 
@@ -88,12 +95,15 @@ export default function ProfilePage() {
     if (!url) return fallback;
     try {
       if (Array.isArray(url)) return url[0] || fallback;
-      if (typeof url === "string" && url.startsWith("[")) {
-        const parsed = JSON.parse(url);
-        return Array.isArray(parsed) ? parsed[0] : url;
+      if (typeof url === "string") {
+        if (url.startsWith("[")) {
+          const parsed = JSON.parse(url);
+          return Array.isArray(parsed) ? parsed[0] : url;
+        }
+        return url;
       }
-      return url;
-    } catch (e) { return url; }
+      return fallback;
+    } catch (e) { return fallback; }
   };
 
   if (!isAuthenticated) {
@@ -104,7 +114,10 @@ export default function ProfilePage() {
             <User className="h-10 w-10 text-[#D35400]" />
           </div>
           <h2 className="font-bold text-2xl text-slate-800">請先登入</h2>
-          <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] h-14 rounded-2xl font-bold text-white shadow-lg transition-colors">使用 LINE 登入</Button>
+          <p className="text-slate-500 text-sm">登入後即可管理您的刊登商品</p>
+          <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] h-14 rounded-2xl font-bold text-white shadow-lg transition-all active:scale-95">
+            使用 LINE 登入
+          </Button>
         </Card>
       </main>
     );
@@ -130,10 +143,12 @@ export default function ProfilePage() {
                 )}
               </div>
               <div className="min-w-0">
-                <h2 className="font-black text-2xl truncate tracking-tight">{userProfile?.displayName || "用戶"}</h2>
+                <h2 className="font-black text-2xl truncate tracking-tight">
+                  {userProfile?.displayName || userEmail?.split('@')[0] || "驗證用戶"}
+                </h2>
                 <div className="flex items-center gap-1.5 text-orange-100/80 mt-1">
                   <Mail className="h-3.5 w-3.5" />
-                  <p className="text-xs font-semibold truncate uppercase">{userEmail || "個人檔案載入中"}</p>
+                  <p className="text-xs font-semibold truncate uppercase">{userEmail || "Email 載入中..."}</p>
                 </div>
               </div>
             </div>
@@ -155,18 +170,21 @@ export default function ProfilePage() {
           </div>
 
           {isLoadingProducts ? (
-            <div className="space-y-4"><Skeleton className="h-24 w-full rounded-2xl" /></div>
+            <div className="space-y-4">
+              {[1, 2].map(i => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
+            </div>
           ) : myProducts.length === 0 ? (
             <div className="text-center py-16">
-              <Package className="h-14 w-14 mx-auto text-orange-100 mb-4" />
+              <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Package className="h-10 w-10 text-slate-200" />
+              </div>
               <p className="text-slate-400 font-bold">目前還沒有刊登任何商品</p>
             </div>
           ) : (
             <div className="grid gap-4">
               {myProducts.map((product) => (
-                <div key={product.id} className="flex flex-col p-4 border border-orange-50 rounded-[28px] bg-white shadow-sm">
+                <div key={product.id} className="flex flex-col p-4 border border-orange-50 rounded-[28px] bg-white shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-4">
-                    {/* 商品圖片 */}
                     <div className="h-16 w-16 rounded-xl overflow-hidden bg-[#FDFBF7] shrink-0 border border-orange-50">
                       <img 
                         src={getProductImage(product.image_url)} 
@@ -176,7 +194,6 @@ export default function ProfilePage() {
                       />
                     </div>
 
-                    {/* 商品文字資訊 */}
                     <div className="flex-1 min-w-0 text-left">
                       <h4 className="font-bold text-sm text-slate-800 truncate">{product.name}</h4>
                       <p className="text-base font-black text-[#D35400] mt-0.5">NT$ {product.price.toLocaleString()}</p>
@@ -185,7 +202,6 @@ export default function ProfilePage() {
                       </p>
                     </div>
 
-                    {/* 狀態標籤 */}
                     <div className="shrink-0">
                       {product.status === 'approved' ? (
                         <Badge className="rounded-lg text-[10px] py-1 bg-emerald-50 text-emerald-600 border-emerald-100 font-black shadow-none flex gap-1 items-center">
@@ -203,11 +219,10 @@ export default function ProfilePage() {
                     </div>
                   </div>
 
-                  {/* 刪除按鈕區域 */}
                   <div className="mt-3 pt-3 border-t border-dashed border-orange-100">
                     <button 
                       onClick={() => handleDelete(product.id)}
-                      className="text-rose-500 text-xs font-bold flex items-center gap-1 hover:opacity-70 transition-opacity"
+                      className="text-rose-500 text-xs font-bold flex items-center gap-1 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> 刪除商品
                     </button>
