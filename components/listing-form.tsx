@@ -121,13 +121,18 @@ export function ListingForm() {
 
       setUploadProgress("儲存資料至資料庫...");
 
+      // 🎯 關鍵修正二 (解決 RLS 報錯)：
+      // 資料庫的 image_url 是 text (純文字) 欄位，如果送入整個 imageUrls 陣列會被資料庫拒絕。
+      // 這裡安全地轉換為「第一張圖片網址字串」或「空字串」，以完美吻合資料庫型態。
+      const singleImageUrl = imageUrls.length > 0 ? imageUrls[0] : "";
+
       const { error: dbError } = await supabase.from("products").insert({
         name: formData.name,
         category: formData.category,
         price: parseInt(formData.price),
         description: formData.description,
         contact: formData.contact,
-        image_url: imageUrls,
+        image_url: singleImageUrl, // 👈 修正：送入純文字字串而非陣列
         line_user_id: lineUserId,
         verified_email: userEmail,
         status: 'pending' // 預設審核中
@@ -140,12 +145,13 @@ export function ListingForm() {
       // 使用相對路徑呼叫 API
       try {
         await fetch("/api/notify", {
+          style: "POST",
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: formData.name,
             price: formData.price,
-            imageUrl: imageUrls[0] || null,
+            imageUrl: singleImageUrl || null,
             contact: formData.contact,
             userEmail: userEmail
           }),
@@ -247,8 +253,11 @@ export function ListingForm() {
               <Label className="font-bold text-gray-600">分類 *</Label>
               <Select required value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
                 <SelectTrigger className="h-12 rounded-xl border-gray-200 focus:ring-[#D95300]"><SelectValue placeholder="請選擇分類" /></SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value} className="focus:bg-orange-50 focus:text-[#D95300]">{c.label}</SelectItem>)}
+                {/* 🎯 關鍵修正一 (解決選單透明車禍)：
+                    強制補上 z-50（置頂層級）、bg-white（不透明白底）以及 shadow-2xl，
+                    確保分類選單展開時能牢牢擋住後面的商品名稱與輸入框！ */}
+                <SelectContent className="rounded-xl z-50 bg-white shadow-2xl border border-gray-100">
+                  {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value} className="focus:bg-orange-50 focus:text-[#D95300] font-medium">{c.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
