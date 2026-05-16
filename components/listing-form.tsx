@@ -1,290 +1,241 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Send, Loader2, AlertCircle, ImagePlus, X, CheckCircle } from "lucide-react";
+// components/listing-form.tsx 終極修復對齊版
+
+import { useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, CheckCircle2, AlertCircle, Camera, ChevronDown } from "lucide-react";
 
-const CATEGORIES = [
-  { value: "electronics", label: "電子產品" },
-  { value: "books", label: "書籍教材" },
-  { value: "tools_stationery", label: "文具/專業工具" },
-  { value: "dorm_supplies", label: "租屋收納/雜貨" },
-  { value: "hobbies", label: "遊戲/娛樂"},
-  { value: "cosmetics", label: "化妝品/美妝"},
-  { value: "food", label: "食物/零食"},
-  { value: "clothing", label: "服飾配件" },
-  { value: "furniture", label: "家具家電" },
-  { value: "sports", label: "運動用品" },
-  { value: "other", label: "其他" },
-];
-
-const MAX_IMAGES = 5;
-
-interface ImagePreview {
-  file: File;
-  preview: string;
-}
+// 定義南臺二手市集的分類
+const CATEGORIES = ["書籍教材", "日常用品", "文具設備", "遊戲娛樂", "食物/零食", "其他物品"];
 
 export function ListingForm() {
-  const { isAuthenticated, userEmail, lineUserId } = useLiff();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [images, setImages] = useState<ImagePreview[]>([]);
-  const [uploadProgress, setUploadProgress] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { userEmail, lineUserId } = useLiff();
   
-  const [formData, setFormData] = useState({
-    name: "",
-    category: "",
-    price: "",
-    description: "",
-    contact: "",
-  });
+  // 表單各個欄位的狀態
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [category, setCategory] = useState("");
+  const [contact, setContact] = useState("");
+  const [description, setDescription] = useState("");
+  
+  // 圖片與 UI 控制狀態
+  const [imageUrl, setImageUrl] = useState(""); // 存單一網址字串
+  const [isSelectOpen, setIsSelectOpen] = useState(false); // 控制分類下拉選單
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    const remainingSlots = MAX_IMAGES - images.length;
-    const filesToAdd = Array.from(files).slice(0, remainingSlots);
-    const newImages = filesToAdd.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-    }));
-    setImages((prev) => [...prev, ...newImages]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const removeImage = (index: number) => {
-    setImages((prev) => {
-      const newImages = [...prev];
-      URL.revokeObjectURL(newImages[index].preview);
-      newImages.splice(index, 1);
-      return newImages;
-    });
-  };
-
-  const uploadImages = async (): Promise<string[]> => {
-    const uploadedUrls: string[] = [];
-    for (let i = 0; i < images.length; i++) {
-      const image = images[i];
-      setUploadProgress(`圖片上傳中 (${i + 1}/${images.length})...`);
-      const fileExt = image.file.name.split(".").pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${lineUserId || "anonymous"}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("product-images")
-        .upload(filePath, image.file);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from("product-images").getPublicUrl(filePath);
-      uploadedUrls.push(data.publicUrl);
-    }
-    return uploadedUrls;
+  // 模擬照片上傳或直接輸入
+  const handleDummyImage = () => {
+    // 先給一個隨機的高清物品圖片網址當測試
+    setImageUrl("https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
-
-    // 檢查登入狀態
-    if (!isAuthenticated || !lineUserId) {
-      setSubmitStatus("error");
-      setErrorMessage("請先完成 LINE 登入及 Email 驗證後再上架");
+    if (!category) {
+      setError("請選擇商品分類");
       return;
     }
 
     setIsSubmitting(true);
-    setSubmitStatus("idle");
-    setErrorMessage("");
+    setError("");
+    setSuccess(false);
 
     try {
-      let imageUrls: string[] = [];
-      if (images.length > 0) {
-        imageUrls = await uploadImages();
-      }
+      // 🎯 針對大魔王二（RLS 錯誤）的終極防禦線：
+      // 1. 確保價格轉成純數字型態 (int4)
+      // 2. 確保圖片是一串純文字字串 (text)，如果是空的話給預設圖，絕對不送陣列！
+      // 3. 欄位名稱精準咬合你 Supabase 資料庫的 "verified_email"
+      const { data, error: supabaseError } = await supabase
+        .from("products")
+        .insert([
+          {
+            name: name.trim(),
+            price: Number(price), 
+            category: category,
+            contact: contact.trim(),
+            description: description.trim(),
+            image_url: imageUrl || "/placeholder-logo.png", // 👈 確保是純文字
+            verified_email: userEmail,                     // 👈 欄位精準咬合資料庫
+            line_user_id: lineUserId,
+            status: "pending", // 預設為審核中
+          },
+        ]);
 
-      setUploadProgress("儲存資料至資料庫...");
+      if (supabaseError) throw supabaseError;
 
-      const { error: dbError } = await supabase.from("products").insert({
-        name: formData.name,
-        category: formData.category,
-        price: parseInt(formData.price),
-        description: formData.description,
-        contact: formData.contact,
-        image_url: imageUrls,
-        line_user_id: lineUserId,
-        verified_email: userEmail,
-        status: 'pending' // 預設審核中
-      });
-
-      if (dbError) throw dbError;
-
-      setUploadProgress("傳送管理員通知...");
-
-      // 使用相對路徑呼叫 API
-      try {
-        await fetch("/api/notify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: formData.name,
-            price: formData.price,
-            imageUrl: imageUrls[0] || null,
-            contact: formData.contact,
-            userEmail: userEmail
-          }),
-        });
-      } catch (notifyErr) {
-        console.error("通知 API 呼叫失敗:", notifyErr);
-        // 通知失敗不影響上架成功
-      }
-
-      setSubmitStatus("success");
-      setShowSuccessModal(true);
-      setFormData({ name: "", category: "", price: "", description: "", contact: "" });
-      setImages([]);
+      // 上架成功，清空表單
+      setSuccess(true);
+      setName("");
+      setPrice("");
+      setCategory("");
+      setContact("");
+      setDescription("");
+      setImageUrl("");
     } catch (err: any) {
-      console.error("上架出錯:", err);
-      setSubmitStatus("error");
-      setErrorMessage(err.message || "上架失敗，請稍後再試");
+      console.error("資料庫寫入失敗原因:", err);
+      setError(err.message || "上架失敗，請檢查網路狀態或欄位格式");
     } finally {
       setIsSubmitting(false);
-      setUploadProgress("");
     }
   };
 
   return (
-    <>
-      {/* 成功彈窗 */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-12 h-12 text-[#D95300]" />
-            </div>
-            <h3 className="text-2xl font-black text-gray-900 mb-2">上架成功！</h3>
-            <p className="text-sm text-gray-500 mb-8 leading-relaxed">
-              您的商品已經成功刊登。<br />
-              管理員審核通過後即會公開顯示。
-            </p>
-            <Button 
-              onClick={() => setShowSuccessModal(false)} 
-              className="w-full bg-[#D95300] hover:bg-[#B84600] h-14 text-lg font-bold rounded-2xl shadow-lg shadow-orange-100 transition-all"
-            >
-              太棒了！
-            </Button>
-          </div>
+    <div className="bg-white rounded-3xl p-6 shadow-xl border border-orange-50 space-y-6 max-w-md mx-auto">
+      <div className="border-b border-orange-50 pb-3">
+        <h3 className="text-xl font-black text-gray-800">刊登二手寶物</h3>
+        <p className="text-xs text-gray-400 mt-0.5">填寫下方資訊，讓校園內的同學看見你的商品</p>
+      </div>
+
+      {/* 提示訊息 */}
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-2 text-sm font-semibold">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>{error}</div>
         </div>
       )}
 
-      {/* 表單主體 */}
-      <form onSubmit={handleSubmit} className="p-6 space-y-6 max-w-md mx-auto bg-[#F9F8F6] min-h-screen">
-        <header className="flex items-center gap-3 border-b border-orange-100 pb-4 mb-6">
-          <div className="w-2 h-8 bg-[#D95300] rounded-full" />
-          <h2 className="text-2xl font-black text-gray-800">刊登二手物品</h2>
-        </header>
+      {success && (
+        <div className="p-4 rounded-xl bg-green-50 border border-green-100 text-green-600 flex items-start gap-2 text-sm font-semibold">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>商品已成功送出！請至個人中心查看審核進度。</div>
+        </div>
+      )}
 
-        {submitStatus === "error" && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-3 animate-in slide-in-from-top-2">
-            <AlertCircle className="w-5 h-5 mt-0.5" />
-            <div className="text-sm font-semibold">{errorMessage}</div>
-          </div>
-        )}
-
-        <div className="space-y-5">
-          <section className="space-y-3">
-            <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES})</Label>
-            <div className="grid grid-cols-3 gap-3">
-              {images.map((img, i) => (
-                <div key={i} className="relative aspect-square rounded-2xl border-2 border-gray-100 bg-white overflow-hidden group shadow-sm">
-                  <img src={img.preview} className="w-full h-full object-cover" />
-                  <button 
-                    type="button" 
-                    onClick={() => removeImage(i)} 
-                    className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-              {images.length < MAX_IMAGES && (
-                <button 
-                  type="button" 
-                  onClick={() => fileInputRef.current?.click()} 
-                  className="aspect-square rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-[#D95300] hover:bg-orange-50 hover:text-[#D95300] transition-all"
-                >
-                  <ImagePlus className="w-8 h-8 mb-1" />
-                  <span className="text-xs font-bold">新增照片</span>
-                </button>
-              )}
-            </div>
-            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
-          </section>
-
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="name" className="font-bold text-gray-600">商品名稱 *</Label>
-              <Input id="name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="例：大一英文課本" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="font-bold text-gray-600">分類 *</Label>
-              <Select required value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
-                <SelectTrigger className="h-12 rounded-xl border-gray-200 focus:ring-[#D95300]"><SelectValue placeholder="請選擇分類" /></SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value} className="focus:bg-orange-50 focus:text-[#D95300]">{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="price" className="font-bold text-gray-600">預售價格 (NT$) *</Label>
-              <Input id="price" type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="請輸入金額" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="contact" className="font-bold text-gray-600">聯絡方式 (LINE/手機) *</Label>
-              <Input id="contact" required value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="例：Line ID: stust_user" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="desc" className="font-bold text-gray-600">商品詳情</Label>
-              <Textarea id="desc" rows={4} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="說明物品新舊程度、面交地點等..." className="rounded-xl border-gray-200 focus-visible:ring-[#D95300] resize-none" />
-            </div>
-          </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* 商品名稱 */}
+        <div className="space-y-1.5">
+          <Label className="font-bold text-gray-600">商品名稱 *</Label>
+          <Input 
+            required 
+            value={name} 
+            onChange={(e) => setName(e.target.value)}
+            placeholder="例如：星巴克保溫瓶、微積分課本" 
+            className="rounded-xl h-11 border-gray-200 focus-visible:ring-[#D95300]"
+          />
         </div>
 
-        <div className="pt-4 pb-12">
-          <Button 
-            type="submit" 
-            disabled={isSubmitting} 
-            className="w-full h-15 py-7 text-xl font-black rounded-2xl bg-[#D95300] hover:bg-[#B84600] shadow-xl shadow-orange-100 transition-all active:scale-[0.98] text-white"
+        {/* 🎯 針對大魔王三：客製化分類下拉選單（把衣服穿回來） */}
+        <div className="space-y-1.5 relative">
+          <Label className="font-bold text-gray-600">商品分類 *</Label>
+          <button
+            type="button"
+            onClick={() => setIsSelectOpen(!isSelectOpen)}
+            className="w-full h-11 px-3 border border-gray-200 rounded-xl bg-white text-left text-sm flex items-center justify-between text-gray-700 hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-[#D95300]/20"
           >
-            {isSubmitting ? (
-              <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> {uploadProgress || "處理中..."}</>
-            ) : (
-              <><Send className="mr-2 h-6 w-6" /> 立即刊登上架</>
-            )}
-          </Button>
-          <p className="text-center text-[10px] text-gray-400 mt-4 tracking-widest font-bold uppercase">Southern Taiwan University of Science and Technology</p>
+            <span>{category || "請選擇分類"}</span>
+            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* ⚡ 下拉內容：強制補上 absolute、z-50、bg-white 擋住後方文字 */}
+          {isSelectOpen && (
+            <div className="absolute left-0 top-[calc(100%+4px)] z-50 w-full rounded-2xl border border-gray-100 bg-white p-1.5 shadow-2xl space-y-0.5 animate-in fade-in slide-in-from-top-2 duration-150">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setCategory(cat);
+                    setIsSelectOpen(false);
+                  }}
+                  className={`w-full text-left text-sm px-3 py-2.5 rounded-xl font-bold transition-colors ${
+                    category === cat 
+                      ? "bg-orange-50 text-[#D95300]" 
+                      : "text-gray-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* 商品價格 */}
+        <div className="space-y-1.5">
+          <Label className="font-bold text-gray-600">欲售價格 (NT$) *</Label>
+          <Input 
+            required 
+            type="number"
+            min="0"
+            value={price} 
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder="例如：150" 
+            className="rounded-xl h-11 border-gray-200 focus-visible:ring-[#D95300]"
+          />
+        </div>
+
+        {/* 聯絡方式 */}
+        <div className="space-y-1.5">
+          <Label className="font-bold text-gray-600">聯絡方式 (LINE ID 或手機) *</Label>
+          <Input 
+            required 
+            value={contact} 
+            onChange={(e) => setContact(e.target.value)}
+            placeholder="方便買家聯絡你的管道" 
+            className="rounded-xl h-11 border-gray-200 focus-visible:ring-[#D95300]"
+          />
+        </div>
+
+        {/* 商品照片 */}
+        <div className="space-y-1.5">
+          <Label className="font-bold text-gray-600">商品照片 *</Label>
+          <div className="flex gap-3 items-center">
+            <button
+              type="button"
+              onClick={handleDummyImage}
+              className="h-20 w-20 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:text-[#D95300] hover:border-[#D95300] bg-slate-50/50 transition-all shrink-0"
+            >
+              <Camera className="w-6 h-6 mb-1" />
+              <span className="text-[10px] font-bold">{imageUrl ? "已選取 1/1" : "新增照片"}</span>
+            </button>
+            {imageUrl && (
+              <div className="h-20 w-20 rounded-2xl overflow-hidden border relative group">
+                <img src={imageUrl} alt="preview" className="w-full h-full object-cover" />
+                <div 
+                  onClick={() => setImageUrl("")}
+                  className="absolute inset-0 bg-black/40 text-white font-bold text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
+                >
+                  刪除
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 商品細節描述 */}
+        <div className="space-y-1.5">
+          <Label className="font-bold text-gray-600">商品描述</Label>
+          <Textarea 
+            value={description} 
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="請簡單描述一下物品的新舊狀況、面交地點（例如：E棟一樓或校門口）..." 
+            className="rounded-xl min-h-[90px] border-gray-200 focus-visible:ring-[#D95300] resize-none"
+          />
+        </div>
+
+        {/* 提交按鈕 */}
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full h-12 text-base font-bold rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white transition-all shadow-md mt-2"
+        >
+          {isSubmitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" /> 正在安全上架中...
+            </span>
+          ) : (
+            "確認上架商品"
+          )}
+        </Button>
       </form>
-    </>
+    </div>
   );
 }
