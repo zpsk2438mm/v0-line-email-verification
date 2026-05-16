@@ -1,5 +1,7 @@
 "use client";
 
+// components/liff-provider.tsx 終極修復版
+
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import liff from "@line/liff";
 import { supabase } from "@/lib/supabase";
@@ -11,7 +13,9 @@ interface LiffContextType {
   isAuthenticated: boolean;
   userEmail: string | null;
   lineUserId: string | null;
-  userName: string | null; // 👈 新增：提供給側邊欄或個人中心直接顯示的名字
+  userProfile: any | null; // 👈 確保它是全域解構的
+  userName: string | null;
+  isLiffInit: boolean; // 👈 關鍵：暴露這個狀態給其他頁面用
   login: () => void;
   sendOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
@@ -21,7 +25,9 @@ const LiffContext = createContext<LiffContextType>({
   isAuthenticated: false,
   userEmail: null,
   lineUserId: null,
-  userName: null, // 👈 新增
+  userProfile: null, // 👈 新增
+  userName: null,
+  isLiffInit: false, // 👈 新增
   login: () => {},
   sendOtp: async () => ({ success: false }),
   verifyOtp: async () => ({ success: false }),
@@ -33,10 +39,12 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [lineUserId, setLineUserId] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null); // 👈 新增：儲存處理後的名稱
+  const [userProfile, setUserProfile] = useState<any | null>(null); // 👈 內部緩存狀態
+  const [userName, setUserName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLiffInit, setIsLiffInit] = useState(false); // 👈 LINE 初始化鎖定
 
-  // 輔助函式：從 Email 提取學號作為預設名稱 (例如：4b290005@stust.edu.tw -> 4b290005)
+  // 輔助函式：提取學號 (4b290005@stust.edu.tw -> 4b290005)
   const extractNameFromEmail = (email: string | null) => {
     if (!email) return null;
     return email.split("@")[0].toUpperCase();
@@ -47,22 +55,22 @@ export function LiffProvider({ children }: { children: ReactNode }) {
 
     async function initAuthAndLiff() {
       try {
-        // 1. 先確認 Supabase 本地快取的工作階段
+        // 1. 先確認 Supabase 狀態
         const { data: { session } } = await supabase.auth.getSession();
         if (session && isMounted) {
           const email = session.user.email ?? null;
           setUserEmail(email);
-          setUserName(extractNameFromEmail(email)); // 👈 同步生成名稱
+          setUserName(extractNameFromEmail(email));
           setIsAuthenticated(true);
         }
 
-        // 2. 實時監聽 Supabase 登入狀態變更
+        // 2. 實時監聽 Supabase 變更
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
           if (isMounted) {
             if (session) {
               const email = session.user.email ?? null;
               setUserEmail(email);
-              setUserName(extractNameFromEmail(email)); // 👈 同步生成名稱
+              setUserName(extractNameFromEmail(email));
               setIsAuthenticated(true);
             } else {
               setUserEmail(null);
@@ -72,13 +80,18 @@ export function LiffProvider({ children }: { children: ReactNode }) {
           }
         });
 
-        // 3. 初始化 LINE LIFF 身分
+        // 3. ✨ 終極修復點：初始化 LIFF 身分
         if (LIFF_ID) {
           await liff.init({ liffId: LIFF_ID });
           
+          if (isMounted) setIsLiffInit(true); // 鎖定：LINE 初始化完成
+
           if (liff.isLoggedIn()) {
             const profile = await liff.getProfile();
-            if (isMounted) setLineUserId(profile.userId);
+            if (isMounted) {
+              setLineUserId(profile.userId);
+              setUserProfile(profile); // 👈 核心：同步把 LINE 資料緩存到 Provider，全域可用
+            }
           } else if (liff.isInClient()) {
             liff.login();
           }
@@ -97,7 +110,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // 🎯 定案：回歸最純粹的 OTP 發送。
+  //  OTP 發送 (乾淨版本，走 SignIn)
   const sendOtp = async (email: string) => {
     try {
       const { error } = await supabase.auth.signInWithOtp({
@@ -110,7 +123,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 🎯 定案：標準的 6 位數 email 驗證
+  //  驗證碼核對 (標準版本，不撈 nonexistent tables)
   const verifyOtp = async (email: string, token: string) => {
     try {
       const { data, error } = await supabase.auth.verifyOtp({
@@ -123,7 +136,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       if (data.session) {
         const email = data.session.user.email ?? null;
         setUserEmail(email);
-        setUserName(extractNameFromEmail(email)); // 👈 同步生成名稱
+        setUserName(extractNameFromEmail(email));
         setIsAuthenticated(true);
         return { success: true };
       }
@@ -145,7 +158,9 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       isAuthenticated, 
       userEmail, 
       lineUserId,
-      userName, // 👈 將 userName 暴露出去
+      userProfile, // 👈 現在它是全域緩存了
+      userName,
+      isLiffInit, // 👈 關鍵：提供此鎖定
       login: () => liff.login(),
       sendOtp,
       verifyOtp
