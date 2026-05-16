@@ -5,11 +5,12 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: true,               // 自動儲存登入狀態
-    autoRefreshToken: true,             // 自動更新過期憑證
-    detectSessionInUrl: true,
-    storageKey: 'stust-market-auth-v6',  // 使用新 Key 清除舊快取
+    persistSession: true,
+    autoRefreshToken: true,
+    // 關鍵修正：在 LIFF 這種 SPA 環境中，關閉自動偵測 URL 變更跳轉，避免它擅自把網址導向不存在的 /login
+    detectSessionInUrl: false, 
+    storageKey: 'stust-market-auth-v6',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    flowType: 'implicit',               // 對 LINE 瀏覽器最友善的模式
+    flowType: 'pkce', // 改回 Next.js 推薦的 pkce，配合不跳轉的 OTP 最穩定
   },
 })
