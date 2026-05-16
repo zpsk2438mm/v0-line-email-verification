@@ -18,24 +18,26 @@ export default function ProfilePage() {
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 1. 商品撈取邏輯 (精準對齊資料庫 verified_email 欄位)
+  // 1. 商品撈取邏輯 (🛠️ 改為跟 my-listings 一樣，用 line_user_id 撈取最精準)
   const fetchMyProducts = useCallback(async () => {
-    if (!isAuthenticated || !userEmail) {
+    // 🎯 這裡修正：只要 lineUserId 還沒抓到就先不執行，確保一定能對齊資料
+    if (!isAuthenticated || !lineUserId) {
       setIsLoadingProducts(false);
       return;
     }
 
     try {
       setIsLoadingProducts(true);
-      const cacheKey = `products_${lineUserId || userEmail}`;
+      const cacheKey = `products_${lineUserId}`;
       const cachedData = localStorage.getItem(cacheKey);
       if (cachedData) setMyProducts(JSON.parse(cachedData));
 
-      // 🎯 關鍵修正：.eq("email", userEmail) 修正為符合資料庫結構的 .eq("verified_email", userEmail)
+      // 🎯 核心修正：將原本的 .eq("verified_email", userEmail) 
+      // 換成跟 my-listings 一模一樣的 .eq("line_user_id", lineUserId) 確保舊資料也能完美抓回
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, status, created_at, image_url, verified_email")
-        .eq("verified_email", userEmail)
+        .select("id, name, price, status, created_at, image_url, verified_email, line_user_id")
+        .eq("line_user_id", lineUserId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -69,7 +71,7 @@ export default function ProfilePage() {
     } finally {
       setIsLoadingProducts(false);
     }
-  }, [isAuthenticated, lineUserId, userEmail]);
+  }, [isAuthenticated, lineUserId]); // 🎯 依賴項精簡同步為 lineUserId
 
   useEffect(() => {
     fetchMyProducts();
@@ -164,7 +166,6 @@ export default function ProfilePage() {
               {myProducts.map((p) => (
                 <div key={p.id} className="flex items-center gap-4 p-4 border border-orange-50 rounded-[28px]">
                   <div className="h-16 w-16 bg-slate-100 rounded-xl overflow-hidden shrink-0">
-                    {/* 🎯 關鍵修正：將 src 換成經過安全重構解析的 p.display_image */}
                     <img src={p.display_image} className="w-full h-full object-cover" alt={p.name} />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -172,7 +173,6 @@ export default function ProfilePage() {
                     <p className="text-[#D35400] font-black">NT$ {p.price}</p>
                   </div>
                   
-                  {/* 🎯 這裡幫你精準對齊並修復了退回狀態的判斷與 Lucide 圖標樣式 */}
                   {p.status === 'approved' ? (
                     <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" /> 已上架
