@@ -12,15 +12,13 @@ import { Label } from "@/components/ui/label";
 export default function Page() {
   const { isAuthenticated, userEmail, lineUserId, sendOtp, verifyOtp, login } = useLiff();
   
-  // 驗證表單控制狀態
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<1 | 2>(1); // 1: 輸入信箱, 2: 輸入驗證碼
+  const [step, setStep] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  // 1. 處理發送驗證碼
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.endsWith("@stust.edu.tw")) {
@@ -42,7 +40,6 @@ export default function Page() {
     setIsSubmitting(false);
   };
 
-  // 2. 處理核對驗證碼
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length !== 6) {
@@ -57,13 +54,11 @@ export default function Page() {
     if (!res.success) {
       setError(res.error || "驗證碼錯誤，請重新輸入");
     }
-    // 驗證成功後，LiffProvider 會更新 isAuthenticated 狀態，此頁面會自動重繪切換到上架表單
     setIsSubmitting(false);
   };
 
   return (
     <main className="min-h-screen bg-[#FDFBF7]">
-      {/* 頂部導覽列 */}
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
@@ -73,18 +68,108 @@ export default function Page() {
       </header>
 
       <div className="mx-auto max-w-lg px-4 py-6">
-        {/* 核心判斷：如果通過認證且拿到了 LINE ID，才放行顯示上架表單 */}
         {isAuthenticated && lineUserId ? (
           <ListingForm />
         ) : (
-          /* 否則在原地渲染「驗證碼登入區塊」，不進行路由跳轉 */
-          <div className="bg-white rounded-3xl p-6 shadow-xl border border-orange-50/80 max-w-md mx-auto my-8 animate-in fade-in zoom-in-95 duration-300">
+          <div className="bg-white rounded-3xl p-6 shadow-xl border border-orange-50/80 max-w-md mx-auto my-8">
             <div className="text-center mb-6">
               <h2 className="text-2xl font-black text-gray-800 tracking-wide">校園身分認證</h2>
               <p className="text-sm text-gray-400 mt-1 font-medium">保障交易安全，上架商品需驗證南臺信箱</p>
             </div>
 
-            {/* LINE 身分提醒區塊 */}
             {!lineUserId && (
               <div className="mb-6 p-4 bg-amber-50 rounded-xl border border-amber-100 text-amber-700 text-sm space-y-2">
-                <p className="font-bold flex items-center gap-1">⚠️ 偵測到 LINE 未
+                <p className="font-bold flex items-center gap-1">⚠️ 偵測到 LINE 未連線</p>
+                <p className="text-xs text-amber-600 leading-relaxed">請確保您是在 LINE 軟體內打開此網頁。若無反應，請點擊下方按鈕手動綁定 LINE 身分。</p>
+                <Button size="sm" onClick={login} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8">
+                  呼叫 LINE 登入
+                </Button>
+              </div>
+            )}
+
+            {error && (
+              <div className="p-4 mb-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div className="text-sm font-semibold leading-relaxed">{error}</div>
+              </div>
+            )}
+
+            {message && (
+              <div className="p-4 mb-4 rounded-xl bg-green-50 border border-green-100 text-green-600 flex items-start gap-2.5">
+                <CheckCircle2 className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div className="text-sm font-semibold leading-relaxed">{message}</div>
+              </div>
+            )}
+
+            {step === 1 ? (
+              <form onSubmit={handleSendCode} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="auth-email" className="font-bold text-gray-600">南臺學號信箱 *</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                    <Input
+                      id="auth-email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="例如：4b1g0xxx@stust.edu.tw"
+                      className="rounded-xl h-12 pl-11 border-gray-200 focus-visible:ring-[#D95300]"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-12 text-base font-bold rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white transition-all shadow-md"
+                >
+                  {isSubmitting ? (
+                    <>正在發送驗證碼...</>
+                  ) : (
+                    "發送 6 位數驗證碼"
+                  )}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyCode} className="space-y-4">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="auth-otp" className="font-bold text-gray-600">輸入 6 位數驗證碼 *</Label>
+                    <span className="text-xs text-[#D95300] font-bold cursor-pointer hover:underline" onClick={() => setStep(1)}>
+                      修改信箱
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                    <Input
+                      id="auth-otp"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      required
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.replace(/\D/g, ""))}
+                      placeholder="請輸入郵件中的 6 位數字"
+                      className="rounded-xl h-12 pl-11 border-gray-200 focus-visible:ring-[#D95300] tracking-[0.5em] text-center font-mono text-lg font-bold"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-12 text-base font-bold rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white transition-all shadow-md"
+                >
+                  {isSubmitting ? (
+                    <>正在核對中...</>
+                  ) : (
+                    "確認驗證並登入"
+                  )}
+                </Button>
+              </form>
+            )}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
