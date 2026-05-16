@@ -23,11 +23,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-const ADMIN_LINE_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df",
-                        "Uf7c4668bc96315297b02b0a67fff88ea",
-                        "U6d1c1541184ea9202c0d0acc07e92a4e",
-                        "Uaea09099f0f6301955360eb64d238243"
-                       ];
+const ADMIN_LINE_IDS = [
+  "Ued7dfd77b63273d497cebc62f1a7b1df",
+  "Uf7c4668bc96315297b02b0a67fff88ea",
+  "U6d1c1541184ea9202c0d0acc07e92a4e",
+  "Uaea09099f0f6301955360eb64d238243"
+];
 
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
@@ -39,14 +40,17 @@ const NAV_ITEMS = [
 export function Navigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { userEmail, userProfile, lineUserId, closeWindow, isAuthenticated } = useLiff();
+  // 🔥 關鍵修正：引入我們在 Provider 裡做好的 userName 變數
+  const { userEmail, userProfile, lineUserId, closeWindow, isAuthenticated, userName } = useLiff();
   const isAdmin = lineUserId && ADMIN_LINE_IDS.includes(lineUserId);
 
   const handleLogout = () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("stust_authenticated");
     }
-    closeWindow();
+    // 額外保險：登出時也清除 Supabase session
+    import("@/lib/supabase").then(({ supabase }) => supabase.auth.signOut());
+    window.location.reload();
   };
 
   return (
@@ -58,10 +62,8 @@ export function Navigation() {
       </SheetTrigger>
       
       <SheetContent side="left" className="w-[300px] p-0 flex flex-col border-r-0 shadow-2xl bg-white">
-        {/* 標題區：藍色改為主題橘色 */}
         <SheetHeader className="p-6 bg-slate-50 text-left border-b border-slate-100">
           <div className="flex items-center gap-3">
-            {/* ✨ 這裡改為 bg-[#D35400] */}
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-lg shadow-orange-100">
               <GraduationCap className="h-6 w-6 text-white" />
             </div>
@@ -81,15 +83,15 @@ export function Navigation() {
                     referrerPolicy="no-referrer" 
                   />
                 ) : (
-                  /* ✨ 預設頭像背景改為橘色系 */
                   <div className="h-full w-full flex items-center justify-center bg-orange-50 text-[#D35400]">
                     <User size={20} />
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0 text-left">
+                {/* 🔥 關鍵修正：優先使用 LINE 名字，若無則顯示學號，絕不顯示載入中 */}
                 <p className="text-sm font-black truncate text-slate-800">
-                  {userProfile?.displayName || "載入中..."}
+                  {userProfile?.displayName || userName || "南臺同學"}
                 </p>
                 <p className="text-[10px] text-slate-400 font-medium truncate uppercase tracking-tighter">
                   {userEmail || "已連結 LINE 帳號"}
@@ -109,7 +111,6 @@ export function Navigation() {
                   <Link
                     href={item.href}
                     onClick={() => setOpen(false)}
-                    /* ✨ 選中狀態改為 bg-[#D35400] */
                     className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-bold transition-all ${
                       isActive 
                         ? "bg-[#D35400] text-white shadow-md shadow-orange-100" 
