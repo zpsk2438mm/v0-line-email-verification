@@ -38,14 +38,14 @@ export function LiffProvider({ children }: { children: ReactNode }) {
 
     async function initAuthAndLiff() {
       try {
-        // 1. 先確認 Supabase 本地快取的工作階段
+        // 1. 先確認 Supabase 本地快取的工作階段（自動登入關鍵）
         const { data: { session } } = await supabase.auth.getSession();
         if (session && isMounted) {
           setUserEmail(session.user.email ?? null);
           setIsAuthenticated(true);
         }
 
-        // 2. 監聽 Supabase 登入狀態變更（防快取延遲遺失）
+        // 2. 實時監聽 Supabase 登入狀態變更
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
           if (isMounted) {
             if (session) {
@@ -66,7 +66,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
             const profile = await liff.getProfile();
             if (isMounted) setLineUserId(profile.userId);
           } else if (liff.isInClient()) {
-            // 防踢關鍵：如果明明在 LINE App 內卻掉登入，直接原地引導環境補登，不干擾 Email 狀態
+            // 在 LINE 軟體內如果掉登入，原地引導自動補登 LINE，不干擾 Email 狀態
             liff.login();
           }
         }
@@ -84,14 +84,11 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // 發送 OTP 驗證碼
+  // 發送 6 位數純數字驗證碼（已拔除 options 避免觸發網址連結）
   const sendOtp = async (email: string) => {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: {
-          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-        },
       });
       if (error) throw error;
       return { success: true };
