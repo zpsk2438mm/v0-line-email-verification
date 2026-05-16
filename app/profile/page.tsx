@@ -10,7 +10,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, Mail, Plus, ShieldCheck, Loader2 } from "lucide-react";
+import { User, Package, Mail, Plus, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Clock3 } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
@@ -171,9 +171,21 @@ export default function ProfilePage() {
                     <h4 className="font-bold text-sm truncate">{p.name}</h4>
                     <p className="text-[#D35400] font-black">NT$ {p.price}</p>
                   </div>
-                  <Badge className="bg-orange-50 text-[#D35400] border-none text-[10px]">
-                    {p.status === 'approved' ? '已上架' : '審核中'}
-                  </Badge>
+                  
+                  {/* 🎯 這裡幫你精準對齊並修復了退回狀態的判斷與 Lucide 圖標樣式 */}
+                  {p.status === 'approved' ? (
+                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" /> 已上架
+                    </Badge>
+                  ) : p.status === 'rejected' ? (
+                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-rose-50 text-rose-600 border-none shadow-none flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" /> 已退回
+                    </Badge>
+                  ) : (
+                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1">
+                      <Clock3 className="h-3 w-3" /> 審核中
+                    </Badge>
+                  )}
                 </div>
               ))}
             </div>
