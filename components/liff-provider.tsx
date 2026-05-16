@@ -84,26 +84,12 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // 🔥 終極改版：強制走註冊/登入混合路由，這會百分之百逼迫 Supabase 寄送「純 6 位數數字驗證碼」
+  // 🎯 定案：回歸最純粹的 OTP 發送。不帶 options，直接由後台範本接手
   const sendOtp = async (email: string) => {
     try {
-      // 1. 先嘗試用 signUp 進行註冊，這在 Supabase 中絕對只會發送純數字 OTP，不走 Magic Link 連結
-      const { error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signInWithOtp({
         email,
-        password: "STUST_MARKET_INTERNAL_PASSWORD_666", // 給予內部固定的安全密碼
       });
-      
-      // 2. 如果該信箱以前就註冊過，Supabase 會回傳 "User already registered" 的錯誤
-      // 這時候我們就無縫切換成一般密碼登入，因為密碼是固定的，所以可以直接原地秒登入！
-      if (error && error.message.includes("already registered")) {
-        const { error: loginError } = await supabase.auth.signInWithPassword({
-          email,
-          password: "STUST_MARKET_INTERNAL_PASSWORD_666",
-        });
-        if (loginError) throw loginError;
-        return { success: true };
-      }
-      
       if (error) throw error;
       return { success: true };
     } catch (err: any) {
@@ -111,30 +97,15 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 核對 6 位數驗證碼（相容新版 signUp 的驗證模式）
+  // 🎯 定案：標準的 6 位數 email 驗證
   const verifyOtp = async (email: string, token: string) => {
     try {
       const { data, error } = await supabase.auth.verifyOtp({
         email,
         token,
-        type: 'signup', // 配合上面的 signUp 路由，將驗證類型改為 'signup'
+        type: 'email',
       });
-      
-      // 如果 'signup' 驗證失敗，保險起見再嘗試一次 'email' 驗證
-      if (error) {
-        const { data: retryData, error: retryError } = await supabase.auth.verifyOtp({
-          email,
-          token,
-          type: 'email',
-        });
-        if (retryError) throw retryError;
-        
-        if (retryData.session) {
-          setUserEmail(retryData.session.user.email ?? null);
-          setIsAuthenticated(true);
-          return { success: true };
-        }
-      }
+      if (error) throw error;
       
       if (data.session) {
         setUserEmail(data.session.user.email ?? null);
