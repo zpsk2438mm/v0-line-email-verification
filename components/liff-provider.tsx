@@ -34,40 +34,62 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function init() {
+    let isMounted = true;
+
+    async function initAuthAndLiff() {
       try {
+        // 1. 先確認 Supabase 本地快取的工作階段
         const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
+        if (session && isMounted) {
           setUserEmail(session.user.email ?? null);
           setIsAuthenticated(true);
         }
 
+        // 2. 監聽 Supabase 登入狀態變更（防快取延遲遺失）
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (isMounted) {
+            if (session) {
+              setUserEmail(session.user.email ?? null);
+              setIsAuthenticated(true);
+            } else {
+              setUserEmail(null);
+              setIsAuthenticated(false);
+            }
+          }
+        });
+
+        // 3. 初始化 LINE LIFF 身分
         if (LIFF_ID) {
           await liff.init({ liffId: LIFF_ID });
+          
           if (liff.isLoggedIn()) {
             const profile = await liff.getProfile();
-            setLineUserId(profile.userId);
-          } else {
-            // 如果是在 LINE 環境內但沒登入，可以選擇自動呼叫 liff.login()
-            console.log("LINE 未登入狀態");
+            if (isMounted) setLineUserId(profile.userId);
+          } else if (liff.isInClient()) {
+            // 防踢關鍵：如果明明在 LINE App 內卻掉登入，直接原地引導環境補登，不干擾 Email 狀態
+            liff.login();
           }
         }
       } catch (e) {
-        console.error("初始化失敗:", e);
+        console.error("安全認證或 LIFF 初始化失敗:", e);
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     }
-    init();
+
+    initAuthAndLiff();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // 丟給驗證碼畫面呼叫的：發送 OTP
+  // 發送 OTP 驗證碼
   const sendOtp = async (email: string) => {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          // 告訴 Supabase 驗證完留在原地，絕對不要跳去 /login
           emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
         },
       });
@@ -78,7 +100,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 丟給驗證碼畫面呼叫的：驗證 6 位數
+  // 核對 6 位數驗證碼
   const verifyOtp = async (email: string, token: string) => {
     try {
       const { data, error } = await supabase.auth.verifyOtp({
@@ -93,7 +115,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
         setIsAuthenticated(true);
         return { success: true };
       }
-      return { success: false, error: "驗證成功但未能建立工作階段" };
+      return { success: false, error: "驗證成功但未能建立安全工作階段" };
     } catch (err: any) {
       return { success: false, error: err.message || "驗證碼錯誤，請重新輸入" };
     }
@@ -102,7 +124,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   if (isLoading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6]">
       <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
-      <p className="text-gray-500 font-bold tracking-wider">南臺市集認證安全檢查中...</p>
+      <p className="text-gray-500 font-bold tracking-wider">南臺市集安全檢查中...</p>
     </div>
   );
 
