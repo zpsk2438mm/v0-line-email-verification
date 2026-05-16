@@ -8,18 +8,18 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, Mail, Plus, Trash2, ShieldCheck } from "lucide-react";
+import { User, Package, Mail, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
-  const { lineUserId, userProfile, userEmail, isAuthenticated, login, isLiffInit } = useLiff();
+  // 🔥 關鍵修正：解構出 userName，並且移除沒用到的 isLiffInit 阻擋，避免頁面無限載入
+  const { lineUserId, userProfile, userEmail, isAuthenticated, login, userName } = useLiff();
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 1. 核心查詢邏輯：支援雙重識別 (line_user_id & verified_email)
   const fetchMyProducts = useCallback(async () => {
-    // 只有在 LIFF 初始化完成且已驗證身分後才抓資料
-    if (!isLiffInit || !isAuthenticated) {
+    // 只要驗證通過了就立即抓資料
+    if (!isAuthenticated || !userEmail) {
       setIsLoadingProducts(false);
       return;
     }
@@ -27,27 +27,18 @@ export default function ProfilePage() {
     try {
       setIsLoadingProducts(true);
       
-      // 從 localStorage 嘗試抓取快取數據 (選配：增加體驗流暢度)
       const cachedData = localStorage.getItem(`products_${lineUserId || userEmail}`);
       if (cachedData) setMyProducts(JSON.parse(cachedData));
 
-      let query = supabase
+      // 🎯 定案：因為資料庫只有 products 表，直接抓這個使用者的商品
+      const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, status, created_at, image_url");
-
-      if (lineUserId && userEmail) {
-        query = query.or(`line_user_id.eq.${lineUserId},email.eq.${userEmail}`);
-      } else if (userEmail) {
-        query = query.eq("email", userEmail);
-      } else {
-        query = query.eq("line_user_id", lineUserId);
-      }
-
-      const { data, error } = await query.order("created_at", { ascending: false });
+        .select("id, name, price, status, created_at, image_url")
+        .eq("email", userEmail)
+        .order("created_at", { ascending: false });
 
       if (!error && data) {
         setMyProducts(data);
-        // 更新快取
         localStorage.setItem(`products_${lineUserId || userEmail}`, JSON.stringify(data));
       }
     } catch (err) {
@@ -55,21 +46,13 @@ export default function ProfilePage() {
     } finally {
       setIsLoadingProducts(false);
     }
-  }, [isLiffInit, isAuthenticated, lineUserId, userEmail]);
+  }, [isAuthenticated, lineUserId, userEmail]);
 
   useEffect(() => {
     fetchMyProducts();
   }, [fetchMyProducts]);
 
-  // 2. 處理圖片與刪除 (省略部分重複代碼以保持簡潔...)
-  const getProductImage = (url: any) => { /* 同前... */ return url; };
-
-  // 3. 渲染邏輯：如果 LIFF 還沒初始化完，顯示全螢幕骨架屏，避免閃爍強制登入
-  if (!isLiffInit) {
-    return <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">載入中...</div>;
-  }
-
-  // 4. 未登入狀態：只有在確定沒登入時才顯示
+  // 未登入狀態：只有在確定沒登入時才顯示
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
@@ -100,16 +83,23 @@ export default function ProfilePage() {
                 {userProfile?.pictureUrl ? (
                   <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" />
                 ) : (
-                  <User className="m-auto h-10 w-10 mt-5" />
+                  <div className="w-full h-full flex items-center justify-center bg-white/10 text-white">
+                    <User className="h-10 w-10" />
+                  </div>
                 )}
               </div>
               <div className="min-w-0">
-                <h2 className="font-black text-2xl truncate">{userProfile?.displayName || userEmail?.split('@')[0]}</h2>
+                {/* 🔥 關鍵修正：顯示 LINE 的 displayName，沒有的話就直接大方秀出我們做好的學號 userName */}
+                <h2 className="font-black text-2xl truncate">
+                  {userProfile?.displayName || userName || "南臺同學"}
+                </h2>
                 <div className="flex flex-col gap-1 mt-1 opacity-80">
-                  <p className="text-[10px] font-bold uppercase flex items-center gap-1">
+                  <p className="text-[10px] font-bold uppercase flex items-center gap-1 truncate">
                     <Mail className="h-3 w-3" /> {userEmail}
                   </p>
-                  <p className="text-[10px] font-bold opacity-60">ID: {lineUserId?.slice(0, 10)}...</p>
+                  {lineUserId && (
+                    <p className="text-[10px] font-bold opacity-60">ID: {lineUserId.slice(0, 10)}...</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -119,12 +109,22 @@ export default function ProfilePage() {
         {/* 商品清單部分 */}
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-6">
           <div className="flex items-center justify-between mb-5 border-b border-orange-50 pb-5">
-            <h3 className="font-black text-lg flex items-center gap-2"><Package className="h-5 w-5 text-[#D35400]" /> 我的商品</h3>
-            <Link href="/"><Button size="sm" className="rounded-xl bg-orange-50 text-[#D35400] font-black h-10 border-none"><Plus className="w-4 h-4 mr-1" />上架</Button></Link>
+            <h3 className="font-black text-lg flex items-center gap-2">
+              <Package className="h-5 w-5 text-[#D35400]" /> 我的商品
+            </h3>
+            <Link href="/">
+              <Button size="sm" className="rounded-xl bg-orange-50 text-[#D35400] font-black h-10 border-none">
+                <Plus className="w-4 h-4 mr-1" />上架
+              </Button>
+            </Link>
           </div>
 
           {isLoadingProducts && myProducts.length === 0 ? (
             <Skeleton className="h-24 w-full rounded-2xl" />
+          ) : myProducts.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 text-sm font-medium">
+              目前還沒有上架過商品喔！
+            </div>
           ) : (
             <div className="grid gap-4">
               {myProducts.map((p) => (
@@ -136,7 +136,9 @@ export default function ProfilePage() {
                     <h4 className="font-bold text-sm truncate">{p.name}</h4>
                     <p className="text-[#D35400] font-black">NT$ {p.price}</p>
                   </div>
-                  <Badge className="bg-orange-50 text-[#D35400] border-none text-[10px]">{p.status === 'approved' ? '已上架' : '審核中'}</Badge>
+                  <Badge className="bg-orange-50 text-[#D35400] border-none text-[10px]">
+                    {p.status === 'approved' ? '已上架' : '審核中'}
+                  </Badge>
                 </div>
               ))}
             </div>
