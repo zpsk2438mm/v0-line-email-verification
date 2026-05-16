@@ -1,241 +1,188 @@
 "use client";
 
-// components/listing-form.tsx 終極修復對齊版
-
 import { useState } from "react";
 import { useLiff } from "@/components/liff-provider";
-import { supabase } from "@/lib/supabase";
+import { ListingForm } from "@/components/listing-form";
+import { Navigation } from "@/components/navigation";
+import { ShoppingBag, Loader2, Mail, KeyRound, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, AlertCircle, Camera, ChevronDown } from "lucide-react";
 
-// 定義南臺二手市集的分類
-const CATEGORIES = ["書籍教材", "日常用品", "文具設備", "遊戲娛樂", "食物/零食", "其他物品"];
-
-export function ListingForm() {
-  const { userEmail, lineUserId } = useLiff();
+export default function Page() {
+  const { isAuthenticated, userEmail, lineUserId, sendOtp, verifyOtp, login } = useLiff();
   
-  // 表單各個欄位的狀態
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("");
-  const [contact, setContact] = useState("");
-  const [description, setDescription] = useState("");
-  
-  // 圖片與 UI 控制狀態
-  const [imageUrl, setImageUrl] = useState(""); // 存單一網址字串
-  const [isSelectOpen, setIsSelectOpen] = useState(false); // 控制分類下拉選單
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [message, setMessage] = useState("");
 
-  // 模擬照片上傳或直接輸入
-  const handleDummyImage = () => {
-    // 先給一個隨機的高清物品圖片網址當測試
-    setImageUrl("https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600");
+  // 階段 1：發送驗證碼
+  const handleSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.endsWith("@stust.edu.tw")) {
+      setError("請使用南臺學校信箱 (@stust.edu.tw) 進行驗證");
+      return;
+    }
+    
+    setIsSubmitting(true);
+    setError("");
+    setMessage("");
+
+    const res = await sendOtp(email);
+    if (res.success) {
+      setStep(2);
+      setMessage("6 位數驗證碼已成功發送到您的學校信箱！");
+    } else {
+      setError(res.error || "驗證碼發送失敗，請檢查 SMTP 或環境變數設定");
+    }
+    setIsSubmitting(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // 階段 2：核對驗證碼
+  const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!category) {
-      setError("請選擇商品分類");
+    if (otp.length !== 6) {
+      setError("請輸入完整的 6 位數驗證碼");
       return;
     }
 
     setIsSubmitting(true);
     setError("");
-    setSuccess(false);
 
-    try {
-      // 🎯 針對大魔王二（RLS 錯誤）的終極防禦線：
-      // 1. 確保價格轉成純數字型態 (int4)
-      // 2. 確保圖片是一串純文字字串 (text)，如果是空的話給預設圖，絕對不送陣列！
-      // 3. 欄位名稱精準咬合你 Supabase 資料庫的 "verified_email"
-      const { data, error: supabaseError } = await supabase
-        .from("products")
-        .insert([
-          {
-            name: name.trim(),
-            price: Number(price), 
-            category: category,
-            contact: contact.trim(),
-            description: description.trim(),
-            image_url: imageUrl || "/placeholder-logo.png", // 👈 確保是純文字
-            verified_email: userEmail,                     // 👈 欄位精準咬合資料庫
-            line_user_id: lineUserId,
-            status: "pending", // 預設為審核中
-          },
-        ]);
-
-      if (supabaseError) throw supabaseError;
-
-      // 上架成功，清空表單
-      setSuccess(true);
-      setName("");
-      setPrice("");
-      setCategory("");
-      setContact("");
-      setDescription("");
-      setImageUrl("");
-    } catch (err: any) {
-      console.error("資料庫寫入失敗原因:", err);
-      setError(err.message || "上架失敗，請檢查網路狀態或欄位格式");
-    } finally {
-      setIsSubmitting(false);
+    const res = await verifyOtp(email, otp);
+    if (!res.success) {
+      setError(res.error || "驗證碼錯誤或已過期，請重新輸入");
     }
+    setIsSubmitting(false);
   };
 
   return (
-    <div className="bg-white rounded-3xl p-6 shadow-xl border border-orange-50 space-y-6 max-w-md mx-auto">
-      <div className="border-b border-orange-50 pb-3">
-        <h3 className="text-xl font-black text-gray-800">刊登二手寶物</h3>
-        <p className="text-xs text-gray-400 mt-0.5">填寫下方資訊，讓校園內的同學看見你的商品</p>
-      </div>
-
-      {/* 提示訊息 */}
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-2 text-sm font-semibold">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>{error}</div>
+    <main className="min-h-screen bg-[#FDFBF7]">
+      {/* 頂部導航欄 */}
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+        <Navigation />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
+          <ShoppingBag className="h-5 w-5 text-white" />
         </div>
-      )}
+        <h1 className="text-lg font-bold text-slate-800">南台二手物上架</h1>
+      </header>
 
-      {success && (
-        <div className="p-4 rounded-xl bg-green-50 border border-green-100 text-green-600 flex items-start gap-2 text-sm font-semibold">
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>商品已成功送出！請至個人中心查看審核進度。</div>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* 商品名稱 */}
-        <div className="space-y-1.5">
-          <Label className="font-bold text-gray-600">商品名稱 *</Label>
-          <Input 
-            required 
-            value={name} 
-            onChange={(e) => setName(e.target.value)}
-            placeholder="例如：星巴克保溫瓶、微積分課本" 
-            className="rounded-xl h-11 border-gray-200 focus-visible:ring-[#D95300]"
-          />
-        </div>
-
-        {/* 🎯 針對大魔王三：客製化分類下拉選單（把衣服穿回來） */}
-        <div className="space-y-1.5 relative">
-          <Label className="font-bold text-gray-600">商品分類 *</Label>
-          <button
-            type="button"
-            onClick={() => setIsSelectOpen(!isSelectOpen)}
-            className="w-full h-11 px-3 border border-gray-200 rounded-xl bg-white text-left text-sm flex items-center justify-between text-gray-700 hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-[#D95300]/20"
-          >
-            <span>{category || "請選擇分類"}</span>
-            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {/* ⚡ 下拉內容：強制補上 absolute、z-50、bg-white 擋住後方文字 */}
-          {isSelectOpen && (
-            <div className="absolute left-0 top-[calc(100%+4px)] z-50 w-full rounded-2xl border border-gray-100 bg-white p-1.5 shadow-2xl space-y-0.5 animate-in fade-in slide-in-from-top-2 duration-150">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => {
-                    setCategory(cat);
-                    setIsSelectOpen(false);
-                  }}
-                  className={`w-full text-left text-sm px-3 py-2.5 rounded-xl font-bold transition-colors ${
-                    category === cat 
-                      ? "bg-orange-50 text-[#D95300]" 
-                      : "text-gray-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+      <div className="mx-auto max-w-lg px-4 py-6">
+        {/* 通過驗證且 LINE 綁定成功就直接顯示上架表單 */}
+        {isAuthenticated && lineUserId ? (
+          <ListingForm />
+        ) : (
+          <div className="bg-white rounded-3xl p-6 shadow-xl border border-orange-50/80 max-w-md mx-auto my-8">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-black text-gray-800 tracking-wide">校園身分認證</h2>
+              <p className="text-sm text-gray-400 mt-1 font-medium">保障交易安全，上架商品需驗證南臺信箱</p>
             </div>
-          )}
-        </div>
 
-        {/* 商品價格 */}
-        <div className="space-y-1.5">
-          <Label className="font-bold text-gray-600">欲售價格 (NT$) *</Label>
-          <Input 
-            required 
-            type="number"
-            min="0"
-            value={price} 
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="例如：150" 
-            className="rounded-xl h-11 border-gray-200 focus-visible:ring-[#D95300]"
-          />
-        </div>
-
-        {/* 聯絡方式 */}
-        <div className="space-y-1.5">
-          <Label className="font-bold text-gray-600">聯絡方式 (LINE ID 或手機) *</Label>
-          <Input 
-            required 
-            value={contact} 
-            onChange={(e) => setContact(e.target.value)}
-            placeholder="方便買家聯絡你的管道" 
-            className="rounded-xl h-11 border-gray-200 focus-visible:ring-[#D95300]"
-          />
-        </div>
-
-        {/* 商品照片 */}
-        <div className="space-y-1.5">
-          <Label className="font-bold text-gray-600">商品照片 *</Label>
-          <div className="flex gap-3 items-center">
-            <button
-              type="button"
-              onClick={handleDummyImage}
-              className="h-20 w-20 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:text-[#D95300] hover:border-[#D95300] bg-slate-50/50 transition-all shrink-0"
-            >
-              <Camera className="w-6 h-6 mb-1" />
-              <span className="text-[10px] font-bold">{imageUrl ? "已選取 1/1" : "新增照片"}</span>
-            </button>
-            {imageUrl && (
-              <div className="h-20 w-20 rounded-2xl overflow-hidden border relative group">
-                <img src={imageUrl} alt="preview" className="w-full h-full object-cover" />
-                <div 
-                  onClick={() => setImageUrl("")}
-                  className="absolute inset-0 bg-black/40 text-white font-bold text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
-                >
-                  刪除
-                </div>
+            {/* 提示 LINE 未連線防呆 */}
+            {!lineUserId && (
+              <div className="mb-6 p-4 bg-amber-50 rounded-xl border border-amber-100 text-amber-700 text-sm space-y-2">
+                <p className="font-bold flex items-center gap-1">⚠️ 偵測到 LINE 未連線</p>
+                <p className="text-xs text-amber-600 leading-relaxed">請確保您是在 LINE 軟體內打開此網頁。若無反應，請點擊下方按鈕手動連線 LINE 身分。</p>
+                <Button size="sm" onClick={login} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8">
+                  呼叫 LINE 登入
+                </Button>
               </div>
             )}
+
+            {/* 錯誤錯誤提示 */}
+            {error && (
+              <div className="p-4 mb-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div className="text-sm font-semibold leading-relaxed">{error}</div>
+              </div>
+            )}
+
+            {/* 成功綠色提示 */}
+            {message && (
+              <div className="p-4 mb-4 rounded-xl bg-green-50 border border-green-100 text-green-600 flex items-start gap-2.5">
+                <CheckCircle2 className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div className="text-sm font-semibold leading-relaxed">{message}</div>
+              </div>
+            )}
+
+            {/* 步驟 1：輸入學號信箱 */}
+            {step === 1 ? (
+              <form onSubmit={handleSendCode} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="auth-email" className="font-bold text-gray-600">南臺學號信箱 *</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                    <Input
+                      id="auth-email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="例如：4b1g0xxx@stust.edu.tw"
+                      className="rounded-xl h-12 pl-11 border-gray-200 focus-visible:ring-[#D95300]"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-12 text-base font-bold rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white transition-all shadow-md"
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" /> 正在發送驗證碼...
+                    </span>
+                  ) : (
+                    "發送 6 位數驗證碼"
+                  )}
+                </Button>
+              </form>
+            ) : (
+              /* 步驟 2：輸入 6 位數純數字 */
+              <form onSubmit={handleVerifyCode} className="space-y-4">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="auth-otp" className="font-bold text-gray-600">輸入 6 位數驗證碼 *</Label>
+                    <span className="text-xs text-[#D95300] font-bold cursor-pointer hover:underline" onClick={() => setStep(1)}>
+                      修改信箱
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                    <Input
+                      id="auth-otp"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      required
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                      placeholder="請輸入郵件中的 6 位數字"
+                      className="rounded-xl h-12 pl-11 border-gray-200 focus-visible:ring-[#D95300] tracking-[0.5em] text-center font-mono text-lg font-bold"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-12 text-base font-bold rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white transition-all shadow-md"
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" /> 正在核對中...
+                    </span>
+                  ) : (
+                    "確認驗證並登入"
+                  )}
+                </Button>
+              </form>
+            )}
           </div>
-        </div>
-
-        {/* 商品細節描述 */}
-        <div className="space-y-1.5">
-          <Label className="font-bold text-gray-600">商品描述</Label>
-          <Textarea 
-            value={description} 
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="請簡單描述一下物品的新舊狀況、面交地點（例如：E棟一樓或校門口）..." 
-            className="rounded-xl min-h-[90px] border-gray-200 focus-visible:ring-[#D95300] resize-none"
-          />
-        </div>
-
-        {/* 提交按鈕 */}
-        <Button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full h-12 text-base font-bold rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white transition-all shadow-md mt-2"
-        >
-          {isSubmitting ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" /> 正在安全上架中...
-            </span>
-          ) : (
-            "確認上架商品"
-          )}
-        </Button>
-      </form>
-    </div>
+        )}
+      </div>
+    </main>
   );
 }
