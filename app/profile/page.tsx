@@ -1,6 +1,6 @@
 "use client";
 
-// app/profile/page.tsx 終極修復版
+// app/profile/page.tsx 終極修復對齊版
 
 import { useEffect, useState, useCallback } from "react";
 import { useLiff } from "@/components/liff-provider";
@@ -14,12 +14,11 @@ import { User, Package, Mail, Plus, ShieldCheck, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
-  // 🔥 關鍵修正：引入 userProfile（這是我們緩存的 LINE 資料）與 isLiffInit（LINE 完成鎖定）
   const { lineUserId, userProfile, userEmail, isAuthenticated, login, userName, isLiffInit } = useLiff();
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 1. 商品撈取邏輯 (不需變動，只對接 Supabase)
+  // 1. 商品撈取邏輯 (精準對齊資料庫 verified_email 欄位)
   const fetchMyProducts = useCallback(async () => {
     if (!isAuthenticated || !userEmail) {
       setIsLoadingProducts(false);
@@ -28,21 +27,45 @@ export default function ProfilePage() {
 
     try {
       setIsLoadingProducts(true);
-      const cachedData = localStorage.getItem(`products_${lineUserId || userEmail}`);
+      const cacheKey = `products_${lineUserId || userEmail}`;
+      const cachedData = localStorage.getItem(cacheKey);
       if (cachedData) setMyProducts(JSON.parse(cachedData));
 
+      // 🎯 關鍵修正：.eq("email", userEmail) 修正為符合資料庫結構的 .eq("verified_email", userEmail)
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, status, created_at, image_url")
-        .eq("email", userEmail)
+        .select("id, name, price, status, created_at, image_url, verified_email")
+        .eq("verified_email", userEmail)
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
-        setMyProducts(data);
-        localStorage.setItem(`products_${lineUserId || userEmail}`, JSON.stringify(data));
+      if (error) throw error;
+
+      if (data) {
+        // 🛠️ 安全圖片解析防線：相容字串、陣列及 JSON 格式，確保絕不破圖
+        const formattedData = data.map(item => {
+          let displayImg = "/placeholder-logo.png";
+          if (item.image_url) {
+            if (Array.isArray(item.image_url) && item.image_url.length > 0) {
+              displayImg = item.image_url[0];
+            } else if (typeof item.image_url === 'string') {
+              if (item.image_url.startsWith('[')) {
+                try {
+                  const arr = JSON.parse(item.image_url);
+                  if (arr.length > 0) displayImg = arr[0];
+                } catch(e) { displayImg = item.image_url; }
+              } else {
+                displayImg = item.image_url;
+              }
+            }
+          }
+          return { ...item, display_image: displayImg };
+        });
+
+        setMyProducts(formattedData);
+        localStorage.setItem(cacheKey, JSON.stringify(formattedData));
       }
     } catch (err) {
-      console.error("商品讀取失敗:", err);
+      console.error("個人商品讀取失敗:", err);
     } finally {
       setIsLoadingProducts(false);
     }
@@ -52,8 +75,7 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [fetchMyProducts]);
 
-  // ✨ 終極修復核心：在頁面最上方增加一個「等待 LINE 資料撈到」的渲染鎖定
-  // 如果 Supabase 驗證過了，但 LINE 資料還沒抓到，我們顯示一個乾淨的載入中畫面
+  // 2. 核心鎖定：同步 LINE 個人資料
   if (isAuthenticated && !userProfile && !lineUserId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
@@ -63,7 +85,7 @@ export default function ProfilePage() {
     );
   }
 
-  // 2. 未登入狀態
+  // 3. 未登入狀態
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
@@ -79,7 +101,7 @@ export default function ProfilePage() {
     );
   }
 
-  // 3. ✨ 最終渲染邏輯：既然上面有鎖定，這裡的 userProfile 資料一定是準確的
+  // 4. 最終畫面渲染
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -88,11 +110,11 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
+        {/* 使用者資訊卡片 */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
             <div className="flex items-center gap-5">
               <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/20 shrink-0">
-                {/* 🔥 條件修正：既然有全域緩存的 userProfile，直接用它 */}
                 {userProfile?.pictureUrl ? (
                   <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" />
                 ) : (
@@ -102,7 +124,6 @@ export default function ProfilePage() {
                 )}
               </div>
               <div className="min-w-0">
-                {/* 🔥 條件修正：優先顯示 LINE 暱稱，如果沒有（保險起見），才顯示提取出來的學號 userName */}
                 <h2 className="font-black text-2xl truncate">
                   {userProfile?.displayName || userName || "南臺同學"}
                 </h2>
@@ -143,7 +164,8 @@ export default function ProfilePage() {
               {myProducts.map((p) => (
                 <div key={p.id} className="flex items-center gap-4 p-4 border border-orange-50 rounded-[28px]">
                   <div className="h-16 w-16 bg-slate-100 rounded-xl overflow-hidden shrink-0">
-                    <img src={p.image_url?.[0] || p.image_url || "/placeholder-logo.png"} className="w-full h-full object-cover" alt="" />
+                    {/* 🎯 關鍵修正：將 src 換成經過安全重構解析的 p.display_image */}
+                    <img src={p.display_image} className="w-full h-full object-cover" alt={p.name} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-sm truncate">{p.name}</h4>
