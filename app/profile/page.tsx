@@ -1,5 +1,7 @@
 "use client";
 
+// app/profile/page.tsx 終極修復版
+
 import { useEffect, useState, useCallback } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
@@ -8,17 +10,17 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, Mail, Plus, ShieldCheck } from "lucide-react";
+import { User, Package, Mail, Plus, ShieldCheck, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
-  // 🔥 關鍵修正：解構出 userName，並且移除沒用到的 isLiffInit 阻擋，避免頁面無限載入
-  const { lineUserId, userProfile, userEmail, isAuthenticated, login, userName } = useLiff();
+  // 🔥 關鍵修正：引入 userProfile（這是我們緩存的 LINE 資料）與 isLiffInit（LINE 完成鎖定）
+  const { lineUserId, userProfile, userEmail, isAuthenticated, login, userName, isLiffInit } = useLiff();
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
+  // 1. 商品撈取邏輯 (不需變動，只對接 Supabase)
   const fetchMyProducts = useCallback(async () => {
-    // 只要驗證通過了就立即抓資料
     if (!isAuthenticated || !userEmail) {
       setIsLoadingProducts(false);
       return;
@@ -26,11 +28,9 @@ export default function ProfilePage() {
 
     try {
       setIsLoadingProducts(true);
-      
       const cachedData = localStorage.getItem(`products_${lineUserId || userEmail}`);
       if (cachedData) setMyProducts(JSON.parse(cachedData));
 
-      // 🎯 定案：因為資料庫只有 products 表，直接抓這個使用者的商品
       const { data, error } = await supabase
         .from("products")
         .select("id, name, price, status, created_at, image_url")
@@ -42,7 +42,7 @@ export default function ProfilePage() {
         localStorage.setItem(`products_${lineUserId || userEmail}`, JSON.stringify(data));
       }
     } catch (err) {
-      console.error("讀取失敗:", err);
+      console.error("商品讀取失敗:", err);
     } finally {
       setIsLoadingProducts(false);
     }
@@ -52,7 +52,18 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [fetchMyProducts]);
 
-  // 未登入狀態：只有在確定沒登入時才顯示
+  // ✨ 終極修復核心：在頁面最上方增加一個「等待 LINE 資料撈到」的渲染鎖定
+  // 如果 Supabase 驗證過了，但 LINE 資料還沒抓到，我們顯示一個乾淨的載入中畫面
+  if (isAuthenticated && !userProfile && !lineUserId) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
+        <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
+        <p className="text-gray-500 font-bold">正在同步您的 LINE 個人資料...</p>
+      </div>
+    );
+  }
+
+  // 2. 未登入狀態
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
@@ -68,6 +79,7 @@ export default function ProfilePage() {
     );
   }
 
+  // 3. ✨ 最終渲染邏輯：既然上面有鎖定，這裡的 userProfile 資料一定是準確的
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -80,6 +92,7 @@ export default function ProfilePage() {
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
             <div className="flex items-center gap-5">
               <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/20 shrink-0">
+                {/* 🔥 條件修正：既然有全域緩存的 userProfile，直接用它 */}
                 {userProfile?.pictureUrl ? (
                   <img src={userProfile.pictureUrl} alt="Avatar" className="h-full w-full object-cover" />
                 ) : (
@@ -89,7 +102,7 @@ export default function ProfilePage() {
                 )}
               </div>
               <div className="min-w-0">
-                {/* 🔥 關鍵修正：顯示 LINE 的 displayName，沒有的話就直接大方秀出我們做好的學號 userName */}
+                {/* 🔥 條件修正：優先顯示 LINE 暱稱，如果沒有（保險起見），才顯示提取出來的學號 userName */}
                 <h2 className="font-black text-2xl truncate">
                   {userProfile?.displayName || userName || "南臺同學"}
                 </h2>
