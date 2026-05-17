@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    // 確保這裡抓到的是你在 v0 設定的 Token
     const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
     
     if (!CHANNEL_ACCESS_TOKEN) {
@@ -11,38 +10,58 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { type, record, old_record } = body;
+    console.log("收到通知請求內容:", body);
 
-    // 判斷是新刊登、更新還是刪除
-    const data = type === 'DELETE' ? old_record : record;
+    // 🎯 完美相容防線：相容前端直接打 API，以及 Supabase Webhook 的資料結構
+    let type = body.type || 'INSERT'; 
+    let productData = body.record || body; // 如果沒有 record 欄位，代表是前端直接送進來的表單物件
 
-    // 如果沒有 Line ID，就無法傳送通知
-    if (!data?.line_user_id) {
+    // 如果是來自 Supabase Webhook 的 DELETE，改抓舊資料
+    if (type === 'DELETE') {
+      productData = body.old_record || body;
+    }
+
+    // 驗證是否有 LINE 用戶 ID
+    const lineUserId = productData.line_user_id || productData.lineUserId;
+    if (!lineUserId) {
+      console.log("找不到使用者的 Line ID，跳過通知");
       return NextResponse.json({ message: "找不到使用者的 Line ID，跳過通知" });
     }
 
-    let title = "商品狀態更新";
-    let color = "#3B82F6"; // 藍色
-    let subText = "";
+    // 取得商品基本資訊
+    const productName = productData.name || "未命名商品";
+    const productPrice = productData.price || "0";
+    const productStatus = productData.status;
 
-    // 根據 Supabase 的觸發類型決定通知內容
-    if (type === 'INSERT') {
-      title = "📦 商品刊登成功 (審核中)";
-      subText = "管理員正在審核您的商品，通過後會再次通知您。";
-      color = "#F59E0B"; // 橘色
-    } else if (type === 'UPDATE' && record.is_approved && !old_record?.is_approved) {
-      title = "✅ 審核通過通知";
-      color = "#10B981"; // 綠色
-      subText = "恭喜！您的商品已通過審核並成功上架。";
+    let title = "📦 商品刊登成功 (審核中)";
+    let color = "#D35400"; // 暖橘色
+    let subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
+
+    // 🎯 關鍵狀態修正：精準對齊最新的 'approved'、'rejected'、'pending' 狀態
+    if (type === 'UPDATE' || body.status) {
+      if (productStatus === 'approved') {
+        title = "🎉 商品審核通過！已成功上架";
+        color = "#10B981"; // 翠綠色
+        subText = "恭喜！您的二手寶貝已經在平台上公開展示，祝您順利成交！";
+      } else if (productStatus === 'rejected') {
+        title = "⚠️ 商品未通過審核 (已被退回)";
+        color = "#EF4444"; // 玫瑰紅
+        subText = "您的商品因未符合規範已被退回，您可以到「個人中心」查看並修改。";
+      } else if (productStatus === 'pending') {
+        // 或者是手動觸發的 pending
+        title = "📦 商品刊登成功 (審核中)";
+        color = "#D35400";
+        subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
+      } else {
+        return NextResponse.json({ message: "狀態無變更，略過通知" });
+      }
     } else if (type === 'DELETE') {
       title = "❌ 商品已被移除";
-      color = "#EF4444"; // 紅色
-      subText = "您的商品已被刪除或未通過規範，如有疑問請聯絡管理員。";
-    } else {
-      return NextResponse.json({ message: "不符合通知條件，略過" });
+      color = "#64748B"; // 灰藍色
+      subText = "您的商品已被下架或刪除。";
     }
 
-    // 呼叫 LINE Messaging API 傳送 Flex Message
+    // 呼叫 LINE Messaging API 發送精美的 Flex Message 卡片
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
@@ -50,21 +69,27 @@ export async function POST(req: Request) {
         'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}`,
       },
       body: JSON.stringify({
-        to: data.line_user_id,
+        to: lineUserId,
         messages: [{
           type: 'flex',
           altText: title,
           contents: {
             type: 'bubble',
+            styles: {
+              header: { backgroundColor: '#FFFFFF' },
+              footer: { backgroundColor: '#FAFAFA' }
+            },
             body: {
               type: 'box',
               layout: 'vertical',
+              paddingAll: 'xl',
               contents: [
                 { type: 'text', text: title, weight: 'bold', color: color, size: 'md' },
-                { type: 'text', text: data.name || "未命名商品", weight: 'bold', size: 'xl', margin: 'md', wrap: true },
-                { type: 'text', text: subText, color: '#666666', size: 'xs', margin: 'md', wrap: true },
-                { type: 'separator', margin: 'lg' },
-                { type: 'text', text: "南臺二手市集 - 自動通知系統", size: 'xxs', color: '#aaaaaa', margin: 'md' }
+                { type: 'text', text: productName, weight: 'black', size: 'xl', margin: 'md', wrap: true },
+                { type: 'text', text: `預售價格：NT$ ${Number(productPrice).toLocaleString()}`, weight: 'bold', size: 'sm', color: '#D35400', margin: 'xs' },
+                { type: 'text', text: subText, color: '#666666', size: 'xs', margin: 'lg', wrap: true },
+                { type: 'separator', margin: 'xl' },
+                { type: 'text', text: "📍 南臺二手市集 · 自動通知系統", size: 'xxs', color: '#B0B0B0', margin: 'md' }
               ]
             }
           }
