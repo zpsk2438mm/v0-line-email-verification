@@ -10,11 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 
 // 管理員 LINE ID 
-const ADMIN_IDS = ["Ued7dfd77b63273d497cebc62f1a7b1df",
-                   "Uf7c4668bc96315297b02b0a67fff88ea",
-                   "U6d1c1541184ea9202c0d0acc07e92a4e",
-                   "Uaea09099f0f6301955360eb64d238243"
-                  ];
+const ADMIN_IDS = [
+  "Ued7dfd77b63273d497cebc62f1a7b1df",
+  "Uf7c4668bc96315297b02b0a67fff88ea",
+  "U6d1c1541184ea9202c0d0acc07e92a4e",
+  "Uaea09099f0f6301955360eb64d238243"
+];
 
 export default function AdminPage() {
   const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
@@ -51,7 +52,6 @@ export default function AdminPage() {
 
   async function fetchData() {
     setLoading(true);
-    // 🔍 重點：只抓取狀態為 'pending' 的商品
     const { data, error } = await supabase
       .from("products")
       .select("*")
@@ -66,6 +66,10 @@ export default function AdminPage() {
 
   // ✅ 准許上架
   async function handleApprove(id: string) {
+    // 先找出該商品的完整原始資料，等一下發 LINE 才會用到
+    const product = pendingProducts.find(p => p.id === id);
+    if (!product) return;
+
     setProcessingId(id);
     const { error } = await supabase
       .from("products")
@@ -78,6 +82,23 @@ export default function AdminPage() {
     if (error) {
       alert("核准失敗");
     } else {
+      // 🎯 核心補強：資料庫更新成功，立刻發送 LINE 「審核通過」通知
+      try {
+        await fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "UPDATE",
+            status: "approved",
+            line_user_id: product.line_user_id, // 確保把使用者的 LINE ID 送過去
+            name: product.name,
+            price: product.price
+          }),
+        });
+      } catch (notifyErr) {
+        console.error("發送審核通過 LINE 通知失敗:", notifyErr);
+      }
+
       // 從 UI 移除該卡片
       setPendingProducts(prev => prev.filter(p => p.id !== id));
     }
@@ -86,6 +107,10 @@ export default function AdminPage() {
 
   // ❌ 退回 (不刪除，僅更改狀態)
   async function handleReject(id: string) {
+    // 先找出該商品的完整原始資料
+    const product = pendingProducts.find(p => p.id === id);
+    if (!product) return;
+
     setProcessingId(id);
     const { error } = await supabase
       .from("products")
@@ -98,6 +123,23 @@ export default function AdminPage() {
     if (error) {
       alert("操作失敗");
     } else {
+      // 🎯 核心補強：資料庫更新成功，立刻發送 LINE 「被退回」通知
+      try {
+        await fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "UPDATE",
+            status: "rejected",
+            line_user_id: product.line_user_id, // 確保把使用者的 LINE ID 送過去
+            name: product.name,
+            price: product.price
+          }),
+        });
+      } catch (notifyErr) {
+        console.error("發送退回 LINE 通知失敗:", notifyErr);
+      }
+
       // 從 UI 移除該卡片
       setPendingProducts(prev => prev.filter(p => p.id !== id));
     }
