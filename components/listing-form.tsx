@@ -102,7 +102,6 @@ export function ListingForm() {
     e.preventDefault();
     if (isSubmitting) return;
 
-    // 檢查登入狀態
     if (!isAuthenticated || !lineUserId) {
       setSubmitStatus("error");
       setErrorMessage("請先完成 LINE 登入及 Email 驗證後再上架");
@@ -120,11 +119,9 @@ export function ListingForm() {
       }
 
       setUploadProgress("儲存資料至資料庫...");
-
-      // 轉換為單一圖片網址字串以吻合資料庫型態
       const singleImageUrl = imageUrls.length > 0 ? imageUrls[0] : "";
 
-      // 1. 資料庫寫入
+      // 1. 寫入 Supabase 資料庫
       const { error: dbError } = await supabase.from("products").insert({
         name: formData.name,
         category: formData.category,
@@ -134,32 +131,30 @@ export function ListingForm() {
         image_url: singleImageUrl,
         line_user_id: lineUserId,
         verified_email: userEmail,
-        status: 'pending' // 預設審核中
+        status: 'pending'
       });
 
       if (dbError) throw dbError;
 
-      // 2. 傳送 LINE 刊登成功通知 (包在 async 函式內，解決 Top-level await 錯誤)
+      // 2. 呼叫通知 API (完全閉合的獨立 try-catch 區塊)
       setUploadProgress("傳送管理員通知...");
       try {
         await fetch("/api/notify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: "INSERT", // 讓後端判定是新上架
+            type: "INSERT",
             name: formData.name,
             price: formData.price,
             status: "pending",
-            line_user_id: lineUserId, // 對齊後端底線命名規格
+            line_user_id: lineUserId,
             verified_email: userEmail
           }),
         });
       } catch (notifyErr) {
         console.error("通知 API 呼叫失敗:", notifyErr);
-        // 通知若失敗，不阻斷使用者的流暢體驗
       }
 
-      // 3. 狀態重置與成功彈窗
       setSubmitStatus("success");
       setShowSuccessModal(true);
       setFormData({ name: "", category: "", price: "", description: "", contact: "" });
@@ -189,6 +184,7 @@ export function ListingForm() {
               管理員審核通過後即會公開顯示。
             </p>
             <Button 
+              type="button"
               onClick={() => setShowSuccessModal(false)} 
               className="w-full bg-[#D95300] hover:bg-[#B84600] h-14 text-lg font-bold rounded-2xl shadow-lg shadow-orange-100 transition-all text-white"
             >
@@ -222,4 +218,74 @@ export function ListingForm() {
                   <button 
                     type="button" 
                     onClick={() => removeImage(i)} 
-                    className="absolute top-1.5 right-1.5 bg-black/50 text
+                    className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+              {images.length < MAX_IMAGES && (
+                <button 
+                  type="button" 
+                  onClick={() => fileInputRef.current?.click()} 
+                  className="aspect-square rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-[#D95300] hover:bg-orange-50 hover:text-[#D95300] transition-all"
+                >
+                  <ImagePlus className="w-8 h-8 mb-1" />
+                  <span className="text-xs font-bold">新增照片</span>
+                </button>
+              )}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
+          </section>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="name" className="font-bold text-gray-600">商品名稱 *</Label>
+              <Input id="name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="例：大一英文課本" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="font-bold text-gray-600">分類 *</Label>
+              <Select required value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
+                <SelectTrigger className="h-12 rounded-xl border-gray-200 focus:ring-[#D95300]"><SelectValue placeholder="請選擇分類" /></SelectTrigger>
+                <SelectContent className="rounded-xl z-50 bg-white shadow-2xl border border-gray-100">
+                  {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value} className="focus:bg-orange-50 focus:text-[#D95300] font-medium">{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="price" className="font-bold text-gray-600">預售價格 (NT$) *</Label>
+              <Input id="price" type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="請輸入金額" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="contact" className="font-bold text-gray-600">聯絡方式 (LINE/手機) *</Label>
+              <Input id="contact" required value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="例：Line ID: stust_user" className="rounded-xl h-12 border-gray-200 focus-visible:ring-[#D95300]" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="desc" className="font-bold text-gray-600">商品詳情</Label>
+              <Textarea id="desc" rows={4} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="說明物品新舊程度、面交地點等..." className="rounded-xl border-gray-200 focus-visible:ring-[#D95300] resize-none" />
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-4 pb-12">
+          <Button 
+            type="submit" 
+            disabled={isSubmitting} 
+            className="w-full h-15 py-7 text-xl font-black rounded-2xl bg-[#D95300] hover:bg-[#B84600] shadow-xl shadow-orange-100 transition-all active:scale-[0.98] text-white"
+          >
+            {isSubmitting ? (
+              <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> {uploadProgress || "處理中..."}</>
+            ) : (
+              <><Send className="mr-2 h-6 w-6" /> 立即刊登上架</>
+            )}
+          </Button>
+          <p className="text-center text-[10px] text-gray-400 mt-4 tracking-widest font-bold uppercase">Southern Taiwan University of Science and Technology</p>
+        </div>
+      </form>
+    </>
+  );
+}
