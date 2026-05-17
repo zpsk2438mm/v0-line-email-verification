@@ -10,13 +10,12 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    console.log("收到通知請求內容:", body);
+    console.log("收到通知請求內容:", JSON.stringify(body));
 
     // 🎯 相容防線：相容前端直接打 API，以及 Supabase Webhook 的資料結構
     let type = body.type || 'INSERT'; 
-    let productData = body.record || body; // 如果沒有 record 欄位，代表是前端直接送進來的表單物件
+    let productData = body.record || body; 
 
-    // 如果是來自 Supabase Webhook 的 DELETE，改抓舊資料
     if (type === 'DELETE') {
       productData = body.old_record || body;
     }
@@ -52,7 +51,6 @@ export async function POST(req: Request) {
         color = "#D35400";
         subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
       } else if (type === 'UPDATE' && !productStatus) {
-        // 如果是其他更新但狀態沒變，略過
         return NextResponse.json({ message: "狀態無變更，略過通知" });
       }
     } else if (type === 'DELETE') {
@@ -62,100 +60,116 @@ export async function POST(req: Request) {
     }
 
     // 安全轉換價格數字，防止出現 NaN 導致 LINE 噴 400 錯誤
-    const parsedPrice = parseInt(String(productPrice).replace(/[^0-69]/g, ''), 10);
+    const parsedPrice = parseInt(String(productPrice).replace(/[^0-9]/g, ''), 10);
     const displayPrice = isNaN(parsedPrice) ? "0" : parsedPrice.toLocaleString();
 
-    // 呼叫 LINE Messaging API（使用最安全、嚴格閉合的 Flex Message Bubble 結構）
+    // 🎯 LINE 官方認證最安全、標準的 Flex Message 樹狀結構
+    const flexPayload = {
+      to: lineUserId,
+      messages: [{
+        type: 'flex',
+        altText: title,
+        contents: {
+          type: 'bubble',
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'md',
+                contents: [
+                  {
+                    type: 'text',
+                    text: title,
+                    weight: 'bold',
+                    color: color,
+                    size: 'md'
+                  },
+                  {
+                    type: 'text',
+                    text: productName,
+                    weight: 'black',
+                    size: 'xl',
+                    wrap: true
+                  },
+                  {
+                    type: 'box',
+                    layout: 'baseline',
+                    spacing: 'xs',
+                    contents: [
+                      {
+                        type: 'text',
+                        text: '預售價格：',
+                        size: 'sm',
+                        color: '#666666',
+                        flex: 0
+                      },
+                      {
+                        type: 'text',
+                        text: `NT$ ${displayPrice}`,
+                        weight: 'bold',
+                        size: 'md',
+                        color: '#D35400',
+                        flex: 1
+                      }
+                    ]
+                  },
+                  {
+                    type: 'text',
+                    text: subText,
+                    color: '#444444',
+                    size: 'sm',
+                    wrap: true
+                  }
+                ]
+              },
+              {
+                type: 'box',
+                layout: 'vertical',
+                margin: 'lg',
+                contents: [
+                  {
+                    type: 'separator',
+                    color: '#E5E5E5'
+                  },
+                  {
+                    type: 'text',
+                    text: "📍 南臺二手市集 · 自動通知系統",
+                    size: 'xs',
+                    color: '#A0A0A0',
+                    margin: 'md'
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }]
+    };
+
+    // 呼叫 LINE Messaging API
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}`,
       },
-      body: JSON.stringify({
-        to: lineUserId,
-        messages: [{
-          type: 'flex',
-          altText: title,
-          contents: {
-            type: 'bubble',
-            body: {
-              type: 'box',
-              layout: 'vertical',
-              paddingAll: 'lg',
-              contents: [
-                {
-                  type: 'text',
-                  text: title,
-                  weight: 'bold',
-                  color: color,
-                  size: 'md'
-                },
-                {
-                  type: 'text',
-                  text: productName,
-                  weight: 'black',
-                  size: 'xl',
-                  margin: 'md',
-                  wrap: true
-                },
-                {
-                  type: 'box',
-                  layout: 'baseline',
-                  margin: 'sm',
-                  contents: [
-                    {
-                      type: 'text',
-                      text: `預售價格：`,
-                      size: 'sm',
-                      color: '#666666',
-                      flex: 0
-                    },
-                    {
-                      type: 'text',
-                      text: `NT$ ${displayPrice}`,
-                      weight: 'bold',
-                      size: 'md',
-                      color: '#D35400',
-                      flex: 1
-                    }
-                  ]
-                },
-                {
-                  type: 'text',
-                  text: subText,
-                  color: '#444444',
-                  size: 'sm',
-                  margin: 'md',
-                  wrap: true
-                },
-                {
-                  type: 'separator',
-                  margin: 'lg'
-                },
-                {
-                  type: 'text',
-                  text: "📍 南臺二手市集 · 自動通知系統",
-                  size: 'xs',
-                  color: '#A0A0A0',
-                  margin: 'md'
-                }
-              ]
-            }
-          }
-        }]
-      }),
+      body: JSON.stringify(flexPayload),
     });
 
     if (!response.ok) {
       const errorMsg = await response.json();
-      console.error("LINE API 傳送失敗:", JSON.stringify(errorMsg));
+      // 🌟 用 JSON.stringify 完整倒出，防止細節在 Vercel 中被簡略遮蔽
+      console.error("🔴 LINE API 傳送失敗，完整錯誤回應：", JSON.stringify(errorMsg, null, 2));
       return NextResponse.json({ error: "LINE API 失敗", details: errorMsg }, { status: response.status });
     }
 
+    console.log("🟢 LINE 通訊分發成功！");
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error("Notify 路由發生崩潰:", err);
+    console.error("💥 Notify 路由發生崩潰:", err);
     return NextResponse.json({ error: "伺服器內部錯誤", details: err.message }, { status: 500 });
   }
 }
