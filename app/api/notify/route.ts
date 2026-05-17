@@ -10,9 +10,9 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    console.log("收到通知請求內容:", JSON.stringify(body));
+    console.log("收到原始請求內容:", JSON.stringify(body));
 
-    // 🎯 1. 判定事件類型
+    // 🎯 1. 判定事件類型 (Supabase Webhook 會帶 type: 'INSERT' / 'UPDATE')
     let type = body.type || 'INSERT'; 
     
     // 🎯 2. 解析資料本體
@@ -33,28 +33,41 @@ export async function POST(req: Request) {
     const productName = productData.name || "未命名商品";
     const productPrice = productData.price || "0";
     
-    // 🎯 4. 取得商品圖片網址 (相容直接傳入的 productImage 或 record 裡的 image_url)
-    const rawImageUrl = body.productImage || productData.image_url || body.image_url;
-    
-    // 解析圖片網址（過濾掉可能存在的陣列括號字串）
+    // 🎯 4. 終極解決方案：多層級抽取並清洗 Supabase 圖片網址
+    // 優先吃前端傳入的 productImage，其次吃 Webhook 裡的 image_url
+    let rawImageUrl = body.productImage || productData.image_url || body.image_url;
     let parsedImageUrl = "";
+
     if (rawImageUrl) {
       try {
+        // 如果傳過來本身就是陣列型態
         if (Array.isArray(rawImageUrl)) {
           parsedImageUrl = rawImageUrl[0];
-        } else if (typeof rawImageUrl === 'string' && rawImageUrl.startsWith('[')) {
+        } 
+        // 如果是 Supabase 欄位常見的字串型態，且長得像 JSON 陣列 (例如: '["https://..."]')
+        else if (typeof rawImageUrl === 'string' && (rawImageUrl.startsWith('[') || rawImageUrl.startsWith('{'))) {
           const parsed = JSON.parse(rawImageUrl);
-          parsedImageUrl = Array.isArray(parsed) ? parsed[0] : rawImageUrl;
-        } else {
+          parsedImageUrl = Array.isArray(parsed) ? parsed[0] : (parsed.url || rawImageUrl);
+        } 
+        // 一般純文字網址
+        else if (typeof rawImageUrl === 'string') {
           parsedImageUrl = rawImageUrl;
         }
-        parsedImageUrl = parsedImageUrl.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim();
+
+        // 關鍵清洗：徹底拔除網址中殘留的 [ ] " ' \ 等干擾字元
+        if (parsedImageUrl && typeof parsedImageUrl === 'string') {
+          parsedImageUrl = parsedImageUrl.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim();
+        }
       } catch (e) {
+        console.error("解析圖片網址出錯，降級處理:", e);
         parsedImageUrl = "";
       }
     }
 
-    // 🎯 5. 精準狀態撈取
+    // 偵錯日誌：確保在送給 LINE 之前知道網址到底乾不乾淨
+    console.log("🧼 清洗後的最終圖片網址為:", parsedImageUrl);
+
+    // 🎯 5. 精準狀態與文案撈取
     const productStatus = productData.status || body.status;
 
     let title = "📦 商品刊登成功 (審核中)";
@@ -80,6 +93,11 @@ export async function POST(req: Request) {
         console.log("狀態無目標變更，略過通知");
         return NextResponse.json({ message: "狀態無目標變更，略過通知" });
       }
+    } else if (type === 'INSERT') {
+      // 確保初次寫入時，也是審核中狀態
+      title = "📦 商品刊登成功 (審核中)";
+      color = "#D35400";
+      subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
     } else if (type === 'DELETE') {
       title = "❌ 商品已被移除";
       color = "#64748B"; // 灰藍色
@@ -91,13 +109,29 @@ export async function POST(req: Request) {
     const displayPrice = isNaN(parsedPrice) ? "0" : parsedPrice.toLocaleString();
 
     // 🎯 6. 動態建立 Flex 內容元件陣列
-    const bodyContents: any[] = [
+    const bodyContents: any[] = [];
+
+    // 🔥 如果清洗出合法的 http 圖片，毫不客氣地插在卡片最上方！
+    if (parsedImageUrl && parsedImageUrl.startsWith('http')) {
+      bodyContents.push({
+        type: 'image',
+        url: parsedImageUrl,
+        aspectMode: 'cover',
+        aspectRatio: '16:9',
+        size: 'full',
+        margin: 'none'
+      });
+    }
+
+    // 依序推入文字欄位
+    bodyContents.push(
       {
         type: 'text',
         text: title,
         weight: 'bold',
         color: color,
-        size: 'md'
+        size: 'md',
+        margin: 'md'
       },
       {
         type: 'text',
@@ -135,19 +169,7 @@ export async function POST(req: Request) {
         size: 'sm',
         wrap: true
       }
-    ];
-
-    // 🎯 如果有成功的商品圖片網址，就在內文最前面塞入圖片元件
-    if (parsedImageUrl && parsedImageUrl.startsWith('http')) {
-      bodyContents.unshift({
-        type: 'image',
-        url: parsedImageUrl,
-        aspectMode: 'cover',
-        aspectRatio: '16:9',
-        size: 'full',
-        margin: 'none'
-      });
-    }
+    );
 
     // LINE 官方認證 Flex Message 結構
     const flexPayload = {
@@ -208,7 +230,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "LINE API 失敗", details: errorMsg }, { status: response.status });
     }
 
-    console.log(`🟢 LINE 狀態更新通知分發成功！[狀態: ${productStatus}]`);
+    console.log(`🟢 LINE 狀態更新通知分發成功！[類型: ${type}]`);
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("💥 Notify 路由發生崩潰:", err);
