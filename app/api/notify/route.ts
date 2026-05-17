@@ -83,14 +83,14 @@ export async function POST(req: Request) {
                   {
                     type: 'text',
                     text: title,
-                    weight: 'bold',
+                    weight: 'bold', // 👈 確保符合 LINE 官方規範
                     color: color,
                     size: 'md'
                   },
                   {
                     type: 'text',
                     text: productName,
-                    weight: 'black',
+                    weight: 'bold', // 👈 🎯 修正處：將原本非法的 'black' 改為標準的 'bold'
                     size: 'xl',
                     wrap: true
                   },
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
                       {
                         type: 'text',
                         text: `NT$ ${displayPrice}`,
-                        weight: 'bold',
+                        weight: 'bold', // 👈 確保符合 LINE 官方規範
                         size: 'md',
                         color: '#D35400',
                         flex: 1
@@ -161,7 +161,6 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       const errorMsg = await response.json();
-      // 🌟 用 JSON.stringify 完整倒出，防止細節在 Vercel 中被簡略遮蔽
       console.error("🔴 LINE API 傳送失敗，完整錯誤回應：", JSON.stringify(errorMsg, null, 2));
       return NextResponse.json({ error: "LINE API 失敗", details: errorMsg }, { status: response.status });
     }
