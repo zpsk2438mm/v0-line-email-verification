@@ -5,14 +5,14 @@ export async function POST(req: Request) {
     const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
     
     if (!CHANNEL_ACCESS_TOKEN) {
+      console.error("錯誤：缺少 LINE_CHANNEL_ACCESS_TOKEN 環境變數");
       return NextResponse.json({ error: "伺服器設定錯誤" }, { status: 500 });
     }
 
     const body = await req.json();
-    console.log("=== 收到原始請求內容 ===");
-    console.log(JSON.stringify(body, null, 2));
+    console.log("收到原始請求內容:", JSON.stringify(body));
 
-    // 🎯 1. 判定事件類型
+    // 🎯 1. 判定事件類型 (Supabase Webhook 為 'INSERT' 或 'UPDATE')
     let type = body.type || 'INSERT'; 
     
     // 🎯 2. 解析資料本體
@@ -33,14 +33,8 @@ export async function POST(req: Request) {
     const productName = productData.name || "未命名商品";
     const productPrice = productData.price || "0";
     
-    // 🎯 4. 全方位撒網搜捕圖片網址 (把所有可能發生的欄位名都撈一遍)
-    let rawImageUrl = body.productImage || 
-                      body.image_url || 
-                      body.imageUrl || 
-                      productData.image_url || 
-                      productData.imageUrl || 
-                      productData.productImage;
-                      
+    // 🎯 4. 全方位清洗商品圖片網址
+    let rawImageUrl = body.productImage || productData.image_url || body.image_url;
     let parsedImageUrl = "";
 
     if (rawImageUrl) {
@@ -55,7 +49,14 @@ export async function POST(req: Request) {
         }
 
         if (parsedImageUrl && typeof parsedImageUrl === 'string') {
+          // 徹底拔除網址中殘留的 [ ] " ' \ 等干擾字元
           parsedImageUrl = parsedImageUrl.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim();
+          
+          // 🚀 【核心大補強】如果洗出來只是單純的檔名（不是 http 開頭），自動拼接上你的 Supabase Storage 完整網址
+          if (parsedImageUrl && !parsedImageUrl.startsWith('http') && parsedImageUrl !== "/placeholder-logo.png") {
+            const cleanPath = parsedImageUrl.replace(/^\//, ""); // 移除開頭斜線
+            parsedImageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
+          }
         }
       } catch (e) {
         console.error("解析圖片網址出錯:", e);
@@ -63,16 +64,15 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log("🧼 [Notify API] 最終清洗出的圖片網址為:", parsedImageUrl);
+    console.log("🧼 [後端自動補全] 最終送往 LINE 的圖片網址為:", parsedImageUrl);
 
-    // 🎯 5. 根據狀態或動作類型決定文案
+    // 🎯 5. 根據狀態決定文案與主題顏色
     const productStatus = productData.status || body.status;
 
     let title = "📦 商品刊登成功 (審核中)";
     let color = "#D35400"; // 暖橘色
     let subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
 
-    // 如果明確是 approved 或 rejected
     if (productStatus === 'approved') {
       title = "🎉 商品審核通過！已成功上架";
       color = "#10B981"; // 翠綠色
@@ -81,14 +81,11 @@ export async function POST(req: Request) {
       title = "⚠️ 商品未通過審核 (已被退回)";
       color = "#EF4444"; // 玫瑰紅
       subText = "您的商品因未符合規範已被退回，您可以到「個人中心」查看並修改。";
-    } else {
-      // 預設或 pending 或是初次 INSERT
+    } else if (productStatus === 'pending' || type === 'INSERT') {
       title = "📦 商品刊登成功 (審核中)";
       color = "#D35400";
       subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
-    }
-
-    if (type === 'DELETE') {
+    } else if (type === 'DELETE') {
       title = "❌ 商品已被移除";
       color = "#64748B"; // 灰藍色
       subText = "您的商品已被下架或刪除。";
@@ -172,7 +169,7 @@ export async function POST(req: Request) {
       }
     };
 
-    // 如果清洗出合法的圖片，直接掛載至 hero 區塊
+    // 如果清洗補全出合法的圖片，直接掛載至 hero 區塊
     if (parsedImageUrl && parsedImageUrl.startsWith('http')) {
       bubbleStructure.hero = {
         type: 'image',
@@ -207,6 +204,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "LINE API 失敗", details: errorMsg }, { status: response.status });
     }
 
+    console.log(`🟢 LINE 通知發送成功！`);
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("💥 Notify 路由發生崩潰:", err);
