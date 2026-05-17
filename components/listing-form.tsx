@@ -136,7 +136,7 @@ export function ListingForm() {
 
       if (dbError) throw dbError;
 
-      // 2. 呼叫通知 API (完全閉合的獨立 try-catch 區塊)
+      // 2. 呼叫通知 API (✨ 這裡已修正：成功加入 productImage 欄位)
       setUploadProgress("傳送管理員通知...");
       try {
         await fetch("/api/notify", {
@@ -148,7 +148,8 @@ export function ListingForm() {
             price: formData.price,
             status: "pending",
             line_user_id: lineUserId,
-            verified_email: userEmail
+            verified_email: userEmail,
+            productImage: singleImageUrl // 🔥 絕殺修正：直接把熱騰騰的完整網址砸向後端通知 API
           }),
         });
       } catch (notifyErr) {
