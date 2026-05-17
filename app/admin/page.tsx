@@ -66,7 +66,6 @@ export default function AdminPage() {
 
   // ✅ 准許上架
   async function handleApprove(id: string) {
-    // 先找出該商品的完整原始資料，等一下發 LINE 才會用到
     const product = pendingProducts.find(p => p.id === id);
     if (!product) return;
 
@@ -82,7 +81,9 @@ export default function AdminPage() {
     if (error) {
       alert("核准失敗");
     } else {
-      // 🎯 核心補強：資料庫更新成功，立刻發送 LINE 「審核通過」通知
+      // 🎯 核心補強：乾淨過濾出可以給 LINE 讀取的網址
+      const cleanImgUrl = getImageUrl(product.image_url);
+
       try {
         await fetch("/api/notify", {
           method: "POST",
@@ -90,9 +91,10 @@ export default function AdminPage() {
           body: JSON.stringify({
             type: "UPDATE",
             status: "approved",
-            line_user_id: product.line_user_id, // 確保把使用者的 LINE ID 送過去
+            line_user_id: product.line_user_id,
             name: product.name,
-            price: product.price
+            price: product.price,
+            productImage: cleanImgUrl.startsWith("http") ? cleanImgUrl : undefined // 🎯 傳送乾淨的圖片網址給 LINE
           }),
         });
       } catch (notifyErr) {
@@ -107,7 +109,6 @@ export default function AdminPage() {
 
   // ❌ 退回 (不刪除，僅更改狀態)
   async function handleReject(id: string) {
-    // 先找出該商品的完整原始資料
     const product = pendingProducts.find(p => p.id === id);
     if (!product) return;
 
@@ -123,7 +124,9 @@ export default function AdminPage() {
     if (error) {
       alert("操作失敗");
     } else {
-      // 🎯 核心補強：資料庫更新成功，立刻發送 LINE 「被退回」通知
+      // 🎯 核心補強：乾淨過濾出可以給 LINE 讀取的網址
+      const cleanImgUrl = getImageUrl(product.image_url);
+
       try {
         await fetch("/api/notify", {
           method: "POST",
@@ -131,9 +134,10 @@ export default function AdminPage() {
           body: JSON.stringify({
             type: "UPDATE",
             status: "rejected",
-            line_user_id: product.line_user_id, // 確保把使用者的 LINE ID 送過去
+            line_user_id: product.line_user_id,
             name: product.name,
-            price: product.price
+            price: product.price,
+            productImage: cleanImgUrl.startsWith("http") ? cleanImgUrl : undefined // 🎯 傳送乾淨的圖片網址給 LINE
           }),
         });
       } catch (notifyErr) {
