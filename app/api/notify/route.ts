@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log("收到原始請求內容:", JSON.stringify(body));
 
-    // 🎯 1. 判定事件類型 (Supabase Webhook 會帶 type: 'INSERT' / 'UPDATE')
+    // 🎯 1. 判定事件類型 (Supabase Webhook 為 'INSERT' 或 'UPDATE')
     let type = body.type || 'INSERT'; 
     
     // 🎯 2. 解析資料本體
@@ -33,68 +33,49 @@ export async function POST(req: Request) {
     const productName = productData.name || "未命名商品";
     const productPrice = productData.price || "0";
     
-    // 🎯 4. 終極解決方案：多層級抽取並清洗 Supabase 圖片網址
-    // 優先吃前端傳入的 productImage，其次吃 Webhook 裡的 image_url
+    // 🎯 4. 清洗商品圖片網址
     let rawImageUrl = body.productImage || productData.image_url || body.image_url;
     let parsedImageUrl = "";
 
     if (rawImageUrl) {
       try {
-        // 如果傳過來本身就是陣列型態
         if (Array.isArray(rawImageUrl)) {
           parsedImageUrl = rawImageUrl[0];
-        } 
-        // 如果是 Supabase 欄位常見的字串型態，且長得像 JSON 陣列 (例如: '["https://..."]')
-        else if (typeof rawImageUrl === 'string' && (rawImageUrl.startsWith('[') || rawImageUrl.startsWith('{'))) {
+        } else if (typeof rawImageUrl === 'string' && (rawImageUrl.startsWith('[') || rawImageUrl.startsWith('{'))) {
           const parsed = JSON.parse(rawImageUrl);
           parsedImageUrl = Array.isArray(parsed) ? parsed[0] : (parsed.url || rawImageUrl);
-        } 
-        // 一般純文字網址
-        else if (typeof rawImageUrl === 'string') {
+        } else if (typeof rawImageUrl === 'string') {
           parsedImageUrl = rawImageUrl;
         }
 
-        // 關鍵清洗：徹底拔除網址中殘留的 [ ] " ' \ 等干擾字元
         if (parsedImageUrl && typeof parsedImageUrl === 'string') {
           parsedImageUrl = parsedImageUrl.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim();
         }
       } catch (e) {
-        console.error("解析圖片網址出錯，降級處理:", e);
+        console.error("解析圖片網址出錯:", e);
         parsedImageUrl = "";
       }
     }
 
-    // 偵錯日誌：確保在送給 LINE 之前知道網址到底乾不乾淨
     console.log("🧼 清洗後的最終圖片網址為:", parsedImageUrl);
 
-    // 🎯 5. 精準狀態與文案撈取
+    // 🎯 5. 根據狀態決定文案與主題顏色
     const productStatus = productData.status || body.status;
 
     let title = "📦 商品刊登成功 (審核中)";
     let color = "#D35400"; // 暖橘色
     let subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
 
-    console.log(`正在處理事件: ${type}, 狀態為: ${productStatus}`);
-
-    if (type === 'UPDATE' || productStatus) {
-      if (productStatus === 'approved') {
-        title = "🎉 商品審核通過！已成功上架";
-        color = "#10B981"; // 翠綠色
-        subText = "恭喜！您的二手寶貝已經在平台上公開展示，祝您順利成交！";
-      } else if (productStatus === 'rejected') {
-        title = "⚠️ 商品未通過審核 (已被退回)";
-        color = "#EF4444"; // 玫瑰紅
-        subText = "您的商品因未符合規範已被退回，您可以到「個人中心」查看並修改。";
-      } else if (productStatus === 'pending') {
-        title = "📦 商品刊登成功 (審核中)";
-        color = "#D35400";
-        subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
-      } else {
-        console.log("狀態無目標變更，略過通知");
-        return NextResponse.json({ message: "狀態無目標變更，略過通知" });
-      }
-    } else if (type === 'INSERT') {
-      // 確保初次寫入時，也是審核中狀態
+    // 判斷狀態與更新類型
+    if (productStatus === 'approved') {
+      title = "🎉 商品審核通過！已成功上架";
+      color = "#10B981"; // 翠綠色
+      subText = "恭喜！您的二手寶貝已經在平台上公開展示，祝您順利成交！";
+    } else if (productStatus === 'rejected') {
+      title = "⚠️ 商品未通過審核 (已被退回)";
+      color = "#EF4444"; // 玫瑰紅
+      subText = "您的商品因未符合規範已被退回，您可以到「個人中心」查看並修改。";
+    } else if (productStatus === 'pending' || type === 'INSERT') {
       title = "📦 商品刊登成功 (審核中)";
       color = "#D35400";
       subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
@@ -108,110 +89,98 @@ export async function POST(req: Request) {
     const parsedPrice = parseInt(String(productPrice).replace(/[^0-9]/g, ''), 10);
     const displayPrice = isNaN(parsedPrice) ? "0" : parsedPrice.toLocaleString();
 
-    // 🎯 6. 動態建立 Flex 內容元件陣列
-    const bodyContents: any[] = [];
-
-    // 🔥 如果清洗出合法的 http 圖片，毫不客氣地插在卡片最上方！
-    if (parsedImageUrl && parsedImageUrl.startsWith('http')) {
-      bodyContents.push({
-        type: 'image',
-        url: parsedImageUrl,
-        aspectMode: 'cover',
-        aspectRatio: '16:9',
-        size: 'full',
-        margin: 'none'
-      });
-    }
-
-    // 依序推入文字欄位
-    bodyContents.push(
-      {
-        type: 'text',
-        text: title,
-        weight: 'bold',
-        color: color,
-        size: 'md',
-        margin: 'md'
-      },
-      {
-        type: 'text',
-        text: productName,
-        weight: 'bold',
-        size: 'xl',
-        wrap: true
-      },
-      {
+    // 🎯 6. 建立標準的 LINE 氣泡結構 (將圖片抽離至符合規範的 hero 區塊)
+    const bubbleStructure: any = {
+      type: 'bubble',
+      body: {
         type: 'box',
-        layout: 'baseline',
-        spacing: 'xs',
+        layout: 'vertical',
+        paddingAll: 'lg',
+        spacing: 'md',
         contents: [
           {
             type: 'text',
-            text: '預售價格：',
-            size: 'sm',
-            color: '#666666',
-            flex: 0
+            text: title,
+            weight: 'bold',
+            color: color,
+            size: 'md'
           },
           {
             type: 'text',
-            text: `NT$ ${displayPrice}`,
+            text: productName,
             weight: 'bold',
-            size: 'md',
-            color: '#D35400',
-            flex: 1
+            size: 'xl',
+            wrap: true
+          },
+          {
+            type: 'box',
+            layout: 'baseline',
+            spacing: 'xs',
+            contents: [
+              {
+                type: 'text',
+                text: '預售價格：',
+                size: 'sm',
+                color: '#666666',
+                flex: 0
+              },
+              {
+                type: 'text',
+                text: `NT$ ${displayPrice}`,
+                weight: 'bold',
+                size: 'md',
+                color: '#D35400',
+                flex: 1
+              }
+            ]
+          },
+          {
+            type: 'text',
+            text: subText,
+            color: '#444444',
+            size: 'sm',
+            wrap: true
+          },
+          {
+            type: 'box',
+            layout: 'vertical',
+            margin: 'lg',
+            contents: [
+              {
+                type: 'separator',
+                color: '#E5E5E5'
+              },
+              {
+                type: 'text',
+                text: "📍 南臺二手市集 · 自動通知系統",
+                size: 'xs',
+                color: '#A0A0A0',
+                margin: 'md'
+              }
+            ]
           }
         ]
-      },
-      {
-        type: 'text',
-        text: subText,
-        color: '#444444',
-        size: 'sm',
-        wrap: true
       }
-    );
+    };
 
-    // LINE 官方認證 Flex Message 結構
+    // 🔥 遵照 LINE 官方規範：如果有合法圖片，直接放入正確的 hero 區塊中！
+    if (parsedImageUrl && parsedImageUrl.startsWith('http')) {
+      bubbleStructure.hero = {
+        type: 'image',
+        url: parsedImageUrl,
+        size: 'full',
+        aspectRatio: '16:9',
+        aspectMode: 'cover'
+      };
+    }
+
+    // LINE 官方認證 傳送封包
     const flexPayload = {
       to: lineUserId,
       messages: [{
         type: 'flex',
         altText: title,
-        contents: {
-          type: 'bubble',
-          body: {
-            type: 'box',
-            layout: 'vertical',
-            paddingAll: 'lg',
-            spacing: 'md',
-            contents: [
-              {
-                type: 'box',
-                layout: 'vertical',
-                spacing: 'md',
-                contents: bodyContents // 注入動態內容
-              },
-              {
-                type: 'box',
-                layout: 'vertical',
-                margin: 'lg',
-                contents: [
-                  {
-                    type: 'separator',
-                    color: '#E5E5E5'
-                  },
-                  {
-                    type: 'text',
-                    text: "📍 南臺二手市集 · 自動通知系統",
-                    size: 'xs',
-                    color: '#A0A0A0',
-                    margin: 'md'
-                  }
-                ]
-              }
-            ]
-          }
-        }
+        contents: bubbleStructure
       }]
     };
 
@@ -230,7 +199,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "LINE API 失敗", details: errorMsg }, { status: response.status });
     }
 
-    console.log(`🟢 LINE 狀態更新通知分發成功！[類型: ${type}]`);
+    console.log(`🟢 LINE 通知分發成功！狀態型態: ${type}`);
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("💥 Notify 路由發生崩潰:", err);
