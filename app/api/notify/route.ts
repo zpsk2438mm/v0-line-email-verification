@@ -12,32 +12,40 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log("收到通知請求內容:", JSON.stringify(body));
 
-    // 🎯 相容防線：相容前端直接打 API，以及 Supabase Webhook 的資料結構
+    // 🎯 1. 判定事件類型 (相容 Supabase Webhook 與手動打 API)
+    // Supabase Webhook 的事件名稱是 body.type ('INSERT', 'UPDATE', 'DELETE')
     let type = body.type || 'INSERT'; 
+    
+    // 🎯 2. 解析資料本體
+    // 如果是 Supabase Webhook，更新後的資料會在 body.record 中
     let productData = body.record || body; 
 
     if (type === 'DELETE') {
       productData = body.old_record || body;
     }
 
-    // 驗證是否有 LINE 用戶 ID
-    const lineUserId = productData.line_user_id || productData.lineUserId;
+    // 🎯 3. 取得 LINE 用戶 ID (極致相容層)
+    const lineUserId = productData.line_user_id || productData.lineUserId || body.line_user_id || body.lineUserId;
     if (!lineUserId) {
-      console.log("找不到使用者的 Line ID，跳過通知");
+      console.log("⚠️ 找不到使用者的 Line ID，跳過通知。請確認發送的資料中有包含 line_user_id");
       return NextResponse.json({ message: "找不到使用者的 Line ID，跳過通知" });
     }
 
     // 取得商品基本資訊
     const productName = productData.name || "未命名商品";
     const productPrice = productData.price || "0";
-    const productStatus = productData.status;
+    
+    // 🎯 4. 精準狀態撈取：優先拿 record 裡的 status，再拿外層的 status
+    const productStatus = productData.status || body.status;
 
     let title = "📦 商品刊登成功 (審核中)";
     let color = "#D35400"; // 暖橘色
     let subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
 
-    // 🎯 狀態判定：精準對齊 'approved'、'rejected'、'pending'
-    if (type === 'UPDATE' || body.status || productStatus) {
+    console.log(`正在處理事件: ${type}, 狀態為: ${productStatus}`);
+
+    // 🎯 5. 狀態分支判斷
+    if (type === 'UPDATE' || productStatus) {
       if (productStatus === 'approved') {
         title = "🎉 商品審核通過！已成功上架";
         color = "#10B981"; // 翠綠色
@@ -50,8 +58,10 @@ export async function POST(req: Request) {
         title = "📦 商品刊登成功 (審核中)";
         color = "#D35400";
         subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
-      } else if (type === 'UPDATE' && !productStatus) {
-        return NextResponse.json({ message: "狀態無變更，略過通知" });
+      } else {
+        // 如果狀態是其他非預期字串，或者是無關的欄位更新，則略過
+        console.log("狀態無目標變更，略過通知");
+        return NextResponse.json({ message: "狀態無目標變更，略過通知" });
       }
     } else if (type === 'DELETE') {
       title = "❌ 商品已被移除";
@@ -59,11 +69,11 @@ export async function POST(req: Request) {
       subText = "您的商品已被下架或刪除。";
     }
 
-    // 安全轉換價格數字，防止出現 NaN 導致 LINE 噴 400 錯誤
+    // 安全轉換價格數字
     const parsedPrice = parseInt(String(productPrice).replace(/[^0-9]/g, ''), 10);
     const displayPrice = isNaN(parsedPrice) ? "0" : parsedPrice.toLocaleString();
 
-    // 🎯 LINE 官方認證最安全、標準的 Flex Message 樹狀結構
+    // LINE 官方認證 Flex Message 結構
     const flexPayload = {
       to: lineUserId,
       messages: [{
@@ -83,14 +93,14 @@ export async function POST(req: Request) {
                   {
                     type: 'text',
                     text: title,
-                    weight: 'bold', // 👈 確保符合 LINE 官方規範
+                    weight: 'bold',
                     color: color,
                     size: 'md'
                   },
                   {
                     type: 'text',
                     text: productName,
-                    weight: 'bold', // 👈 🎯 修正處：將原本非法的 'black' 改為標準的 'bold'
+                    weight: 'bold',
                     size: 'xl',
                     wrap: true
                   },
@@ -109,7 +119,7 @@ export async function POST(req: Request) {
                       {
                         type: 'text',
                         text: `NT$ ${displayPrice}`,
-                        weight: 'bold', // 👈 確保符合 LINE 官方規範
+                        weight: 'bold',
                         size: 'md',
                         color: '#D35400',
                         flex: 1
@@ -149,7 +159,6 @@ export async function POST(req: Request) {
       }]
     };
 
-    // 呼叫 LINE Messaging API
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
@@ -165,7 +174,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "LINE API 失敗", details: errorMsg }, { status: response.status });
     }
 
-    console.log("🟢 LINE 通訊分發成功！");
+    console.log(`🟢 LINE 狀態更新通知分發成功！[狀態: ${productStatus}]`);
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("💥 Notify 路由發生崩潰:", err);
