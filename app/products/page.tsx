@@ -83,12 +83,15 @@ export default function ExploreProductsPage() {
       try {
         setFetching(true);
         
-        // 🎯 完美方案：不使用 .not() 阻擋，並透過 nullsFirst: false 把舊資料塞到最後面
+        // 🎯 雙重排序完美方案：
         const { data, error } = await supabase
           .from("products")
           .select("*")
           .eq("status", "approved") 
-          .order("approved_at", { ascending: false, nullsFirst: false }); // 🔥 關鍵降序＋null墊底
+          // 1️⃣ 第一順位：有審核時間的從新到舊排最前面；沒有的（null）往後退墊底
+          .order("approved_at", { ascending: false, nullsFirst: false })
+          // 2️⃣ 第二順位：當 approved_at 都是 null 時，這群舊資料改用「刊登時間 (created_at)」從新到舊排序
+          .order("created_at", { ascending: false });
 
         if (error) throw error;
         setProducts(data || []);
