@@ -64,7 +64,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ExploreProductsPage() {
-  // 🎯 關鍵修正：精準解構出動態加載所需的所有狀態鎖
   const { 
     isAuthenticated, 
     login, 
@@ -81,14 +80,14 @@ export default function ExploreProductsPage() {
 
   // --- 抓取商品邏輯 ---
   useEffect(() => {
-    // 🎯 關鍵修正 1：如果 LIFF 還在載入中，或者【已初始化但 Profile 還在非同步 fetch 中】，一律原地等待
-    if (liffLoading || !isLiffInit) return;
+    // 🎯 關鍵修正 1：只要全域還在 loading，就先不要做任何轉向或撈取判斷，避免干擾 Provider
+    if (liffLoading) return;
     
-    // 🎯 關鍵修正 2：此時初始化徹底結束，如果依然沒有 userProfile 且沒認證，才是真正的未登入
-    if (!isAuthenticated && !userProfile) {
+    // 🎯 關鍵修正 2：如果沒通過 Supabase 信箱驗證，且 LINE 已經初始化完了卻沒資料，才引導登入
+    if (isLiffInit && !isAuthenticated && !userProfile) {
       setFetching(false);
       if (login) {
-        console.log("偵測到網址直接空降且未登入，主動導向 LINE 登入...");
+        console.log("確定未登入，主動導向 LINE 登入...");
         login();
       }
       return;
@@ -114,8 +113,8 @@ export default function ExploreProductsPage() {
       }
     }
 
-    // 只有在確保有登入資料或已過驗證才放行撈資料
-    if (isAuthenticated || userProfile) {
+    // 🎯 關鍵修正 3：只要信箱驗證過了，就大方允許撈取商品，不綁死 userProfile，防止非同步時間差卡死
+    if (isAuthenticated) {
       fetchAllApprovedProducts();
     }
   }, [isAuthenticated, liffLoading, isLiffInit, userProfile, login]);
@@ -155,8 +154,8 @@ export default function ExploreProductsPage() {
     return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
   };
 
-  // 🎯 關鍵修正守衛：只要 LINE 沒初始化完，或者 Profile 非同步進度條還沒跑完，全面卡死安全畫面
-  if (liffLoading || !isLiffInit) {
+  // 🎯 關鍵守衛：如果全域安全檢查還在跑，全螢幕鎖定，把控制權完全留給 LiffProvider 完成初始化
+  if (liffLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] space-y-3">
         <Loader2 className="animate-spin text-[#D35400] h-8 w-8" />
@@ -165,8 +164,8 @@ export default function ExploreProductsPage() {
     );
   }
 
-  // 🎯 關鍵修正守衛：安全重導向緩衝畫面（等 useEffect 的 login 執行）
-  if (!isAuthenticated && !userProfile) {
+  // 🎯 關鍵守衛：沒驗證成功時的 LINE 登入卡片畫面
+  if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -194,7 +193,7 @@ export default function ExploreProductsPage() {
     );
   }
 
-  // ⭕ 完美過關：此時 isLiffInit 為 true，且肯定有 LINE 個人資料，側邊欄隨便怎麼抓都不會崩潰！
+  // ⭕ 完美放行：能走到這裡，代表 isAuthenticated 絕對為 true，市集可以超級安全且流暢地渲染
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
