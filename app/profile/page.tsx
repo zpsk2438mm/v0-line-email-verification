@@ -12,9 +12,25 @@ import { User, Package, Mail, Plus, ShieldCheck, Loader2, CheckCircle2, AlertCir
 import Link from "next/link";
 
 export default function ProfilePage() {
-  const { lineUserId, userProfile, userEmail, isAuthenticated, login, userName } = useLiff();
+  // 🎯 關鍵修正：抽取完整的讀取狀態控制
+  const liffContext = useLiff();
+  const lineUserId = liffContext?.lineUserId;
+  const userProfile = liffContext?.userProfile;
+  const userEmail = liffContext?.userEmail;
+  const isAuthenticated = liffContext?.isAuthenticated ?? false;
+  const login = liffContext?.login;
+  const userName = liffContext?.userName;
+  const liffLoading = liffContext?.isLoading ?? (liffContext ? false : true);
+
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+
+  // 自動登入防護
+  useEffect(() => {
+    if (!liffLoading && !isAuthenticated && login) {
+      login();
+    }
+  }, [liffLoading, isAuthenticated, login]);
 
   // 1. 商品撈取邏輯 (基於 line_user_id 撈取)
   const fetchMyProducts = useCallback(async () => {
@@ -38,7 +54,6 @@ export default function ProfilePage() {
       if (error) throw error;
 
       if (data) {
-        // 安全圖片解析
         const formattedData = data.map(item => {
           let displayImg = "/placeholder-logo.png";
           if (item.image_url) {
@@ -72,8 +87,8 @@ export default function ProfilePage() {
     fetchMyProducts();
   }, [fetchMyProducts]);
 
-  // 同步 LINE 個人資料狀態
-  if (isAuthenticated && !userProfile && !lineUserId) {
+  // 🎯 關鍵修正：同步中或是尚未拿到使用者核心資料前，絕對阻擋渲染底下的 UI
+  if (liffLoading || !isAuthenticated || !lineUserId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
         <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
@@ -82,36 +97,16 @@ export default function ProfilePage() {
     );
   }
 
-  // 未登入狀態
-  if (!isAuthenticated) {
-    return (
-      <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
-        <Card className="w-full max-w-sm p-8 text-center space-y-6 rounded-3xl bg-white shadow-xl border-none">
-          <ShieldCheck className="h-12 w-12 text-[#D35400] mx-auto" />
-          <h2 className="font-bold text-2xl">歡迎回來</h2>
-          <p className="text-slate-500">請完成登入以管理您的商品</p>
-          <Button onClick={() => login?.()} className="w-full bg-[#D35400] h-14 rounded-2xl font-bold">
-            登入系統
-          </Button>
-        </Card>
-      </main>
-    );
-  }
-
-  // 🎯 限制只取前 4 筆商品作為最近發布的卡片預覽
   const previewProducts = myProducts.slice(0, 4);
 
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
-      {/* 1. 頂部：上面的漢堡式選單 */}
       <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
         <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        
-        {/* 2. 上半部：個人資訊卡片（維持不動） */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-8 px-6">
             <div className="flex items-center gap-5">
@@ -130,7 +125,7 @@ export default function ProfilePage() {
                 </h2>
                 <div className="flex flex-col gap-1 mt-1 opacity-80">
                   <p className="text-[11px] font-bold uppercase flex items-center gap-1 truncate">
-                    <Mail className="h-3 w-3" /> {userEmail}
+                    <Mail className="h-3 w-3" /> {userEmail || "已驗證南台信箱"}
                   </p>
                   {lineUserId && (
                     <p className="text-[10px] font-bold opacity-60">ID: {lineUserId.slice(0, 10)}...</p>
@@ -141,9 +136,7 @@ export default function ProfilePage() {
           </CardHeader>
         </Card>
 
-        {/* 3. 中間區塊：功能大按鈕（橫向並排） */}
         <div className="grid grid-cols-2 gap-4">
-          {/* 我的商品按鈕 */}
           <Link href="/my-listings" className="block">
             <Button 
               variant="outline" 
@@ -156,7 +149,6 @@ export default function ProfilePage() {
             </Button>
           </Link>
 
-          {/* 我要刊登按鈕 🎯 這裡已經修正為跳轉到首頁（/） */}
           <Link href="/" className="block">
             <Button 
               variant="outline" 
@@ -170,7 +162,6 @@ export default function ProfilePage() {
           </Link>
         </div>
 
-        {/* 4. 下半部：留 4 個做預覽（最新商品列表） */}
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-5">
           <div className="flex items-center justify-between mb-4 border-b border-orange-50/60 pb-3">
             <h3 className="font-black text-base text-slate-700 flex items-center gap-2">
@@ -211,13 +202,12 @@ export default function ProfilePage() {
                     <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1">
                       <Clock3 className="h-3 w-3" /> 審核中
                     </Badge>
-                  )}
+                  ) }
                 </div>
               ))}
             </div>
           )}
         </Card>
-
       </div>
     </main>
   );
