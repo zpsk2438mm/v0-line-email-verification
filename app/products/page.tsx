@@ -21,7 +21,6 @@ import {
   Loader2
 } from "lucide-react";
 
-// --- 資料結構定義 ---
 interface Product {
   id: string;
   name: string;
@@ -30,6 +29,7 @@ interface Product {
   description?: string;
   status: string;
   created_at: string;
+  approved_at?: string; // 🎯 新增型態定義
   image_url?: any;
   images?: any;
 }
@@ -71,7 +71,7 @@ export default function ExploreProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // --- 抓取商品邏輯：只顯示「審核通過 (approved)」的商品 ---
+  // --- 抓取商品邏輯 ---
   useEffect(() => {
     if (liffLoading) return;
     if (!isAuthenticated) {
@@ -82,12 +82,13 @@ export default function ExploreProductsPage() {
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
-        // ✨ 這裡已修正為 .eq("status", "approved")
+        
+        // 🎯 核心修改：排序改用 approved_at（從新到舊）
         const { data, error } = await supabase
           .from("products")
           .select("*")
           .eq("status", "approved") 
-          .order("created_at", { ascending: false });
+          .order("approved_at", { ascending: false }); // 🔥 讓最新勾選通過的衝到最前面！
 
         if (error) throw error;
         setProducts(data || []);
@@ -119,7 +120,6 @@ export default function ExploreProductsPage() {
     setFilteredProducts(result);
   }, [searchQuery, selectedCategory, products]);
 
-  // --- 圖片網址工具 ---
   const getCleanImageUrl = (product: Product) => {
     let raw = product.image_url || product.images;
     if (!raw) return "/placeholder-logo.png";
@@ -142,7 +142,6 @@ export default function ExploreProductsPage() {
     return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
   }
 
-  // --- 未登入介面 ---
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
@@ -182,7 +181,6 @@ export default function ExploreProductsPage() {
         <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
       </header>
 
-      {/* 搜尋與分類 */}
       <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -210,7 +208,6 @@ export default function ExploreProductsPage() {
         </div>
       </div>
 
-      {/* 商品列表 */}
       <div className="mx-auto max-w-lg px-4 mt-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
@@ -259,8 +256,9 @@ export default function ExploreProductsPage() {
                         NT$ {product.price?.toLocaleString()}
                       </p>
                       <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                        {/* 🎯 貼心改動：畫面上改為優先呈現管理員審核通過的日期（更貼近實際上架時間） */}
                         <span className="flex items-center gap-0.5">
-                          <Calendar className="h-3 w-3" /> {formatDate(product.created_at)}
+                          <Calendar className="h-3 w-3" /> {formatDate(product.approved_at || product.created_at)}
                         </span>
                       </div>
                     </div>
