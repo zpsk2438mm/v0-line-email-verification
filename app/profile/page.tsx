@@ -1,7 +1,5 @@
 "use client";
 
-// app/profile/page.tsx 終極修復對齊版
-
 import { useEffect, useState, useCallback } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
@@ -10,17 +8,16 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Package, Mail, Plus, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Clock3, ChevronRight } from "lucide-react";
+import { User, Package, Mail, Plus, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Clock3 } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
-  const { lineUserId, userProfile, userEmail, isAuthenticated, login, userName, isLiffInit } = useLiff();
+  const { lineUserId, userProfile, userEmail, isAuthenticated, login, userName } = useLiff();
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 1. 商品撈取邏輯 (🛠️ 改為跟 my-listings 一樣，用 line_user_id 撈取最精準)
+  // 1. 商品撈取邏輯 (基於 line_user_id 撈取)
   const fetchMyProducts = useCallback(async () => {
-    // 🎯 這裡修正：只要 lineUserId 還沒抓到就先不執行，確保一定能對齊資料
     if (!isAuthenticated || !lineUserId) {
       setIsLoadingProducts(false);
       return;
@@ -32,8 +29,6 @@ export default function ProfilePage() {
       const cachedData = localStorage.getItem(cacheKey);
       if (cachedData) setMyProducts(JSON.parse(cachedData));
 
-      // 🎯 核心修正：將原本的 .eq("verified_email", userEmail) 
-      // 換成跟 my-listings 一模一樣的 .eq("line_user_id", lineUserId) 確保舊資料也能完美抓回
       const { data, error } = await supabase
         .from("products")
         .select("id, name, price, status, created_at, image_url, verified_email, line_user_id")
@@ -43,7 +38,7 @@ export default function ProfilePage() {
       if (error) throw error;
 
       if (data) {
-        // 🛠️ 安全圖片解析防線：相容字串、陣列及 JSON 格式，確保絕不破圖
+        // 安全圖片解析
         const formattedData = data.map(item => {
           let displayImg = "/placeholder-logo.png";
           if (item.image_url) {
@@ -71,13 +66,13 @@ export default function ProfilePage() {
     } finally {
       setIsLoadingProducts(false);
     }
-  }, [isAuthenticated, lineUserId]); // 🎯 依賴項精簡同步為 lineUserId
+  }, [isAuthenticated, lineUserId]);
 
   useEffect(() => {
     fetchMyProducts();
   }, [fetchMyProducts]);
 
-  // 2. 核心鎖定：同步 LINE 個人資料
+  // 同步 LINE 個人資料狀態
   if (isAuthenticated && !userProfile && !lineUserId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
@@ -87,7 +82,7 @@ export default function ProfilePage() {
     );
   }
 
-  // 3. 未登入狀態
+  // 未登入狀態
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
@@ -106,18 +101,19 @@ export default function ProfilePage() {
   // 🎯 限制只取前 4 筆商品作為最近發布的卡片預覽
   const previewProducts = myProducts.slice(0, 4);
 
-  // 4. 最終畫面渲染
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
+      {/* 1. 頂部：上面的漢堡式選單 */}
       <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
         <h1 className="text-lg font-bold text-slate-800">個人中心</h1>
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
-        {/* 使用者資訊卡片 */}
+        
+        {/* 2. 上半部：個人資訊卡片（維持不動） */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
-          <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-10 px-6">
+          <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-8 px-6">
             <div className="flex items-center gap-5">
               <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/20 shrink-0">
                 {userProfile?.pictureUrl ? (
@@ -133,7 +129,7 @@ export default function ProfilePage() {
                   {userProfile?.displayName || userName || "南臺同學"}
                 </h2>
                 <div className="flex flex-col gap-1 mt-1 opacity-80">
-                  <p className="text-[10px] font-bold uppercase flex items-center gap-1 truncate">
+                  <p className="text-[11px] font-bold uppercase flex items-center gap-1 truncate">
                     <Mail className="h-3 w-3" /> {userEmail}
                   </p>
                   {lineUserId && (
@@ -145,47 +141,74 @@ export default function ProfilePage() {
           </CardHeader>
         </Card>
 
-        {/* 商品清單部分 */}
-        <Card className="border-none shadow-sm rounded-[32px] bg-white p-6">
-          <div className="flex items-center justify-between mb-5 border-b border-orange-50 pb-5">
-            <h3 className="font-black text-lg flex items-center gap-2">
-              <Package className="h-5 w-5 text-[#D35400]" /> 我的商品
+        {/* 3. 中間區塊：功能大按鈕（橫向並排） */}
+        <div className="grid grid-cols-2 gap-4">
+          {/* 我的商品按鈕 */}
+          <Link href="/my-listings" className="block">
+            <Button 
+              variant="outline" 
+              className="w-full h-24 flex flex-col items-center justify-center gap-2 rounded-[24px] border-none bg-white shadow-sm hover:bg-orange-50/50 transition-all text-slate-800 group"
+            >
+              <div className="p-3 bg-orange-50 rounded-xl group-hover:bg-orange-100/70 transition-colors">
+                <Package className="h-6 w-6 text-[#D35400]" />
+              </div>
+              <span className="font-black text-base">我的商品</span>
+            </Button>
+          </Link>
+
+          {/* 我要刊登按鈕 */}
+          <Link href="/products" className="block">
+            <Button 
+              variant="outline" 
+              className="w-full h-24 flex flex-col items-center justify-center gap-2 rounded-[24px] border-none bg-white shadow-sm hover:bg-orange-50/50 transition-all text-slate-800 group"
+            >
+              <div className="p-3 bg-orange-50 rounded-xl group-hover:bg-orange-100/70 transition-colors">
+                <Plus className="h-6 w-6 text-[#D35400]" />
+              </div>
+              <span className="font-black text-base">我要刊登</span>
+            </Button>
+          </Link>
+        </div>
+
+        {/* 4. 下半部：留 4 個做預覽（最新商品列表） */}
+        <Card className="border-none shadow-sm rounded-[32px] bg-white p-5">
+          <div className="flex items-center justify-between mb-4 border-b border-orange-50/60 pb-3">
+            <h3 className="font-black text-base text-slate-700 flex items-center gap-2">
+              最近發布商品
             </h3>
-            <Link href="/my-listings">
-              <Button size="sm" className="rounded-xl bg-orange-50 text-[#D35400] hover:bg-orange-100 font-black h-10 border-none px-3 flex items-center gap-0.5">
-                查看全部 <ChevronRight className="w-4 h-4" />
-              </Button>
-            </Link>
           </div>
 
           {isLoadingProducts && myProducts.length === 0 ? (
-            <Skeleton className="h-24 w-full rounded-2xl" />
+            <div className="space-y-3">
+              <Skeleton className="h-20 w-full rounded-2xl" />
+              <Skeleton className="h-20 w-full rounded-2xl" />
+            </div>
           ) : myProducts.length === 0 ? (
             <div className="text-center py-10 text-slate-400 text-sm font-medium">
               目前還沒有上架過商品喔！
             </div>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               {previewProducts.map((p) => (
-                <div key={p.id} className="flex items-center gap-4 p-4 border border-orange-50 rounded-[28px]">
-                  <div className="h-16 w-16 bg-slate-100 rounded-xl overflow-hidden shrink-0">
+                <div key={p.id} className="flex items-center gap-3 p-3 border border-orange-50/60 rounded-[22px] bg-[#FFFDFB]/50">
+                  <div className="h-14 w-14 bg-slate-100 rounded-xl overflow-hidden shrink-0">
                     <img src={p.display_image} className="w-full h-full object-cover" alt={p.name} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-sm truncate">{p.name}</h4>
-                    <p className="text-[#D35400] font-black">NT$ {p.price}</p>
+                    <h4 className="font-bold text-sm text-slate-800 truncate">{p.name}</h4>
+                    <p className="text-[#D35400] font-black text-sm">NT$ {p.price}</p>
                   </div>
                   
                   {p.status === 'approved' ? (
-                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" /> 已上架
                     </Badge>
                   ) : p.status === 'rejected' ? (
-                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-rose-50 text-rose-600 border-none shadow-none flex items-center gap-1">
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-600 border-none shadow-none flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" /> 已退回
                     </Badge>
                   ) : (
-                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1">
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1">
                       <Clock3 className="h-3 w-3" /> 審核中
                     </Badge>
                   )}
@@ -194,6 +217,7 @@ export default function ProfilePage() {
             </div>
           )}
         </Card>
+
       </div>
     </main>
   );
