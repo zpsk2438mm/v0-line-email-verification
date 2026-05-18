@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { ListingForm } from "@/components/listing-form";
 import { Navigation } from "@/components/navigation";
@@ -10,7 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function Page() {
-  const { isAuthenticated, userEmail, lineUserId, sendOtp, verifyOtp, login } = useLiff();
+  // 🎯 關鍵修正：引入完整的加載與核心狀態
+  const liffContext = useLiff();
+  const isAuthenticated = liffContext?.isAuthenticated ?? false;
+  const userEmail = liffContext?.userEmail;
+  const lineUserId = liffContext?.lineUserId;
+  const sendOtp = liffContext?.sendOtp;
+  const verifyOtp = liffContext?.verifyOtp;
+  const login = liffContext?.login;
+  const liffLoading = liffContext?.isLoading ?? (liffContext ? false : true);
   
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -19,9 +27,17 @@ export default function Page() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  // 自動登入防護
+  useEffect(() => {
+    if (!liffLoading && !isAuthenticated && login) {
+      login();
+    }
+  }, [liffLoading, isAuthenticated, login]);
+
   // 階段 1：發送驗證碼
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!sendOtp) return;
     if (!email.endsWith("@stust.edu.tw")) {
       setError("請使用南臺學校信箱 (@stust.edu.tw) 進行驗證");
       return;
@@ -44,6 +60,7 @@ export default function Page() {
   // 階段 2：核對驗證碼
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!verifyOtp) return;
     if (otp.length !== 6) {
       setError("請輸入完整的 6 位數驗證碼");
       return;
@@ -59,9 +76,18 @@ export default function Page() {
     setIsSubmitting(false);
   };
 
+  // 🎯 關鍵修正守衛：在 LIFF 完全加載前不渲染任何內容，防止側邊欄拿到 null 資料
+  if (liffLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
+        <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
+        <p className="text-gray-500 font-bold">正在同步您的 LINE 個人資料...</p>
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#FDFBF7]">
-      {/* 頂部導航欄 */}
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md shadow-orange-100">
@@ -71,7 +97,6 @@ export default function Page() {
       </header>
 
       <div className="mx-auto max-w-lg px-4 py-6">
-        {/* 通過驗證且 LINE 綁定成功就直接顯示上架表單 */}
         {isAuthenticated && lineUserId ? (
           <ListingForm />
         ) : (
@@ -81,7 +106,6 @@ export default function Page() {
               <p className="text-sm text-gray-400 mt-1 font-medium">保障交易安全，上架商品需驗證南臺信箱</p>
             </div>
 
-            {/* 提示 LINE 未連線防呆 */}
             {!lineUserId && (
               <div className="mb-6 p-4 bg-amber-50 rounded-xl border border-amber-100 text-amber-700 text-sm space-y-2">
                 <p className="font-bold flex items-center gap-1">⚠️ 偵測到 LINE 未連線</p>
@@ -92,7 +116,6 @@ export default function Page() {
               </div>
             )}
 
-            {/* 錯誤錯誤提示 */}
             {error && (
               <div className="p-4 mb-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
@@ -100,7 +123,6 @@ export default function Page() {
               </div>
             )}
 
-            {/* 成功綠色提示 */}
             {message && (
               <div className="p-4 mb-4 rounded-xl bg-green-50 border border-green-100 text-green-600 flex items-start gap-2.5">
                 <CheckCircle2 className="w-5 h-5 mt-0.5 flex-shrink-0" />
@@ -108,7 +130,6 @@ export default function Page() {
               </div>
             )}
 
-            {/* 步驟 1：輸入學號信箱 */}
             {step === 1 ? (
               <form onSubmit={handleSendCode} className="space-y-4">
                 <div className="space-y-1.5">
@@ -141,7 +162,6 @@ export default function Page() {
                 </Button>
               </form>
             ) : (
-              /* 步驟 2：輸入 6 位數純數字 */
               <form onSubmit={handleVerifyCode} className="space-y-4">
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
