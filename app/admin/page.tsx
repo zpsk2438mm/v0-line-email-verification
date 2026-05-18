@@ -64,24 +64,27 @@ export default function AdminPage() {
     setLoading(false);
   }
 
-  // ✅ 准許上架
+  // ✅ 准許上架（在此寫入管理員勾選通過的時間）
   async function handleApprove(id: string) {
     const product = pendingProducts.find(p => p.id === id);
     if (!product) return;
 
     setProcessingId(id);
+    
+    // 🎯 核心修改：准許上架時，寫入當下時間到新欄位 approved_at
     const { error } = await supabase
       .from("products")
       .update({ 
         is_approved: true, 
-        status: 'approved' 
+        status: 'approved',
+        approved_at: new Date().toISOString() // 🔥 寫入當前審核通過時間
       })
       .eq("id", id);
     
     if (error) {
       alert("核准失敗");
     } else {
-      // 🎯 核心補強：乾淨過濾出可以給 LINE 讀取的網址
+      // 🎯 乾淨過濾出可以給 LINE 讀取的網址
       const cleanImgUrl = getImageUrl(product.image_url);
 
       try {
@@ -94,7 +97,7 @@ export default function AdminPage() {
             line_user_id: product.line_user_id,
             name: product.name,
             price: product.price,
-            productImage: cleanImgUrl.startsWith("http") ? cleanImgUrl : undefined // 🎯 傳送乾淨的圖片網址給 LINE
+            productImage: cleanImgUrl.startsWith("http") ? cleanImgUrl : undefined 
           }),
         });
       } catch (notifyErr) {
@@ -124,7 +127,7 @@ export default function AdminPage() {
     if (error) {
       alert("操作失敗");
     } else {
-      // 🎯 核心補強：乾淨過濾出可以給 LINE 讀取的網址
+      // 🎯 乾淨過濾出可以給 LINE 讀取的網址
       const cleanImgUrl = getImageUrl(product.image_url);
 
       try {
@@ -137,7 +140,7 @@ export default function AdminPage() {
             line_user_id: product.line_user_id,
             name: product.name,
             price: product.price,
-            productImage: cleanImgUrl.startsWith("http") ? cleanImgUrl : undefined // 🎯 傳送乾淨的圖片網址給 LINE
+            productImage: cleanImgUrl.startsWith("http") ? cleanImgUrl : undefined 
           }),
         });
       } catch (notifyErr) {
