@@ -50,10 +50,9 @@ export default function ProductDetailPage() {
     return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
   };
 
-  // ✨ 重點：呼叫後端 API 發送 LINE 訊息通知賣家
+  // ✨ 點擊按鈕：呼叫 API 發送真正 LINE 推播通知給賣家
   const handleContact = async () => {
-    // 這裡的 product.user_id 或是 product.seller_line_id 必須是賣家的 LINE UID (例如 Uf7c4668bc...)
-    // 請根據你的資料庫欄位名稱調整，這裡假設你存在 product.contact 或對應的識別碼中
+    // 這裡拿取賣家的 LINE UID。請確認產品資料庫中的 contact 欄位存的是 U 開頭那一串 UID
     const sellerLineUid = product?.contact?.trim(); 
     const productName = product?.name || "未知商品";
     const productPrice = product?.price || 0;
@@ -66,7 +65,7 @@ export default function ProductDetailPage() {
     try {
       setSendingNotify(true);
       
-      // 🎯 呼叫我們剛剛寫好的 /api/notify 路由
+      // 🎯 呼叫後端 /api/notify 路由
       const res = await fetch("/api/notify", {
         method: "POST",
         headers: {
@@ -90,7 +89,6 @@ export default function ProductDetailPage() {
     } catch (error: any) {
       console.error("發送 LINE 通知失敗:", error);
       toast.error(`通知發送失敗: ${error.message}`);
-      // 備用方案：如果通知發送失敗，至少提示目前的聯絡資訊
       alert(`無法發送 LINE 通知。賣家聯絡資訊為: ${sellerLineUid}`);
     } finally {
       setSendingNotify(false);
@@ -124,11 +122,12 @@ export default function ProductDetailPage() {
 
         {/* 標題與價格 */}
         <div className="space-y-1">
-          <Badge className="bg-orange-100 text-[#D35400] border-none text-[10px] font-bold px-2 py-0.5 rounded-md">
+          {/* 🎯 修正重點：自己實作簡單的 Badge 樣式，避免組件缺失導致崩潰 */}
+          <span className="inline-flex items-center bg-orange-100 text-[#D35400] border-none text-[10px] font-bold px-2 py-0.5 rounded-md">
             {product.category || "一般商品"}
-          </Badge>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight">{product.name}</h2>
-          <p className="text-3xl font-black text-[#D35400]">NT$ {product.price?.toLocaleString()}</p>
+          </span>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">{product.name}</h2>
+          <p className="text-3xl font-black text-[#D3-[#D35400] text-orange-600">NT$ {product.price?.toLocaleString()}</p>
         </div>
 
         {/* 商品描述 */}
@@ -165,13 +164,5 @@ export default function ProductDetailPage() {
         </Button>
       </div>
     </main>
-  );
-}
-
-function Badge({ children, className }: { children: React.ReactNode, className?: string }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${className}`}>
-      {children}
-    </span>
   );
 }
