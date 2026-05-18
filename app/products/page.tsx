@@ -64,7 +64,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ExploreProductsPage() {
-  const { isAuthenticated, login, isLoading: liffLoading } = useLiff();
+  // 🎯 關鍵修正：引入 liff-provider 的 isLoading，如果沒有提供則從物件防呆
+  const liffContext = useLiff();
+  const isAuthenticated = liffContext?.isAuthenticated ?? false;
+  const login = liffContext?.login;
+  const liffLoading = liffContext?.isLoading ?? (liffContext ? false : true);
+
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [fetching, setFetching] = useState(true);
@@ -74,23 +79,22 @@ export default function ExploreProductsPage() {
   // --- 抓取商品邏輯 ---
   useEffect(() => {
     if (liffLoading) return;
+    
+    // 🎯 關鍵修正：如果是直接網址點進來且未登入，主動觸發登入
     if (!isAuthenticated) {
       setFetching(false);
+      if (login) login();
       return;
     }
 
     async function fetchAllApprovedProducts() {
       try {
         setFetching(true);
-        
-        // 🎯 雙重排序完美方案：
         const { data, error } = await supabase
           .from("products")
           .select("*")
           .eq("status", "approved") 
-          // 1️⃣ 第一順位：有審核時間的從新到舊排最前面；沒有的（null）往後退墊底
           .order("approved_at", { ascending: false, nullsFirst: false })
-          // 2️⃣ 第二順位：當 approved_at 都是 null 時，這群舊資料改用「刊登時間 (created_at)」從新到舊排序
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -104,7 +108,7 @@ export default function ExploreProductsPage() {
     }
 
     fetchAllApprovedProducts();
-  }, [isAuthenticated, liffLoading]);
+  }, [isAuthenticated, liffLoading, login]);
 
   // --- 搜尋與分類邏輯 ---
   useEffect(() => {
@@ -141,15 +145,21 @@ export default function ExploreProductsPage() {
     return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
   };
 
+  // 🎯 關鍵修正守衛：只要 LINE 還在初始化同步，卡死在全螢幕 Loading，絕不渲染 Navigation 造成崩潰
   if (liffLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7]"><Loader2 className="animate-spin text-[#D35400]" /></div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] space-y-3">
+        <Loader2 className="animate-spin text-[#D35400] h-8 w-8" />
+        <p className="text-sm text-slate-500 font-medium">正在同步您的 LINE 個人資料...</p>
+      </div>
+    );
   }
 
+  // 若自動登入引導未完成，顯示的安全備用登入介面
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-          <Navigation />
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400]">
             <ShoppingBag className="h-5 w-5 text-white" />
           </div>
