@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function Page() {
-  // 🎯 關鍵修正：引入完整的加載與核心狀態
+  // 🎯 引入完整的加載與核心狀態
   const liffContext = useLiff();
   const isAuthenticated = liffContext?.isAuthenticated ?? false;
   const userEmail = liffContext?.userEmail;
@@ -27,12 +27,8 @@ export default function Page() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  // 自動登入防護
-  useEffect(() => {
-    if (!liffLoading && !isAuthenticated && login) {
-      login();
-    }
-  }, [liffLoading, isAuthenticated, login]);
+  // ⭕ 安全修正：徹底拔除在 useEffect 裡面自動呼叫 login() 的地雷程式碼！
+  // 這樣網頁就會安安靜靜地等待使用者填寫學校信箱，或是手動點擊 LINE 連線，絕對不會再自動刷新。
 
   // 階段 1：發送驗證碼
   const handleSendCode = async (e: React.FormEvent) => {
