@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Analytics } from '@vercel/analytics/next'
 import { LiffProvider } from '@/components/liff-provider'
-// 1. 引入 Next.js 的 Script 組件
-import Script from 'next/script' 
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -29,13 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW" className="bg-background">
-      <head>
-        {/* 2. 這是最重要的一行：在所有程式碼執行前載入 LINE SDK */}
-        <Script 
-          src="https://static.line-scdn.net/liff/edge/2/sdk.js" 
-          strategy="beforeInteractive" 
-        />
-      </head>
+      {/* 🎯 移除原本多餘且會與 npm 套件衝突的 <head> 和 <Script> 標籤 */}
       <body className="font-sans antialiased">
         <LiffProvider>
           {children}
