@@ -1,6 +1,6 @@
 "use client";
 
-// components/liff-provider.tsx 終極完美修正版
+// components/liff-provider.tsx 終極完美安全防刷版
 
 import { createContext, useContext, useEffect, useState, type ReactNode, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
@@ -15,7 +15,7 @@ interface LiffContextType {
   userProfile: any | null; 
   userName: string | null;
   isLiffInit: boolean; 
-  isLoading: boolean; // 🎯 修正：將 Loading 狀態也暴露出去，讓各頁面自己優雅決定怎麼擋
+  isLoading: boolean; 
   login: () => void;
   sendOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
@@ -51,14 +51,14 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     return email.split("@")[0].toUpperCase();
   };
 
-  // 🎯 關鍵修正：登入重新導向必須完全乾淨，不帶次級路由，防止 LINE 噴 400
+  // 🎯 修正：使用更明確的 Vercel 主網址作為重導向目標，確保兩端 100% 對齊
   const login = useCallback(() => {
     if (!liffInstance) {
       console.warn("LIFF 還沒準備好，無法執行登入");
       return;
     }
     if (typeof window !== "undefined") {
-      liffInstance.login({ redirectUri: window.location.origin });
+      liffInstance.login({ redirectUri: "https://v0-supabase-form-integration-two.vercel.app/" });
     } else {
       liffInstance.login();
     }
@@ -104,21 +104,23 @@ export function LiffProvider({ children }: { children: ReactNode }) {
             setLiffInstance(liff);
           }
 
+          // 🎯 核心防刷安全機制：
           if (liff.isLoggedIn()) {
             const profile = await liff.getProfile();
             if (isMounted) {
               setLineUserId(profile.userId);
               setUserProfile(profile);
             }
-          } else if (liff.isInClient()) {
-            liff.login();
+          } else {
+            // ❌ 移除原本的 else if (liff.isInClient()) { liff.login(); } 
+            // ⭕ 絕不在初始化階段自動強制呼叫登入！將選擇權交給頁面按鈕，徹底消滅無限刷新的噩夢。
+            console.log("LINE LIFF 初始化成功，使用者當前為未登入狀態，等待手動點擊。");
           }
         }
       } catch (e) {
         console.error("安全認證或 LIFF 初始化失敗:", e);
       } finally {
         if (isMounted) {
-          // 🎯 核心修正：確保狀態同步，將初始化完成與 Loading 解鎖在同一步驟執行！
           setIsLiffInit(true); 
           setIsLoading(false);
         }
@@ -164,7 +166,6 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 🎯 核心修正：全域的 Provider 必須永遠存在，絕不能用 if (isLoading) 把它卸載，否則狀態時間差會殺死子組件
   return (
     <LiffContext.Provider value={{ 
       isAuthenticated, 
@@ -173,12 +174,11 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       userProfile, 
       userName,
       isLiffInit, 
-      isLoading, // 暴露出去
+      isLoading,
       login,
       sendOtp,
       verifyOtp
     }}>
-      {/* 這裡做一個局部過渡：只有當最最一開始加載時顯示骨架，但 Provider 已經存活 */}
       {isLoading ? (
         <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
           <Loader2 className="w-10 h-10 animate-spin text-[#D35400] mb-4" />
