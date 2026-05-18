@@ -151,7 +151,6 @@ export default function ProfilePage() {
             <h3 className="font-black text-lg flex items-center gap-2">
               <Package className="h-5 w-5 text-[#D35400]" /> 我的商品
             </h3>
-            {/* 🎯 修改這裡：按鈕變成「查看全部」，點擊跳轉到 /my-listings */}
             <Link href="/my-listings">
               <Button size="sm" className="rounded-xl bg-orange-50 text-[#D35400] hover:bg-orange-100 font-black h-10 border-none px-3 flex items-center gap-0.5">
                 查看全部 <ChevronRight className="w-4 h-4" />
@@ -167,8 +166,35 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {/* 🎯 修改這裡：改用 previewProducts 渲染，只呈現最多 4 筆 */}
               {previewProducts.map((p) => (
                 <div key={p.id} className="flex items-center gap-4 p-4 border border-orange-50 rounded-[28px]">
                   <div className="h-16 w-16 bg-slate-100 rounded-xl overflow-hidden shrink-0">
-                    <img src={p.display_image} className="w-full h-full object-cover
+                    <img src={p.display_image} className="w-full h-full object-cover" alt={p.name} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-sm truncate">{p.name}</h4>
+                    <p className="text-[#D35400] font-black">NT$ {p.price}</p>
+                  </div>
+                  
+                  {p.status === 'approved' ? (
+                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" /> 已上架
+                    </Badge>
+                  ) : p.status === 'rejected' ? (
+                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-rose-50 text-rose-600 border-none shadow-none flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" /> 已退回
+                    </Badge>
+                  ) : (
+                    <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1">
+                      <Clock3 className="h-3 w-3" /> 審核中
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </main>
+  );
+}
