@@ -30,11 +30,11 @@ const ADMIN_LINE_IDS = [
   "Uaea09099f0f6301955360eb64d238243"
 ];
 
+// 🎯 這裡已完美移除「我的商品」
 const NAV_ITEMS = [
   { href: "/", label: "刊登商品", icon: Home },
   { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
-  { href: "/my-listings", label: "我的商品", icon: Package },
 ];
 
 export function Navigation() {
