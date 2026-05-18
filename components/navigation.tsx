@@ -1,152 +1,70 @@
 "use client";
 
-import { useState } from "react";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useState, useRef } from "react";
+import { LayoutGrid, ShoppingBag, UserCircle, PlusCircle, Search, Menu, Package } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { useLiff } from "@/components/liff-provider";
-import {
-  Menu,
-  Home,
-  User,
-  Package,
-  LogOut,
-  ShoppingBag,
-  GraduationCap,
-  ShieldCheck,
-} from "lucide-react";
 
-const ADMIN_LINE_IDS = [
-  "Ued7dfd77b63273d497cebc62f1a7b1df",
-  "Uf7c4668bc96315297b02b0a67fff88ea",
-  "U6d1c1541184ea9202c0d0acc07e92a4e",
-  "Uaea09099f0f6301955360eb64d238243"
-];
-
+// 🎯 導航項目定義 (✨ 這裡已移除「我的商品」)
 const NAV_ITEMS = [
-  { href: "/", label: "刊登商品", icon: Home },
-  { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
-  { href: "/profile", label: "個人中心", icon: User },
-  { href: "/my-listings", label: "我的商品", icon: Package },
+  { href: "/", label: "市集首頁", icon: ShoppingBag },
+  { href: "/products/new", label: "刊登商品", icon: PlusCircle },
+  { href: "/profile", label: "個人中心", icon: UserCircle },
+  // { href: "/my-listings", label: "我的商品", icon: Package }, // ❌ 已移除，移至個人中心按鈕
 ];
 
 export function Navigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  // 🔥 關鍵修正：引入我們在 Provider 裡做好的 userName 變數
-  const { userEmail, userProfile, lineUserId, closeWindow, isAuthenticated, userName } = useLiff();
-  const isAdmin = lineUserId && ADMIN_LINE_IDS.includes(lineUserId);
-
-  const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("stust_authenticated");
-    }
-    // 額外保險：登出時也清除 Supabase session
-    import("@/lib/supabase").then(({ supabase }) => supabase.auth.signOut());
-    window.location.reload();
-  };
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-slate-100">
-          <Menu className="h-6 w-6 text-slate-700" />
+        <Button variant="ghost" size="icon" className="rounded-full text-gray-600 hover:bg-orange-50 active:scale-95 transition-transform">
+          <Menu className="h-6 w-6" />
         </Button>
       </SheetTrigger>
-      
-      <SheetContent side="left" className="w-[300px] p-0 flex flex-col border-r-0 shadow-2xl bg-white">
-        <SheetHeader className="p-6 bg-slate-50 text-left border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-lg shadow-orange-100">
-              <GraduationCap className="h-6 w-6 text-white" />
-            </div>
-            <SheetTitle className="text-xl font-black text-slate-800 tracking-tight">南台二手交易</SheetTitle>
-          </div>
+      <SheetContent side="left" className="w-72 bg-white rounded-r-3xl p-0 border-none shadow-2xl flex flex-col">
+        <SheetHeader className="p-6 border-b border-gray-100">
+          <SheetTitle className="text-xl font-black text-gray-900 flex items-center gap-3">
+             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md">
+                 <ShoppingBag className="h-5 w-5 text-white" />
+             </div>
+             南台二手市集
+          </SheetTitle>
         </SheetHeader>
+        
+        <div className="flex-1 p-3 space-y-2 mt-4">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+            return (
+              <Button
+                key={item.href}
+                asChild
+                variant="ghost"
+                onClick={() => setOpen(false)} // 點擊後關閉側邊欄
+                className={`w-full justify-start gap-4 h-14 rounded-xl text-lg font-bold px-4 transition-colors ${
+                  isActive 
+                    ? "bg-[#D35400] text-white hover:bg-[#D35400] hover:text-white" 
+                    : "text-gray-600 hover:bg-orange-50 hover:text-orange-700"
+                }`}
+              >
+                <Link href={item.href}>
+                  <Icon className={`w-6 h-6 ${isActive ? "text-white" : "text-gray-400"}`} />
+                  {item.label}
+                </Link>
+              </Button>
+            );
+          })}
+        </div>
 
-        {isAuthenticated && (
-          <div className="px-4 py-4">
-            <div className="bg-slate-50/80 rounded-2xl p-4 flex items-center gap-3 border border-slate-100 shadow-sm">
-              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white">
-                {userProfile?.pictureUrl ? (
-                  <img 
-                    src={userProfile.pictureUrl} 
-                    alt="Avatar" 
-                    className="h-full w-full object-cover" 
-                    referrerPolicy="no-referrer" 
-                  />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-orange-50 text-[#D35400]">
-                    <User size={20} />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                {/* 🔥 關鍵修正：優先使用 LINE 名字，若無則顯示學號，絕不顯示載入中 */}
-                <p className="text-sm font-black truncate text-slate-800">
-                  {userProfile?.displayName || userName || "南臺同學"}
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium truncate uppercase tracking-tighter">
-                  {userEmail || "已連結 LINE 帳號"}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <nav className="flex-1 px-4 py-2 space-y-8 text-left overflow-y-auto">
-          <ul className="space-y-1.5">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href;
-              return (
-                <li key={item.label}>
-                  <Link
-                    href={item.href}
-                    onClick={() => setOpen(false)}
-                    className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-bold transition-all ${
-                      isActive 
-                        ? "bg-[#D35400] text-white shadow-md shadow-orange-100" 
-                        : "text-slate-500 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Icon className={`h-5 w-5 ${isActive ? "text-white" : "text-slate-400"}`} />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-
-          {isAdmin && (
-            <div className="pt-4 border-t border-dashed border-slate-200">
-              <Link href="/admin" onClick={() => setOpen(false)}>
-                <div className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-black transition-all ${
-                  pathname === "/admin" ? "bg-amber-500 text-white shadow-lg" : "bg-amber-50 text-amber-600 hover:bg-amber-100"
-                }`}>
-                  <ShieldCheck className="h-5 w-5" />
-                  管理員後台
-                </div>
-              </Link>
-            </div>
-          )}
-        </nav>
-
-        <div className="p-6 bg-slate-50 border-t mt-auto">
-          <Button 
-            variant="outline" 
-            className="w-full h-11 border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 transition-all" 
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4 mr-2" /> 退出登錄
-          </Button>
+        <div className="p-4 mt-auto border-t border-gray-100">
+            <p className="text-center text-[10px] text-gray-400 font-medium uppercase tracking-wider">stust campus market</p>
         </div>
       </SheetContent>
     </Sheet>
