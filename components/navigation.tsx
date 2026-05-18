@@ -1,126 +1,154 @@
-import { NextResponse } from "next/server";
+"use client";
 
-export async function POST(request: Request) {
-  try {
-    const { sellerLineId, productName, productPrice, buyerName } = await request.json();
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { useLiff } from "@/components/liff-provider";
+import {
+  Menu,
+  Home,
+  User,
+  Package,
+  LogOut,
+  ShoppingBag,
+  GraduationCap,
+  ShieldCheck,
+} from "lucide-react";
 
-    if (!sellerLineId) {
-      return NextResponse.json({ error: "缺少賣家 LINE ID (UID)" }, { status: 400 });
+const ADMIN_LINE_IDS = [
+  "Ued7dfd77b63273d497cebc62f1a7b1df",
+  "Uf7c4668bc96315297b02b0a67fff88ea",
+  "U6d1c1541184ea9202c0d0acc07e92a4e",
+  "Uaea09099f0f6301955360eb64d238243"
+];
+
+// 🎯 這裡已完美移除「我的商品」
+const NAV_ITEMS = [
+  { href: "/", label: "刊登商品", icon: Home },
+  { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
+  { href: "/profile", label: "個人中心", icon: User },
+];
+
+export function Navigation() {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  // 🔥 關鍵修正：引入我們在 Provider 裡做好的 userName 變數
+  const { userEmail, userProfile, lineUserId, closeWindow, isAuthenticated, userName } = useLiff();
+  const isAdmin = lineUserId && ADMIN_LINE_IDS.includes(lineUserId);
+
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("stust_authenticated");
     }
+    // 額外保險：登出時也清除 Supabase session
+    import("@/lib/supabase").then(({ supabase }) => supabase.auth.signOut());
+    window.location.reload();
+  };
 
-    // 從環境變數取得 LINE Channel Access Token
-    const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-    
-    if (!CHANNEL_ACCESS_TOKEN) {
-      console.error("未設定 LINE_CHANNEL_ACCESS_TOKEN 環境變數");
-      return NextResponse.json({ error: "伺服器未配置 LINE 憑證" }, { status: 500 });
-    }
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-slate-100">
+          <Menu className="h-6 w-6 text-slate-700" />
+        </Button>
+      </SheetTrigger>
+      
+      <SheetContent side="left" className="w-[300px] p-0 flex flex-col border-r-0 shadow-2xl bg-white">
+        <SheetHeader className="p-6 bg-slate-50 text-left border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-lg shadow-orange-100">
+              <GraduationCap className="h-6 w-6 text-white" />
+            </div>
+            <SheetTitle className="text-xl font-black text-slate-800 tracking-tight">南台二手交易</SheetTitle>
+          </div>
+        </SheetHeader>
 
-    // 組合給賣家的 LINE Flex Message 通知卡片樣式
-    const flexMessage = {
-      to: sellerLineId, // 這裡必須是賣家的 LINE 用戶唯一識別碼 (UID)，例如 Uf7c4668bc...
-      messages: [
-        {
-          type: "flex",
-          altText: `🔔 夥伴注意！有人想購買你的商品【${productName}】`,
-          contents: {
-            type: "bubble",
-            size: "giga",
-            body: {
-              type: "box",
-              layout: "vertical",
-              spacing: "md",
-              contents: [
-                {
-                  type: "text",
-                  text: "📦 收到買家購買意願",
-                  weight: "bold",
-                  color: "#D35400",
-                  size: "md"
-                },
-                {
-                  type: "text",
-                  text: productName,
-                  weight: "bold",
-                  size: "xxl",
-                  margin: "md",
-                  wrap: true
-                },
-                {
-                  type: "box",
-                  layout: "baseline",
-                  spacing: "sm",
-                  margin: "md",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "預售價格：",
-                      color: "#888888",
-                      size: "sm",
-                      flex: 2
-                    },
-                    {
-                      type: "text",
-                      text: `NT$ ${Number(productPrice).toLocaleString()}`,
-                      weight: "bold",
-                      size: "lg",
-                      color: "#D35400",
-                      flex: 5
-                    }
-                  ]
-                },
-                {
-                  type: "text",
-                  text: `有一位買家對您的商品非常感興趣！請至市集後台或直接在群組內留意與買家的聯繫喔！`,
-                  wrap: true,
-                  color: "#555555",
-                  size: "sm",
-                  margin: "lg"
-                }
-              ]
-            },
-            footer: {
-              type: "box",
-              layout: "vertical",
-              contents: [
-                {
-                  type: "separator",
-                  margin: "sm"
-                },
-                {
-                  type: "text",
-                  text: "南臺二手市集 · 自動通知系統",
-                  size: "xs",
-                  color: "#aaaaaa",
-                  align: "start",
-                  margin: "md"
-                }
-              ]
-            }
-          }
-        }
-      ]
-    };
+        {isAuthenticated && (
+          <div className="px-4 py-4">
+            <div className="bg-slate-50/80 rounded-2xl p-4 flex items-center gap-3 border border-slate-100 shadow-sm">
+              <div className="h-12 w-12 shrink-0 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-white">
+                {userProfile?.pictureUrl ? (
+                  <img 
+                    src={userProfile.pictureUrl} 
+                    alt="Avatar" 
+                    className="h-full w-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center bg-orange-50 text-[#D35400]">
+                    <User size={20} />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                {/* 🔥 關鍵修正：優先使用 LINE 名字，若無則顯示學號，絕不顯示載入中 */}
+                <p className="text-sm font-black truncate text-slate-800">
+                  {userProfile?.displayName || userName || "南臺同學"}
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium truncate uppercase tracking-tighter">
+                  {userEmail || "已連結 LINE 帳號"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
-    // 發送請求給 LINE 官方伺服器
-    const response = await fetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: JSON.stringify(flexMessage),
-    });
+        <nav className="flex-1 px-4 py-2 space-y-8 text-left overflow-y-auto">
+          <ul className="space-y-1.5">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              return (
+                <li key={item.label}>
+                  <Link
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-bold transition-all ${
+                      isActive 
+                        ? "bg-[#D35400] text-white shadow-md shadow-orange-100" 
+                        : "text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Icon className={`h-5 w-5 ${isActive ? "text-white" : "text-slate-400"}`} />
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
 
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error("LINE API 回傳錯誤:", errorData);
-      return NextResponse.json({ error: "LINE 通知發送失敗" }, { status: response.status });
-    }
+          {isAdmin && (
+            <div className="pt-4 border-t border-dashed border-slate-200">
+              <Link href="/admin" onClick={() => setOpen(false)}>
+                <div className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-black transition-all ${
+                  pathname === "/admin" ? "bg-amber-500 text-white shadow-lg" : "bg-amber-50 text-amber-600 hover:bg-amber-100"
+                }`}>
+                  <ShieldCheck className="h-5 w-5" />
+                  管理員後台
+                </div>
+              </Link>
+            </div>
+          )}
+        </nav>
 
-    return NextResponse.json({ success: true, message: "LINE 通知已成功發送給賣家" });
-  } catch (error: any) {
-    console.error("發送通知出錯:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+        <div className="p-6 bg-slate-50 border-t mt-auto">
+          <Button 
+            variant="outline" 
+            className="w-full h-11 border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 transition-all" 
+            onClick={handleLogout}
+          >
+            <LogOut className="h-4 w-4 mr-2" /> 退出登錄
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
 }
