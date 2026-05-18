@@ -64,11 +64,14 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ExploreProductsPage() {
-  // 🎯 關鍵修正：引入 liff-provider 的 isLoading，如果沒有提供則從物件防呆
-  const liffContext = useLiff();
-  const isAuthenticated = liffContext?.isAuthenticated ?? false;
-  const login = liffContext?.login;
-  const liffLoading = liffContext?.isLoading ?? (liffContext ? false : true);
+  // 🎯 關鍵修正：精準解構出動態加載所需的所有狀態鎖
+  const { 
+    isAuthenticated, 
+    login, 
+    isLoading: liffLoading, 
+    isLiffInit, 
+    userProfile 
+  } = useLiff();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -78,12 +81,16 @@ export default function ExploreProductsPage() {
 
   // --- 抓取商品邏輯 ---
   useEffect(() => {
-    if (liffLoading) return;
+    // 🎯 關鍵修正 1：如果 LIFF 還在載入中，或者【已初始化但 Profile 還在非同步 fetch 中】，一律原地等待
+    if (liffLoading || !isLiffInit) return;
     
-    // 🎯 關鍵修正：如果是直接網址點進來且未登入，主動觸發登入
-    if (!isAuthenticated) {
+    // 🎯 關鍵修正 2：此時初始化徹底結束，如果依然沒有 userProfile 且沒認證，才是真正的未登入
+    if (!isAuthenticated && !userProfile) {
       setFetching(false);
-      if (login) login();
+      if (login) {
+        console.log("偵測到網址直接空降且未登入，主動導向 LINE 登入...");
+        login();
+      }
       return;
     }
 
@@ -107,8 +114,11 @@ export default function ExploreProductsPage() {
       }
     }
 
-    fetchAllApprovedProducts();
-  }, [isAuthenticated, liffLoading, login]);
+    // 只有在確保有登入資料或已過驗證才放行撈資料
+    if (isAuthenticated || userProfile) {
+      fetchAllApprovedProducts();
+    }
+  }, [isAuthenticated, liffLoading, isLiffInit, userProfile, login]);
 
   // --- 搜尋與分類邏輯 ---
   useEffect(() => {
@@ -145,18 +155,18 @@ export default function ExploreProductsPage() {
     return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
   };
 
-  // 🎯 關鍵修正守衛：只要 LINE 還在初始化同步，卡死在全螢幕 Loading，絕不渲染 Navigation 造成崩潰
-  if (liffLoading) {
+  // 🎯 關鍵修正守衛：只要 LINE 沒初始化完，或者 Profile 非同步進度條還沒跑完，全面卡死安全畫面
+  if (liffLoading || !isLiffInit) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] space-y-3">
         <Loader2 className="animate-spin text-[#D35400] h-8 w-8" />
-        <p className="text-sm text-slate-500 font-medium">正在同步您的 LINE 個人資料...</p>
+        <p className="text-sm text-slate-500 font-medium">正在安全同步您的 LINE 個人資料...</p>
       </div>
     );
   }
 
-  // 若自動登入引導未完成，顯示的安全備用登入介面
-  if (!isAuthenticated) {
+  // 🎯 關鍵修正守衛：安全重導向緩衝畫面（等 useEffect 的 login 執行）
+  if (!isAuthenticated && !userProfile) {
     return (
       <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -170,7 +180,7 @@ export default function ExploreProductsPage() {
             <div className="bg-gradient-to-tr from-[#D35400] to-[#E67E22] py-8 px-6 text-center text-white space-y-2">
               <Sparkles className="h-10 w-10 mx-auto text-yellow-300 animate-pulse" />
               <h2 className="text-xl font-extrabold tracking-wide">南台人限定二手市集</h2>
-              <p className="text-xs text-orange-50">專屬於南台科技大學的安全校園交易平台</p>
+              <p className="text-xs text-orange-50px">專屬於南台科技大學的安全校園交易平台</p>
             </div>
             <CardContent className="pt-8 pb-8 text-center space-y-6 px-6">
               <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] text-white font-bold py-6 rounded-xl shadow-lg transition-all text-sm">
@@ -184,6 +194,7 @@ export default function ExploreProductsPage() {
     );
   }
 
+  // ⭕ 完美過關：此時 isLiffInit 為 true，且肯定有 LINE 個人資料，側邊欄隨便怎麼抓都不會崩潰！
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
