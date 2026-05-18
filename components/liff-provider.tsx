@@ -1,6 +1,6 @@
 "use client";
 
-// components/liff-provider.tsx 終極完全體（動態載入防 SSR 崩潰版）
+// components/liff-provider.tsx 終極完美修正版
 
 import { createContext, useContext, useEffect, useState, type ReactNode, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
@@ -15,6 +15,7 @@ interface LiffContextType {
   userProfile: any | null; 
   userName: string | null;
   isLiffInit: boolean; 
+  isLoading: boolean; // 🎯 修正：將 Loading 狀態也暴露出去，讓各頁面自己優雅決定怎麼擋
   login: () => void;
   sendOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
@@ -27,6 +28,7 @@ const LiffContext = createContext<LiffContextType>({
   userProfile: null, 
   userName: null,
   isLiffInit: false, 
+  isLoading: true,
   login: () => {},
   sendOtp: async () => ({ success: false }),
   verifyOtp: async () => ({ success: false }),
@@ -42,22 +44,21 @@ export function LiffProvider({ children }: { children: ReactNode }) {
   const [userName, setUserName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiffInit, setIsLiffInit] = useState(false); 
-  const [liffInstance, setLiffInstance] = useState<any>(null); // 👈 儲存動態載入的 LIFF 實體
+  const [liffInstance, setLiffInstance] = useState<any>(null);
 
-  // 輔助函式：提取學號 (4b290005@stust.edu.tw -> 4b290005)
   const extractNameFromEmail = (email: string | null) => {
     if (!email) return null;
     return email.split("@")[0].toUpperCase();
   };
 
-  // 封裝安全登入：優先帶入當前網址做 Redirect，避免被踢回首頁
+  // 🎯 關鍵修正：登入重新導向必須完全乾淨，不帶次級路由，防止 LINE 噴 400
   const login = useCallback(() => {
     if (!liffInstance) {
       console.warn("LIFF 還沒準備好，無法執行登入");
       return;
     }
-    if (typeof window !== "undefined" && window.location.href) {
-      liffInstance.login({ redirectUri: window.location.href });
+    if (typeof window !== "undefined") {
+      liffInstance.login({ redirectUri: window.location.origin });
     } else {
       liffInstance.login();
     }
@@ -93,23 +94,21 @@ export function LiffProvider({ children }: { children: ReactNode }) {
           }
         });
 
-        // 3. ✨ 動態初始化 LIFF 身分（徹底解鎖 SSR 盲點）
+        // 3. 動態初始化 LIFF 身分
         if (LIFF_ID && typeof window !== "undefined") {
-          // 🎯 只有在瀏覽器環境，才動態載入 LINE SDK
           const { default: liff } = await import("@line/liff");
           
           await liff.init({ liffId: LIFF_ID });
           
           if (isMounted) {
             setLiffInstance(liff);
-            setIsLiffInit(true); // 鎖定：LINE 初始化完成
           }
 
           if (liff.isLoggedIn()) {
             const profile = await liff.getProfile();
             if (isMounted) {
               setLineUserId(profile.userId);
-              setUserProfile(profile); // 同步把 LINE 資料緩存到 Provider，全域可用
+              setUserProfile(profile);
             }
           } else if (liff.isInClient()) {
             liff.login();
@@ -118,7 +117,11 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.error("安全認證或 LIFF 初始化失敗:", e);
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          // 🎯 核心修正：確保狀態同步，將初始化完成與 Loading 解鎖在同一步驟執行！
+          setIsLiffInit(true); 
+          setIsLoading(false);
+        }
       }
     }
 
@@ -129,12 +132,9 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // OTP 發送 (走原生的 SignIn)
   const sendOtp = async (email: string) => {
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-      });
+      const { error } = await supabase.auth.signInWithOtp({ email });
       if (error) throw error;
       return { success: true };
     } catch (err: any) {
@@ -142,7 +142,6 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 驗證碼核對 (走標準 Session 建立流程)
   const verifyOtp = async (email: string, token: string) => {
     try {
       const { data, error } = await supabase.auth.verifyOtp({
@@ -165,13 +164,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  if (isLoading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6]">
-      <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
-      <p className="text-gray-500 font-bold tracking-wider">南臺市集安全檢查中...</p>
-    </div>
-  );
-
+  // 🎯 核心修正：全域的 Provider 必須永遠存在，絕不能用 if (isLoading) 把它卸載，否則狀態時間差會殺死子組件
   return (
     <LiffContext.Provider value={{ 
       isAuthenticated, 
@@ -180,11 +173,20 @@ export function LiffProvider({ children }: { children: ReactNode }) {
       userProfile, 
       userName,
       isLiffInit, 
-      login, // 👈 綁定安全重導向登入
+      isLoading, // 暴露出去
+      login,
       sendOtp,
       verifyOtp
     }}>
-      {children}
+      {/* 這裡做一個局部過渡：只有當最最一開始加載時顯示骨架，但 Provider 已經存活 */}
+      {isLoading ? (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
+          <Loader2 className="w-10 h-10 animate-spin text-[#D35400] mb-4" />
+          <p className="text-slate-500 font-bold tracking-wider text-sm">正在安全同步南臺市集資料...</p>
+        </div>
+      ) : (
+        children
+      )}
     </LiffContext.Provider>
   );
 }
