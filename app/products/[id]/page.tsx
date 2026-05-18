@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Navigation } from "@/components/navigation";
+import { useLiff } from "@/components/liff-provider"; // 引入 LIFF 狀態
 import { 
   Loader2, 
   ChevronLeft, 
@@ -17,6 +18,7 @@ import { toast } from "sonner";
 export default function ProductDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { isAuthenticated } = useLiff();
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +26,6 @@ export default function ProductDetailPage() {
     async function fetchProductDetail() {
       try {
         setLoading(true);
-        // 抓取所有欄位
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -50,15 +51,50 @@ export default function ProductDetailPage() {
     return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
   };
 
-  // 點擊按鈕處理：複製 contact 欄位的值
-  const handleContact = () => {
-    const contactValue = product?.contact;
-    if (contactValue) {
-      navigator.clipboard.writeText(contactValue);
-      toast.success(`已複製聯絡資訊: ${contactValue}`);
-      alert(`賣家 LINE ID: ${contactValue}\n(已自動複製)`);
-    } else {
+  // ✨ 修改重點：按鈕點擊後，直接透過 LIFF 幫使用者發送訊息到聊天室
+  const handleContact = async () => {
+    const contactValue = product?.contact?.trim();
+    const productName = product?.name || "未知商品";
+    const productPrice = product?.price || 0;
+
+    if (!contactValue) {
       toast.error("賣家未提供聯絡資訊");
+      return;
+    }
+
+    // 🎯 1. 檢查是否在 LINE 環境內，若是，則直接發送訊息
+    if (typeof window !== "undefined" && (window as any).liff) {
+      const liff = (window as any).liff;
+      
+      if (liff.isInClient()) {
+        try {
+          // 這裡組合發送的訊息格式（類似你之前做審核時的設計）
+          await liff.sendMessages([
+            {
+              type: "text",
+              text: `🛒 我對這個商品有興趣！\n\n📦 商品名稱：${productName}\n💰 商品價格：NT$ ${productPrice.toLocaleString()}\n👤 賣家 LINE ID：${contactValue}\n\n#聯絡賣家`,
+            },
+          ]);
+          toast.success("已成功發送聯絡訊息！");
+          // 發送成功後可以貼心幫使用者關閉 LIFF 視窗回到聊天室
+          setTimeout(() => {
+            liff.closeWindow();
+          }, 1000);
+          return;
+        } catch (error) {
+          console.error("發送訊息失敗:", error);
+          toast.error("發送訊息失敗，改為複製賣家資訊");
+        }
+      }
+    }
+
+    // 🎯 2. 安全回退機制：若在一般瀏覽器或發送失敗，則執行原本的複製與彈窗提示
+    try {
+      await navigator.clipboard.writeText(contactValue);
+      toast.success(`已複製聯絡資訊: ${contactValue}`);
+      alert(`賣家 LINE ID: ${contactValue}\n(已自動複製，可至 LINE 搜尋加好友)`);
+    } catch (e) {
+      toast.error("複製失敗，請手動抄錄");
     }
   };
 
@@ -110,22 +146,22 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* ✨ 修改重點：按鈕直接抓取 product.contact */}
-       <Button 
-  className="w-full bg-[#D35400] hover:bg-[#A04000] text-white py-10 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-1"
-  onClick={handleContact}
->
-  {/* 第一行：圖示 + 文字 */}
-  <div className="flex items-center text-lg">
-    <MessageCircle className="mr-2 h-6 w-6" />
-    聯繫賣家
-  </div>
-  
-  {/* 第二行：ID 小字 */}
-  <div className="text-sm opacity-90 font-medium">
-    ({product.contact || "未提供 ID"})
-  </div>
-</Button>
+        {/* ✨ 修改後的按鈕：發送訊息聯繫賣家 */}
+        <Button 
+          className="w-full bg-[#D35400] hover:bg-[#A04000] text-white py-10 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-1"
+          onClick={handleContact}
+        >
+          {/* 第一行：圖示 + 文字 */}
+          <div className="flex items-center text-lg">
+            <MessageCircle className="mr-2 h-6 w-6" />
+            聯繫賣家 (發送訊息)
+          </div>
+          
+          {/* 第二行：ID 小字 */}
+          <div className="text-sm opacity-90 font-medium">
+            ({product.contact || "未提供 ID"})
+          </div>
+        </Button>
       </div>
     </main>
   );
