@@ -156,8 +156,8 @@ export default function ProfilePage() {
             </Button>
           </Link>
 
-          {/* 我要刊登按鈕 */}
-          <Link href="/products" className="block">
+          {/* 我要刊登按鈕 🎯 這裡已經修正為跳轉到首頁（/） */}
+          <Link href="/" className="block">
             <Button 
               variant="outline" 
               className="w-full h-24 flex flex-col items-center justify-center gap-2 rounded-[24px] border-none bg-white shadow-sm hover:bg-orange-50/50 transition-all text-slate-800 group"
