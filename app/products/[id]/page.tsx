@@ -19,12 +19,12 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [sendingNotify, setSendingNotify] = useState(false);
 
   useEffect(() => {
     async function fetchProductDetail() {
       try {
         setLoading(true);
+        // 抓取所有欄位
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -50,48 +50,15 @@ export default function ProductDetailPage() {
     return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
   };
 
-  // ✨ 點擊按鈕：呼叫 API 發送真正 LINE 推播通知給賣家
-  const handleContact = async () => {
-    // 這裡拿取賣家的 LINE UID。請確認產品資料庫中的 contact 欄位存的是 U 開頭那一串 UID
-    const sellerLineUid = product?.contact?.trim(); 
-    const productName = product?.name || "未知商品";
-    const productPrice = product?.price || 0;
-
-    if (!sellerLineUid) {
-      toast.error("找不到賣家的 LINE 帳號資訊，無法發送通知");
-      return;
-    }
-
-    try {
-      setSendingNotify(true);
-      
-      // 🎯 呼叫後端 /api/notify 路由
-      const res = await fetch("/api/notify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sellerLineId: sellerLineUid, // 賣家的 LINE UID
-          productName: productName,
-          productPrice: productPrice,
-        }),
-      });
-
-      const result = await res.json();
-
-      if (res.ok) {
-        toast.success("已成功發送 LINE 通知給賣家！");
-        alert("🎉 已發送 LINE 訊息通知賣家囉！請靜待賣家與您聯繫。");
-      } else {
-        throw new Error(result.error || "發送失敗");
-      }
-    } catch (error: any) {
-      console.error("發送 LINE 通知失敗:", error);
-      toast.error(`通知發送失敗: ${error.message}`);
-      alert(`無法發送 LINE 通知。賣家聯絡資訊為: ${sellerLineUid}`);
-    } finally {
-      setSendingNotify(false);
+  // 點擊按鈕處理：複製 contact 欄位的值
+  const handleContact = () => {
+    const contactValue = product?.contact;
+    if (contactValue) {
+      navigator.clipboard.writeText(contactValue);
+      toast.success(`已複製聯絡資訊: ${contactValue}`);
+      alert(`賣家 LINE ID: ${contactValue}\n(已自動複製)`);
+    } else {
+      toast.error("賣家未提供聯絡資訊");
     }
   };
 
@@ -100,7 +67,7 @@ export default function ProductDetailPage() {
 
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-10">
-      {/* 頂部導航 */}
+      {/* 頂部導航：包含漢堡選單與返回鍵 */}
       <div className="sticky top-0 z-20 bg-white px-4 py-3 flex items-center gap-1 border-b shadow-sm">
         <Navigation /> 
         <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full h-9 w-9">
@@ -122,15 +89,14 @@ export default function ProductDetailPage() {
 
         {/* 標題與價格 */}
         <div className="space-y-1">
-          {/* 🎯 修正重點：自己實作簡單的 Badge 樣式，避免組件缺失導致崩潰 */}
-          <span className="inline-flex items-center bg-orange-100 text-[#D35400] border-none text-[10px] font-bold px-2 py-0.5 rounded-md">
+          <Badge className="bg-orange-100 text-[#D35400] border-none text-[10px] font-bold px-2 py-0.5 rounded-md">
             {product.category || "一般商品"}
-          </span>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">{product.name}</h2>
-          <p className="text-3xl font-black text-[#D3-[#D35400] text-orange-600">NT$ {product.price?.toLocaleString()}</p>
+          </Badge>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight">{product.name}</h2>
+          <p className="text-3xl font-black text-[#D35400]">NT$ {product.price?.toLocaleString()}</p>
         </div>
 
-        {/* 商品描述 */}
+        {/* 商品描述區塊 */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-orange-50/50">
           <h3 className="text-xs font-bold text-slate-400 flex items-center gap-2 mb-3 tracking-wider">
             <Tag className="h-3.5 w-3.5" /> 商品描述
@@ -144,25 +110,31 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* 聯繫賣家按鈕 */}
-        <Button 
-          className="w-full bg-[#D35400] hover:bg-[#A04000] text-white py-7 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
-          onClick={handleContact}
-          disabled={sendingNotify}
-        >
-          {sendingNotify ? (
-            <>
-              <Loader2 className="animate-spin h-5 w-5" />
-              正在發送 LINE 通知...
-            </>
-          ) : (
-            <>
-              <MessageCircle className="h-5 w-5" />
-              發送 LINE 通知聯繫賣家
-            </>
-          )}
-        </Button>
+        {/* ✨ 修改重點：按鈕直接抓取 product.contact */}
+       <Button 
+  className="w-full bg-[#D35400] hover:bg-[#A04000] text-white py-10 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-1"
+  onClick={handleContact}
+>
+  {/* 第一行：圖示 + 文字 */}
+  <div className="flex items-center text-lg">
+    <MessageCircle className="mr-2 h-6 w-6" />
+    聯繫賣家
+  </div>
+  
+  {/* 第二行：ID 小字 */}
+  <div className="text-sm opacity-90 font-medium">
+    ({product.contact || "未提供 ID"})
+  </div>
+</Button>
       </div>
     </main>
+  );
+}
+
+function Badge({ children, className }: { children: React.ReactNode, className?: string }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${className}`}>
+      {children}
+    </span>
   );
 }
