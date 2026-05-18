@@ -83,13 +83,12 @@ export default function ExploreProductsPage() {
       try {
         setFetching(true);
         
-        // 🎯 核心補強：加上 .not() 排除 NULL 值，並維持降序排序
+        // 🎯 完美方案：不使用 .not() 阻擋，並透過 nullsFirst: false 把舊資料塞到最後面
         const { data, error } = await supabase
           .from("products")
           .select("*")
           .eq("status", "approved") 
-          .not("approved_at", "is", null) // 🔥 關鍵：把以前沒有填通過時間的舊商品過濾掉
-          .order("approved_at", { ascending: false }); // 🔥 降序排序：最新通過的在最前面
+          .order("approved_at", { ascending: false, nullsFirst: false }); // 🔥 關鍵降序＋null墊底
 
         if (error) throw error;
         setProducts(data || []);
@@ -158,7 +157,7 @@ export default function ExploreProductsPage() {
             <div className="bg-gradient-to-tr from-[#D35400] to-[#E67E22] py-8 px-6 text-center text-white space-y-2">
               <Sparkles className="h-10 w-10 mx-auto text-yellow-300 animate-pulse" />
               <h2 className="text-xl font-extrabold tracking-wide">南台人限定二手市集</h2>
-              <p className="text-xs text-orange-50">專專屬於南台科技大學的安全校園交易平台</p>
+              <p className="text-xs text-orange-50">專屬於南台科技大學的安全校園交易平台</p>
             </div>
             <CardContent className="pt-8 pb-8 text-center space-y-6 px-6">
               <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] text-white font-bold py-6 rounded-xl shadow-lg transition-all text-sm">
@@ -258,7 +257,6 @@ export default function ExploreProductsPage() {
                       </p>
                       <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
                         <span className="flex items-center gap-0.5">
-                          {/* 顯示審核通過的時間點 */}
                           <Calendar className="h-3 w-3" /> {formatDate(product.approved_at || product.created_at)}
                         </span>
                       </div>
