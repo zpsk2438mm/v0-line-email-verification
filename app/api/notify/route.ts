@@ -49,12 +49,10 @@ export async function POST(req: Request) {
         }
 
         if (parsedImageUrl && typeof parsedImageUrl === 'string') {
-          // 徹底拔除網址中殘留的 [ ] " ' \ 等干擾字元
           parsedImageUrl = parsedImageUrl.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim();
           
-          // 🚀 【核心大補強】如果洗出來只是單純的檔名（不是 http 開頭），自動拼接上你的 Supabase Storage 完整網址
           if (parsedImageUrl && !parsedImageUrl.startsWith('http') && parsedImageUrl !== "/placeholder-logo.png") {
-            const cleanPath = parsedImageUrl.replace(/^\//, ""); // 移除開頭斜線
+            const cleanPath = parsedImageUrl.replace(/^\//, "");
             parsedImageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
           }
         }
@@ -73,7 +71,12 @@ export async function POST(req: Request) {
     let color = "#D35400"; // 暖橘色
     let subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
 
-    if (productStatus === 'approved') {
+    // ✨ 新增分支：當前端按下「聯繫賣家」時發送此通知
+    if (productStatus === 'contact_seller') {
+      title = "🤝 收到買家購買意願通知！";
+      color = "#3B82F6"; // 亮藍色，代表聯絡與媒合
+      subText = "太棒了！有買家對您的二手寶貝表示非常有興趣，並已取得您的聯絡方式。請隨時留意您的 LINE 訊息與好友申請，主動與買家取得聯繫確認交貨細節喔！";
+    } else if (productStatus === 'approved') {
       title = "🎉 商品審核通過！已成功上架";
       color = "#10B981"; // 翠綠色
       subText = "恭喜！您的二手寶貝已經在平台上公開展示，祝您順利成交！";
@@ -153,8 +156,17 @@ export async function POST(req: Request) {
             margin: 'lg',
             contents: [
               {
+                type: 'text',
+                text: "請與買家雙方確認好付款與交貨時間。",
+                size: 'xs',
+                color: '#777777',
+                margin: 'none',
+                wrap: true
+              },
+              {
                 type: 'separator',
-                color: '#E5E5E5'
+                color: '#E5E5E5',
+                margin: 'md'
               },
               {
                 type: 'text',
@@ -170,7 +182,7 @@ export async function POST(req: Request) {
     };
 
     // 如果清洗補全出合法的圖片，直接掛載至 hero 區塊
-    if (parsedImageUrl && parsedImageUrl.startsWith('http')) {
+    if (rawImageUrl && parsedImageUrl && parsedImageUrl.startsWith('http')) {
       bubbleStructure.hero = {
         type: 'image',
         url: parsedImageUrl,
