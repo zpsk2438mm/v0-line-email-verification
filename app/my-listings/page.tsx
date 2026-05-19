@@ -135,7 +135,7 @@ export default function MyListingsPage() {
     );
   };
 
-  // 🏆 關鍵：前端複選過濾邏輯
+  // 🏆 前端複選過濾邏輯
   const filteredProducts = myProducts.filter(product => {
     const statusMatch = selectedStatuses.length === 0 || selectedStatuses.includes(product.status);
     const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(product.category);
@@ -202,7 +202,6 @@ export default function MyListingsPage() {
 
           {/* 2. 分類篩選橫條 */}
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x border-t border-slate-50 pt-2">
-            {/* 「全部」按鈕用來一鍵清空分類篩選 */}
             <button
               onClick={() => setSelectedCategories([])}
               className={`snap-center flex-shrink-0 px-3.5 py-1.5 text-xs font-bold rounded-full border transition-all ${
@@ -291,11 +290,14 @@ export default function MyListingsPage() {
                         {new Date(product.created_at).toLocaleDateString()}
                       </p>
 
-                      {/* 🛠️ 操作按鈕區 (雙按鈕並排樣式) */}
+                      {/* 🛠️ 操作按鈕區 */}
                       <div className="mt-4 pt-3 border-t border-dashed border-orange-100 flex items-center justify-between">
                         
-                        {/* 🔥 閃亮登場的編輯按鈕 (預留連結，點擊時不影響其他功能) */}
-                        <Link href={`#`} className="text-[13px] text-slate-500 font-black flex items-center gap-1.5 hover:text-[#D35400] transition-colors">
+                        {/* 🔗 正式串接編輯頁面的動態路由 */}
+                        <Link 
+                          href={`/edit-listing/${product.id}`} 
+                          className="text-[13px] text-slate-500 font-black flex items-center gap-1.5 hover:text-[#D35400] transition-colors"
+                        >
                           <Edit3 className="h-4 w-4" /> 編輯商品
                         </Link>
 
