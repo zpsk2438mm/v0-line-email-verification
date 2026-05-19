@@ -102,6 +102,16 @@ export function ListingForm() {
     e.preventDefault();
     if (isSubmitting) return;
 
+    // 🎯 絕殺守衛：強制檢查圖片是否存在！
+    if (!images || images.length === 0) {
+      setSubmitStatus("error");
+      setErrorMessage("請至少上傳 1 張商品照片，以便同學參考物品狀況。");
+      
+      // 自動貼心捲動到最頂部的照片區域
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
     if (!isAuthenticated || !lineUserId) {
       setSubmitStatus("error");
       setErrorMessage("請先完成 LINE 登入及 Email 驗證後再上架");
@@ -136,7 +146,7 @@ export function ListingForm() {
 
       if (dbError) throw dbError;
 
-      // 2. 呼叫通知 API (✨ 這裡已修正：成功加入 productImage 欄位)
+      // 2. 呼叫通知 API
       setUploadProgress("傳送管理員通知...");
       try {
         await fetch("/api/notify", {
@@ -149,7 +159,7 @@ export function ListingForm() {
             status: "pending",
             line_user_id: lineUserId,
             verified_email: userEmail,
-            productImage: singleImageUrl // 🔥 絕殺修正：直接把熱騰騰的完整網址砸向後端通知 API
+            productImage: singleImageUrl 
           }),
         });
       } catch (notifyErr) {
@@ -204,14 +214,15 @@ export function ListingForm() {
 
         {submitStatus === "error" && (
           <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-start gap-3 animate-in slide-in-from-top-2">
-            <AlertCircle className="w-5 h-5 mt-0.5" />
+            <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <div className="text-sm font-semibold">{errorMessage}</div>
           </div>
         )}
 
         <div className="space-y-5">
           <section className="space-y-3">
-            <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES})</Label>
+            {/* 加上紅色星號 * 提醒同學這是必填欄位 */}
+            <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES}) <span className="text-red-500">*</span></Label>
             <div className="grid grid-cols-3 gap-3">
               {images.map((img, i) => (
                 <div key={i} className="relative aspect-square rounded-2xl border-2 border-gray-100 bg-white overflow-hidden group shadow-sm">
