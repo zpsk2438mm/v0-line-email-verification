@@ -222,7 +222,7 @@ export function ListingForm() {
         <div className="space-y-5">
           <section className="space-y-3">
             {/* 加上紅色星號 * 提醒同學這是必填欄位 */}
-            <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES}) <span className="text-red-500">*</span></Label>
+            <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES}) <span className="text-gray-500">*</span></Label>
             <div className="grid grid-cols-3 gap-3">
               {images.map((img, i) => (
                 <div key={i} className="relative aspect-square rounded-2xl border-2 border-gray-100 bg-white overflow-hidden group shadow-sm">
