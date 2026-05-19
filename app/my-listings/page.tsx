@@ -13,8 +13,10 @@ import {
   CheckCircle2,
   Clock3,
   Trash2,
+  Edit3,
   ChevronLeft,
-  AlertCircle
+  AlertCircle,
+  Filter
 } from "lucide-react";
 import Link from "next/link";
 
@@ -26,15 +28,41 @@ interface Product {
   category: string;
   image_url?: any;
   images?: any;
-  status: string; // 使用 status 判斷
+  status: string; 
   is_approved: boolean; 
   created_at: string;
 }
+
+// 狀態篩選項目
+const STATUS_FILTERS = [
+  { id: "approved", label: "🟢 已上架" },
+  { id: "pending", label: "🟡 審核中" },
+  { id: "rejected", label: "🔴 已退回" },
+];
+
+// 分類篩選項目
+const CATEGORY_FILTERS = [
+  { id: "electronics", label: "📱 電子產品" },
+  { id: "books", label: "📚 書籍教材" },
+  { id: "tools_stationery", label: "✏️ 文具/專業工具" },
+  { id: "dorm_supplies", label: "🏠 租屋收納/雜貨" },
+  { id: "hobbies", label: "🎮 遊戲/娛樂" },
+  { id: "cosmetics", label: "💄 化妝品/美妝" },
+  { id: "food", label: "🍕 食物/零食" },
+  { id: "clothing", label: "👕 服飾配件" },
+  { id: "furniture", label: "🛋️ 家具家電" },
+  { id: "sports", label: "🏀 運動用品" },
+  { id: "other", label: "🔍 其他" },
+];
 
 export default function MyListingsPage() {
   const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+
+  // 複選狀態儲存 (若為空代表全選)
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   useEffect(() => {
     if (liffLoading) return;
@@ -42,7 +70,6 @@ export default function MyListingsPage() {
     async function fetchMyProducts() {
       try {
         setIsLoadingProducts(true);
-        // 直接過濾該 LINE 用戶的商品
         const { data, error } = await supabase
           .from("products")
           .select("*")
@@ -58,7 +85,7 @@ export default function MyListingsPage() {
       }
     }
 
-    if (lineUserId) fetchMyProducts();
+  if (lineUserId) fetchMyProducts();
   }, [liffLoading, lineUserId]);
 
   const handleDelete = async (productId: string) => {
@@ -94,6 +121,27 @@ export default function MyListingsPage() {
     }
   };
 
+  // 狀態複選切換邏輯
+  const toggleStatusFilter = (id: string) => {
+    setSelectedStatuses(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // 分類複選切換邏輯
+  const toggleCategoryFilter = (id: string) => {
+    setSelectedCategories(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // 🏆 關鍵：前端複選過濾邏輯
+  const filteredProducts = myProducts.filter(product => {
+    const statusMatch = selectedStatuses.length === 0 || selectedStatuses.includes(product.status);
+    const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(product.category);
+    return statusMatch && categoryMatch;
+  });
+
   // 頂部標頭
   const Header = () => (
     <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
@@ -123,24 +171,90 @@ export default function MyListingsPage() {
     <main className="min-h-screen bg-[#FDFBF7] pb-12">
       <Header />
 
-      <div className="p-6 space-y-6 max-w-md mx-auto">
-        {myProducts.length === 0 ? (
-          <div className="text-center py-20 space-y-4 bg-white rounded-[32px] p-8 shadow-sm border border-orange-50">
+      <div className="max-w-md mx-auto px-6 pt-6 space-y-4">
+        
+        {/* ================= 🎛️ 複選篩選按鈕特區 ================= */}
+        <div className="bg-white rounded-[24px] p-4 shadow-[0_8px_30px_rgb(0,0,0,0.02)] border border-orange-50/50 space-y-3">
+          <div className="flex items-center gap-1.5 text-xs font-black text-slate-500 mb-1">
+            <Filter className="h-3.5 w-3.5 text-[#D35400]" />
+            <span>商品狀態與分類篩選 (可複選)</span>
+          </div>
+
+          {/* 1. 狀態篩選橫條 */}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x">
+            {STATUS_FILTERS.map((f) => {
+              const isSelected = selectedStatuses.includes(f.id);
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => toggleStatusFilter(f.id)}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 text-xs font-bold rounded-full border transition-all ${
+                    isSelected
+                      ? "bg-[#D35400] text-white border-[#D35400] shadow-md shadow-orange-100"
+                      : "bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 2. 分類篩選橫條 */}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x border-t border-slate-50 pt-2">
+            {/* 「全部」按鈕用來一鍵清空分類篩選 */}
+            <button
+              onClick={() => setSelectedCategories([])}
+              className={`snap-center flex-shrink-0 px-3.5 py-1.5 text-xs font-bold rounded-full border transition-all ${
+                selectedCategories.length === 0
+                  ? "bg-slate-800 text-white border-slate-800 shadow-md shadow-slate-200"
+                  : "bg-slate-50 text-slate-600 border-slate-100"
+              }`}
+            >
+              ✨ 全部分類
+            </button>
+            {CATEGORY_FILTERS.map((f) => {
+              const isSelected = selectedCategories.includes(f.id);
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => toggleCategoryFilter(f.id)}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 text-xs font-bold rounded-full border transition-all ${
+                    isSelected
+                      ? "bg-[#D35400] text-white border-[#D35400] shadow-md shadow-orange-100"
+                      : "bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {/* =================================================== */}
+
+        {/* 商品列表區 */}
+        {filteredProducts.length === 0 ? (
+          <div className="text-center py-16 space-y-4 bg-white rounded-[32px] p-8 shadow-sm border border-orange-50">
             <Package className="h-16 w-16 mx-auto text-orange-100" />
-            <p className="font-bold text-slate-400">目前還沒有刊登商品喔</p>
-            <Link href="/">
-              <Button className="bg-[#D35400] hover:bg-[#A04000] text-white font-bold rounded-2xl px-8 h-12 shadow-lg shadow-orange-200">
-                立刻去上架
+            <p className="font-bold text-slate-400">沒有符合篩選條件的商品喔</p>
+            {(selectedStatuses.length > 0 || selectedCategories.length > 0) && (
+              <Button 
+                variant="outline" 
+                onClick={() => { setSelectedStatuses([]); setSelectedCategories([]); }}
+                className="rounded-xl border-slate-200 font-bold text-slate-600 text-xs"
+              >
+                重設篩選條件
               </Button>
-            </Link>
+            )}
           </div>
         ) : (
-          <div className="grid gap-6">
-            {myProducts.map((product) => (
+          <div className="grid gap-4">
+            {filteredProducts.map((product) => (
               <Card key={product.id} className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-[32px] overflow-hidden bg-white transition-all">
                 <CardContent className="p-5">
                   <div className="flex gap-5">
-                    {/* 商品圖片區 - 參考 image_ace55a.png */}
+                    {/* 商品圖片區 */}
                     <div className="h-24 w-24 flex-shrink-0 bg-[#FDFBF7] rounded-[24px] overflow-hidden border border-orange-50 shadow-inner">
                       <img 
                         src={getCleanImageUrl(product)} 
@@ -156,7 +270,7 @@ export default function MyListingsPage() {
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-black text-base text-slate-800 truncate">{product.name}</h3>
                         
-                        {/* 狀態標籤 - 樣式參考自圖片 */}
+                        {/* 狀態標籤 */}
                         {product.status === 'approved' ? (
                           <Badge className="rounded-xl px-2.5 py-1 text-[10px] font-black bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
                             <CheckCircle2 className="h-3 w-3" /> 已上架
@@ -177,14 +291,22 @@ export default function MyListingsPage() {
                         {new Date(product.created_at).toLocaleDateString()}
                       </p>
 
-                      {/* 刪除按鈕區 - 下方虛線分隔 */}
-                      <div className="mt-4 pt-3 border-t border-dashed border-orange-100">
+                      {/* 🛠️ 操作按鈕區 (雙按鈕並排樣式) */}
+                      <div className="mt-4 pt-3 border-t border-dashed border-orange-100 flex items-center justify-between">
+                        
+                        {/* 🔥 閃亮登場的編輯按鈕 (預留連結，點擊時不影響其他功能) */}
+                        <Link href={`#`} className="text-[13px] text-slate-500 font-black flex items-center gap-1.5 hover:text-[#D35400] transition-colors">
+                          <Edit3 className="h-4 w-4" /> 編輯商品
+                        </Link>
+
+                        {/* 刪除按鈕 */}
                         <button 
                           onClick={() => handleDelete(product.id)} 
                           className="text-[13px] text-rose-500 font-black flex items-center gap-1.5 hover:opacity-70 transition-opacity"
                         >
                           <Trash2 className="h-4 w-4" /> 刪除商品
                         </button>
+
                       </div>
                     </div>
                   </div>
