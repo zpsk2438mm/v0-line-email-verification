@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation"; // 🎯 引入 Next.js 路由工具
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Send, Loader2, AlertCircle, ImagePlus, X, CheckCircle } from "lucide-react";
+import { Send, Loader2, AlertCircle, ImagePlus, X, CheckCircle, Save } from "lucide-react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 
@@ -33,11 +34,18 @@ const CATEGORIES = [
 const MAX_IMAGES = 5;
 
 interface ImagePreview {
-  file: File;
+  file: File | null; // 🎯 修正型別：允許為 null，因為資料庫抓過來的舊照片沒有 File 物件
   preview: string;
 }
 
-export function ListingForm() {
+// 🎯 1. 宣告接收外部傳入參數的 Props 介面
+interface ListingFormProps {
+  isEditMode?: boolean;
+  initialData?: any;
+}
+
+export function ListingForm({ isEditMode = false, initialData }: ListingFormProps) {
+  const router = useRouter(); // 🎯 初始化路由跳轉
   const { isAuthenticated, userEmail, lineUserId } = useLiff();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
@@ -55,6 +63,38 @@ export function ListingForm() {
     contact: "",
   });
 
+  // 🎯 2. 重磅回歸：當頁面收到 initialData 舊資料時，自動灌進表單 state 裡！
+  useEffect(() => {
+    if (isEditMode && initialData) {
+      console.log("🛠️ Form 元件成功接收並開始注入舊資料:", initialData);
+      setFormData({
+        name: initialData.name || "",
+        category: initialData.category || "",
+        price: initialData.price?.toString() || "",
+        description: initialData.description || "",
+        contact: initialData.contact || "",
+      });
+
+      // 自動解析圖片欄位（兼容字串網址或陣列欄位）
+      let rawImage = initialData.image_url || initialData.images;
+      if (rawImage) {
+        try {
+          let urlString = Array.isArray(rawImage) ? rawImage[0] : String(rawImage);
+          if (urlString.startsWith("[")) {
+            const parsed = JSON.parse(urlString);
+            urlString = Array.isArray(parsed) ? parsed[0] : urlString;
+          }
+          const cleanUrl = urlString.trim().replace(/[\[\]"']/g, "");
+          if (cleanUrl.startsWith("http")) {
+            setImages([{ file: null, preview: cleanUrl }]);
+          }
+        } catch (e) {
+          console.error("解析舊圖片網址失敗", e);
+        }
+      }
+    }
+  }, [isEditMode, initialData]);
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -71,7 +111,10 @@ export function ListingForm() {
   const removeImage = (index: number) => {
     setImages((prev) => {
       const newImages = [...prev];
-      URL.revokeObjectURL(newImages[index].preview);
+      // 如果它是有 File 物件的新上傳照片，才需要釋放記憶體網址
+      if (newImages[index].file) {
+        URL.revokeObjectURL(newImages[index].preview);
+      }
       newImages.splice(index, 1);
       return newImages;
     });
@@ -81,6 +124,13 @@ export function ListingForm() {
     const uploadedUrls: string[] = [];
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
+      
+      // 🎯 3. 優化圖片上傳：如果 file 是 null，代表它是本來就在資料庫的舊照片，不需重複上傳，直接保留原網址
+      if (!image.file) {
+        uploadedUrls.push(image.preview);
+        continue;
+      }
+
       setUploadProgress(`圖片上傳中 (${i + 1}/${images.length})...`);
       const fileExt = image.file.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -102,19 +152,16 @@ export function ListingForm() {
     e.preventDefault();
     if (isSubmitting) return;
 
-    // 🎯 絕殺守衛：強制檢查圖片是否存在！
     if (!images || images.length === 0) {
       setSubmitStatus("error");
       setErrorMessage("請至少上傳 1 張商品照片，以便同學參考物品狀況。");
-      
-      // 自動貼心捲動到最頂部的照片區域
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     if (!isAuthenticated || !lineUserId) {
       setSubmitStatus("error");
-      setErrorMessage("請先完成 LINE 登入及 Email 驗證後再上架");
+      setErrorMessage("請先完成 LINE 登入及 Email 驗證後再進行操作");
       return;
     }
 
@@ -131,29 +178,47 @@ export function ListingForm() {
       setUploadProgress("儲存資料至資料庫...");
       const singleImageUrl = imageUrls.length > 0 ? imageUrls[0] : "";
 
-      // 1. 寫入 Supabase 資料庫
-      const { error: dbError } = await supabase.from("products").insert({
-        name: formData.name,
-        category: formData.category,
-        price: parseInt(formData.price),
-        description: formData.description,
-        contact: formData.contact,
-        image_url: singleImageUrl,
-        line_user_id: lineUserId,
-        verified_email: userEmail,
-        status: 'pending'
-      });
+      if (isEditMode) {
+        // 🎯 4. 編輯模式分支：使用 .update() 更新特定 ID 商品，且強制回歸 'pending' 重新審核
+        const { error: dbError } = await supabase
+          .from("products")
+          .update({
+            name: formData.name,
+            category: formData.category,
+            price: parseInt(formData.price),
+            description: formData.description,
+            contact: formData.contact,
+            image_url: singleImageUrl,
+            status: "pending" // ⭐️ 強制調回 pending！讓瀏覽市集與個人中心卡片依你要求立刻隱藏消失！
+          })
+          .eq("id", initialData.id);
 
-      if (dbError) throw dbError;
+        if (dbError) throw dbError;
+      } else {
+        // 5. 原生上架模式分支：使用 .insert() 寫入全新商品資料
+        const { error: dbError } = await supabase.from("products").insert({
+          name: formData.name,
+          category: formData.category,
+          price: parseInt(formData.price),
+          description: formData.description,
+          contact: formData.contact,
+          image_url: singleImageUrl,
+          line_user_id: lineUserId,
+          verified_email: userEmail,
+          status: "pending"
+        });
 
-      // 2. 呼叫通知 API
+        if (dbError) throw dbError;
+      }
+
+      // 6. 呼叫通知 API（帶入對應的 INSERT 或 UPDATE 動作類型）
       setUploadProgress("傳送管理員通知...");
       try {
         await fetch("/api/notify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: "INSERT",
+            type: isEditMode ? "UPDATE" : "INSERT",
             name: formData.name,
             price: formData.price,
             status: "pending",
@@ -168,12 +233,16 @@ export function ListingForm() {
 
       setSubmitStatus("success");
       setShowSuccessModal(true);
-      setFormData({ name: "", category: "", price: "", description: "", contact: "" });
-      setImages([]);
+      
+      if (!isEditMode) {
+        // 只有全新上架才需要清空欄位，修改模式的話保持原樣就行
+        setFormData({ name: "", category: "", price: "", description: "", contact: "" });
+        setImages([]);
+      }
     } catch (err: any) {
-      console.error("上架出錯:", err);
+      console.error("處理失敗出錯:", err);
       setSubmitStatus("error");
-      setErrorMessage(err.message || "上架失敗，請稍後再試");
+      setErrorMessage(err.message || "操作失敗，請稍後再試");
     } finally {
       setIsSubmitting(false);
       setUploadProgress("");
@@ -189,14 +258,20 @@ export function ListingForm() {
             <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="w-12 h-12 text-[#D95300]" />
             </div>
-            <h3 className="text-2xl font-black text-gray-900 mb-2">上架成功！</h3>
+            <h3 className="text-2xl font-black text-gray-900 mb-2">
+              {isEditMode ? "修改已送審！" : "上架成功！"}
+            </h3>
             <p className="text-sm text-gray-500 mb-8 leading-relaxed">
-              您的商品已經成功刊登。<br />
-              管理員審核通過後即會公開顯示。
+              {isEditMode 
+                ? "商品已成功更新並重新送審，卡片在審核通過前將暫時撤下。" 
+                : "您的商品已經成功刊登。管理員審核通過後即會公開顯示。"}
             </p>
             <Button 
               type="button"
-              onClick={() => setShowSuccessModal(false)} 
+              onClick={() => {
+                setShowSuccessModal(false);
+                router.push("/my-listings"); // 🎯 儲存完按下確認，自動重新導向回個人中心
+              }} 
               className="w-full bg-[#D95300] hover:bg-[#B84600] h-14 text-lg font-bold rounded-2xl shadow-lg shadow-orange-100 transition-all text-white"
             >
               太棒了！
@@ -209,7 +284,9 @@ export function ListingForm() {
       <form onSubmit={handleSubmit} className="p-6 space-y-6 max-w-md mx-auto bg-[#F9F8F6] min-h-screen">
         <header className="flex items-center gap-3 border-b border-orange-100 pb-4 mb-6">
           <div className="w-2 h-8 bg-[#D95300] rounded-full" />
-          <h2 className="text-2xl font-black text-gray-800">刊登二手物品</h2>
+          <h2 className="text-2xl font-black text-gray-800">
+            {isEditMode ? "修改商品資料" : "刊登二手物品"}
+          </h2>
         </header>
 
         {submitStatus === "error" && (
@@ -221,8 +298,7 @@ export function ListingForm() {
 
         <div className="space-y-5">
           <section className="space-y-3">
-            {/* 加上紅色星號 * 提醒同學這是必填欄位 */}
-            <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES}) <span className="text-gray-500">*</span></Label>
+            <Label className="text-base font-bold text-gray-700">商品照片 ({images.length}/{MAX_IMAGES}) <span className="text-red-500">*</span></Label>
             <div className="grid grid-cols-3 gap-3">
               {images.map((img, i) => (
                 <div key={i} className="relative aspect-square rounded-2xl border-2 border-gray-100 bg-white overflow-hidden group shadow-sm">
@@ -291,6 +367,8 @@ export function ListingForm() {
           >
             {isSubmitting ? (
               <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> {uploadProgress || "處理中..."}</>
+            ) : isEditMode ? (
+              <><Save className="mr-2 h-6 w-6" /> 儲存並重新送審</>
             ) : (
               <><Send className="mr-2 h-6 w-6" /> 立即刊登上架</>
             )}
