@@ -42,6 +42,7 @@ function getImageUrl(value: unknown): string {
   if (typeof raw === "string") {
     try {
       const parsed = JSON.parse(raw);
+
       if (Array.isArray(parsed)) {
         raw = parsed[0];
       }
@@ -84,15 +85,15 @@ function isValidLineFriendUrl(value: string): boolean {
       return false;
     }
 
+    if (url.username || url.password) {
+      return false;
+    }
+
     if (
       url.hostname === "line.me" &&
       url.pathname.startsWith("/ti/p/") &&
       url.pathname.length > "/ti/p/".length
     ) {
-      return true;
-    }
-
-    if (url.hostname === "lin.ee" && url.pathname.length > 1) {
       return true;
     }
 
@@ -116,12 +117,15 @@ export default function ProductDetailPage() {
     isLoading: liffLoading,
   } = useLiff();
 
-  const [product, setProduct] = useState<Product | null>(null);
+  const [product, setProduct] =
+    useState<Product | null>(null);
+
   const [loading, setLoading] = useState(true);
-  const [contactLoading, setContactLoading] = useState(false);
+  const [contactLoading, setContactLoading] =
+    useState(false);
   const [error, setError] = useState("");
 
-  // 讀取商品資料：不需要 LINE 登入
+  // 讀取商品資料，不需要 LINE 登入
   useEffect(() => {
     if (!id) {
       setLoading(false);
@@ -148,10 +152,15 @@ export default function ProductDetailPage() {
           setProduct(data);
         }
       } catch (err) {
-        console.error("讀取商品失敗:", err);
+        console.error(
+          "讀取商品失敗:",
+          err
+        );
 
         if (!cancelled) {
-          setError("商品載入失敗，請稍後再試");
+          setError(
+            "商品載入失敗，請稍後再試"
+          );
         }
       } finally {
         if (!cancelled) {
@@ -167,17 +176,18 @@ export default function ProductDetailPage() {
     };
   }, [id]);
 
-  // 聯絡賣家
+  // 聯絡賣家並觸發 LINE 官方帳號通知
   const handleContact = async () => {
     if (!product || contactLoading) return;
 
-    // 等待登入狀態初始化
     if (liffLoading) {
-      toast.info("正在確認登入狀態，請稍候");
+      toast.info(
+        "正在確認登入狀態，請稍候"
+      );
       return;
     }
 
-    // LINE 或學校信箱尚未完成驗證
+    // 必須完成 LINE 與學校信箱驗證
     if (!lineUserId || !isAuthenticated) {
       const currentPath =
         window.location.pathname +
@@ -190,48 +200,68 @@ export default function ProductDetailPage() {
       return;
     }
 
-    // 從商品取得賣家 LINE User ID
     const sellerId =
-      product.line_user_id || product.lineUserId;
+      product.line_user_id ||
+      product.lineUserId;
 
     if (!sellerId) {
-      toast.error("此商品缺少賣家識別資料");
+      toast.error(
+        "此商品缺少賣家識別資料"
+      );
+      return;
+    }
+
+    if (sellerId === lineUserId) {
+      toast.error(
+        "無法聯絡自己刊登的商品"
+      );
       return;
     }
 
     try {
       setContactLoading(true);
 
-      // 透過已驗證身分的後端 API
-      // 取得賣家自行設定的 LINE 加好友連結
+      // 使用 POST：
+      // 1. 後端驗證買家身分
+      // 2. 確認商品及賣家資料
+      // 3. 嘗試發送 LINE 官方帳號通知
+      // 4. 回傳賣家的 LINE 加好友連結
       const result = await contactRequest(
-  `/api/seller-contact?productId=${encodeURIComponent(
-    product.id
-  )}`
-);
+        "/api/seller-contact",
+        "POST",
+        {
+          productId: product.id,
+        }
+      );
 
-      const friendUrl = result.lineFriendUrl;
+      const friendUrl =
+        result.lineFriendUrl;
 
-      if (!friendUrl) {
+      if (
+        typeof friendUrl !== "string" ||
+        !friendUrl
+      ) {
         toast.error(
           "賣家尚未設定 LINE 加好友連結，暫時無法聯絡"
         );
         return;
       }
 
-      if (
-        typeof friendUrl !== "string" ||
-        !isValidLineFriendUrl(friendUrl)
-      ) {
-        toast.error("賣家的 LINE 連結格式不正確");
+      if (!isValidLineFriendUrl(friendUrl)) {
+        toast.error(
+          "賣家的 LINE 連結格式不正確"
+        );
         return;
       }
 
-      // 在目前頁面開啟 LINE，
-      // 避免非同步請求後新視窗遭瀏覽器阻擋
+      // 直接在目前頁面開啟 LINE
+      // 避免非同步操作後彈出視窗被阻擋
       window.location.assign(friendUrl);
     } catch (err) {
-      console.error("取得賣家聯絡方式失敗:", err);
+      console.error(
+        "聯絡賣家失敗:",
+        err
+      );
 
       toast.error(
         err instanceof Error
@@ -247,6 +277,7 @@ export default function ProductDetailPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+
         <p className="text-sm text-slate-500">
           正在載入商品...
         </p>
@@ -258,9 +289,16 @@ export default function ProductDetailPage() {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-center gap-4 px-6">
         <AlertCircle className="h-10 w-10 text-red-500" />
-        <p className="text-slate-600">{error}</p>
 
-        <Button onClick={() => router.push("/products")}>
+        <p className="text-slate-600">
+          {error}
+        </p>
+
+        <Button
+          onClick={() =>
+            router.push("/products")
+          }
+        >
           返回市集
         </Button>
       </div>
@@ -274,7 +312,11 @@ export default function ProductDetailPage() {
           找不到商品，或商品尚未通過審核
         </p>
 
-        <Button onClick={() => router.push("/products")}>
+        <Button
+          onClick={() =>
+            router.push("/products")
+          }
+        >
           返回市集
         </Button>
       </div>
@@ -288,7 +330,10 @@ export default function ProductDetailPage() {
   const isOwnProduct =
     Boolean(lineUserId) &&
     lineUserId ===
-      (product.line_user_id || product.lineUserId);
+      (
+        product.line_user_id ||
+        product.lineUserId
+      );
 
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-10">
@@ -315,15 +360,22 @@ export default function ProductDetailPage() {
         <div className="aspect-square w-full rounded-3xl overflow-hidden bg-white shadow-sm border border-orange-50">
           <img
             src={getImageUrl(
-              product.image_url || product.images
+              product.image_url ||
+              product.images
             )}
             alt={product.name}
             className="w-full h-full object-cover"
             onError={(e) => {
-              const fallback = "/placeholder-logo.png";
+              const fallback =
+                "/placeholder-logo.png";
 
-              if (!e.currentTarget.src.endsWith(fallback)) {
-                e.currentTarget.src = fallback;
+              if (
+                !e.currentTarget.src.endsWith(
+                  fallback
+                )
+              ) {
+                e.currentTarget.src =
+                  fallback;
               }
             }}
           />
@@ -332,7 +384,8 @@ export default function ProductDetailPage() {
         {/* 商品名稱及價格 */}
         <div className="space-y-2">
           <span className="inline-flex items-center rounded-md bg-orange-100 px-2 py-1 text-[10px] font-bold text-[#D35400]">
-            {product.category || "一般商品"}
+            {product.category ||
+              "一般商品"}
           </span>
 
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -340,7 +393,10 @@ export default function ProductDetailPage() {
           </h2>
 
           <p className="text-3xl font-black text-[#D35400]">
-            NT$ {Number(product.price).toLocaleString("zh-TW")}
+            NT${" "}
+            {Number(
+              product.price
+            ).toLocaleString("zh-TW")}
           </p>
         </div>
 
@@ -352,15 +408,16 @@ export default function ProductDetailPage() {
           </h3>
 
           <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
-            {product.description || "賣家尚未填寫商品描述"}
+            {product.description ||
+              "賣家尚未填寫商品描述"}
           </p>
 
           <div className="pt-4 mt-4 border-t border-dashed flex items-center text-[10px] text-slate-400">
             <Calendar className="h-3 w-3 mr-1.5" />
             上架日期：
-            {new Date(product.created_at).toLocaleDateString(
-              "zh-TW"
-            )}
+            {new Date(
+              product.created_at
+            ).toLocaleDateString("zh-TW")}
           </div>
         </div>
 
@@ -373,14 +430,18 @@ export default function ProductDetailPage() {
           <Button
             type="button"
             onClick={handleContact}
-            disabled={contactLoading || liffLoading}
+            disabled={
+              contactLoading ||
+              liffLoading
+            }
             className="w-full h-auto min-h-20 bg-[#D35400] hover:bg-[#A04000] text-white py-5 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-2"
           >
             {contactLoading ? (
               <>
                 <Loader2 className="animate-spin h-6 w-6" />
+
                 <span className="text-base">
-                  正在取得賣家聯絡方式...
+                  正在聯絡賣家...
                 </span>
               </>
             ) : (
