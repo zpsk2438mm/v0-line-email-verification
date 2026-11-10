@@ -430,10 +430,7 @@ export default function ProductDetailPage() {
           <Button
             type="button"
             onClick={handleContact}
-            disabled={
-              contactLoading ||
-              liffLoading
-            }
+            disabled={contactLoading}
             className="w-full h-auto min-h-20 bg-[#D35400] hover:bg-[#A04000] text-white py-5 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-2"
           >
             {contactLoading ? (
