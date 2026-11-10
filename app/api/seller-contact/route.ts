@@ -5,73 +5,120 @@ import { verifiedIdentity } from "@/lib/contact-auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// 檢查是否為允許的 LINE 加好友網址
-function isValidLineUrl(value: string): boolean {
+function validLineUrl(value: string): boolean {
   try {
     const url = new URL(value);
 
-    if (url.protocol !== "https:") {
-      return false;
-    }
-
-    // LINE 個人加好友連結
-    if (
+    return (
+      url.protocol === "https:" &&
       url.hostname === "line.me" &&
-      url.pathname.startsWith("/ti/p/")
-    ) {
-      return true;
-    }
-
-    // LINE 短連結
-    if (url.hostname === "lin.ee") {
-      return true;
-    }
-
-    return false;
+      url.pathname.startsWith("/ti/p/") &&
+      url.pathname.length > "/ti/p/".length &&
+      !url.username &&
+      !url.password
+    );
   } catch {
     return false;
   }
 }
 
-// GET：取得自己的或指定賣家的聯絡連結
+function fail(message: string, status = 400) {
+  return NextResponse.json(
+    { error: message },
+    { status }
+  );
+}
+
+// GET：讀取自己的連結，或透過商品 ID 取得賣家連結
 export async function GET(req: NextRequest) {
   try {
-    const { admin, lineUserId } =
+    const { admin, email, lineUserId } =
       await verifiedIdentity(req);
 
-    const sellerId =
-      req.nextUrl.searchParams.get("sellerId") ||
-      lineUserId;
+    const productId =
+      req.nextUrl.searchParams.get("productId");
 
+    // 沒有 productId：只能讀取自己的設定
+    if (!productId) {
+      const { data, error } = await admin
+        .from("seller_contacts")
+        .select("line_friend_url")
+        .eq("line_user_id", lineUserId)
+        .eq("verified_email", email)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      return NextResponse.json({
+        lineFriendUrl: data?.line_friend_url ?? "",
+      });
+    }
+
+    // 有 productId：先確認商品確實存在且已上架
+    const { data: product, error: productError } =
+      await admin
+        .from("products")
+        .select("id, status, line_user_id")
+        .eq("id", productId)
+        .eq("status", "approved")
+        .maybeSingle();
+
+    if (productError) throw productError;
+
+    if (!product) {
+      return fail(
+        "商品不存在或尚未通過審核",
+        404
+      );
+    }
+
+    if (!product.line_user_id) {
+      return fail("商品缺少賣家資料", 404);
+    }
+
+    if (product.line_user_id === lineUserId) {
+      return fail("這是你自己的商品", 400);
+    }
+
+    // 只能取得該商品真正賣家的聯絡連結
     const { data, error } = await admin
       .from("seller_contacts")
       .select("line_friend_url")
-      .eq("line_user_id", sellerId)
+      .eq("line_user_id", product.line_user_id)
       .maybeSingle();
 
-    if (error) {
-      throw error;
+    if (error) throw error;
+
+    if (!data?.line_friend_url) {
+      return fail(
+        "賣家尚未設定 LINE 加好友連結",
+        404
+      );
+    }
+
+    if (!validLineUrl(data.line_friend_url)) {
+      return fail(
+        "賣家聯絡連結格式不正確",
+        400
+      );
     }
 
     return NextResponse.json({
-      lineFriendUrl: data?.line_friend_url || "",
+      lineFriendUrl: data.line_friend_url,
     });
   } catch (err) {
-    console.error("讀取 LINE 聯絡資料失敗:", err);
+    console.error("seller-contact GET:", err);
 
-    return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : "讀取聯絡資料失敗",
-      },
-      { status: 401 }
+    return fail(
+      err instanceof Error
+        ? err.message
+        : "讀取聯絡資料失敗",
+      401
     );
   }
 }
 
-// PUT：只有本人可以修改自己的 LINE 連結
+// PUT：只能修改自己的 LINE 加好友連結
 export async function PUT(req: NextRequest) {
   try {
     const { admin, email, lineUserId } =
@@ -87,14 +134,30 @@ export async function PUT(req: NextRequest) {
     if (
       lineFriendUrl.length > 500 ||
       (lineFriendUrl &&
-        !isValidLineUrl(lineFriendUrl))
+        !validLineUrl(lineFriendUrl))
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "請輸入有效的 LINE 加好友連結",
-        },
-        { status: 400 }
+      return fail(
+        "請輸入有效的 LINE 加好友連結（https://line.me/ti/p/...）"
+      );
+    }
+
+    // 避免同一個 LINE 帳號被不同學校信箱覆蓋
+    const { data: existing, error: lookupError } =
+      await admin
+        .from("seller_contacts")
+        .select("verified_email")
+        .eq("line_user_id", lineUserId)
+        .maybeSingle();
+
+    if (lookupError) throw lookupError;
+
+    if (
+      existing &&
+      existing.verified_email !== email
+    ) {
+      return fail(
+        "此 LINE 帳號已綁定其他學校信箱，請聯絡管理員",
+        409
       );
     }
 
@@ -112,30 +175,20 @@ export async function PUT(req: NextRequest) {
         }
       );
 
-    if (error) {
-      console.error("Supabase 儲存失敗:", error);
-
-      return NextResponse.json(
-        { error: "儲存失敗，請檢查資料庫設定" },
-        { status: 500 }
-      );
-    }
+    if (error) throw error;
 
     return NextResponse.json({
       success: true,
       lineFriendUrl,
     });
   } catch (err) {
-    console.error("更新 LINE 聯絡資料失敗:", err);
+    console.error("seller-contact PUT:", err);
 
-    return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : "更新聯絡資料失敗",
-      },
-      { status: 401 }
+    return fail(
+      err instanceof Error
+        ? err.message
+        : "儲存聯絡資料失敗",
+      401
     );
   }
 }
