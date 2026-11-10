@@ -56,7 +56,7 @@ const CATEGORY_FILTERS = [
 ];
 
 export default function MyListingsPage() {
-  const { lineUserId, isAuthenticated, isLoading: liffLoading } = useLiff();
+  const { lineUserId, isAuthenticated, login, isLoading: liffLoading } = useLiff();
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
@@ -154,6 +154,10 @@ export default function MyListingsPage() {
       <h1 className="text-lg font-black text-slate-800 tracking-tight">我的商品</h1>
     </header>
   );
+
+  if (!liffLoading && (!lineUserId || !isAuthenticated)) {
+    return <main className="min-h-screen bg-[#FDFBF7]"><Header /><div className="p-8 text-center space-y-4"><p>我的商品需要 LINE 登入及校園信箱驗證。</p>{!lineUserId ? <Button onClick={login}>使用 LINE 登入</Button> : <Link href="/"><Button>前往校園信箱驗證</Button></Link>}</div></main>;
+  }
 
   if (liffLoading || isLoadingProducts) {
     return (
