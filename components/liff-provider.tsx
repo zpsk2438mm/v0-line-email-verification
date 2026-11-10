@@ -76,7 +76,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
           const email = session.user.email ?? null;
           setUserEmail(email);
           setUserName(extractNameFromEmail(email));
-          setIsAuthenticated(true);
+          setIsAuthenticated(email?.toLowerCase().endsWith("@stust.edu.tw") ?? false);
         }
 
         // 2. 實時監聽 Supabase 變更
@@ -86,7 +86,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
               const email = session.user.email ?? null;
               setUserEmail(email);
               setUserName(extractNameFromEmail(email));
-              setIsAuthenticated(true);
+              setIsAuthenticated(email?.toLowerCase().endsWith("@stust.edu.tw") ?? false);
             } else {
               setUserEmail(null);
               setUserName(null);
@@ -158,7 +158,7 @@ export function LiffProvider({ children }: { children: ReactNode }) {
         const email = data.session.user.email ?? null;
         setUserEmail(email);
         setUserName(extractNameFromEmail(email));
-        setIsAuthenticated(true);
+        setIsAuthenticated(email?.toLowerCase().endsWith("@stust.edu.tw") ?? false);
         return { success: true };
       }
       return { success: false, error: "驗證成功但未能建立安全工作階段" };
