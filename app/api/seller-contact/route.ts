@@ -29,7 +29,7 @@ function fail(message: string, status = 400) {
   );
 }
 
-// 共用：確認商品與賣家聯絡方式
+// 確認商品與賣家聯絡方式
 async function findSellerContact(
   admin: any,
   productId: string,
@@ -38,7 +38,7 @@ async function findSellerContact(
   const { data: product, error: productError } =
     await admin
       .from("products")
-      .select("id, status, line_user_id")
+      .select("*")
       .eq("id", productId)
       .eq("status", "approved")
       .maybeSingle();
@@ -218,7 +218,197 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// POST：買家聯絡賣家，並嘗試發送 LINE 通知
+// 取得商品資訊
+function getProductInfo(product: any) {
+  const name = String(
+    product.name ??
+    product.title ??
+    "未命名商品"
+  );
+
+  const rawPrice =
+    product.price ??
+    product.expected_price ??
+    product.selling_price;
+
+  const numericPrice = Number(rawPrice);
+
+  const price =
+    rawPrice !== null &&
+    rawPrice !== undefined &&
+    rawPrice !== "" &&
+    Number.isFinite(numericPrice)
+      ? `NT$ ${numericPrice.toLocaleString("zh-TW")}`
+      : "請查看商品詳情";
+
+  const imageValue =
+    product.image_url ??
+    product.imageUrl ??
+    product.photo_url ??
+    product.images?.[0] ??
+    null;
+
+  const imageUrl =
+    typeof imageValue === "string"
+      ? imageValue
+      : typeof imageValue?.url === "string"
+        ? imageValue.url
+        : "";
+
+  let validImageUrl = "";
+
+  try {
+    const parsed = new URL(imageUrl);
+
+    if (
+      parsed.protocol === "https:" &&
+      !parsed.username &&
+      !parsed.password
+    ) {
+      validImageUrl = parsed.toString();
+    }
+  } catch {
+    // 沒有有效圖片時，仍可發送商品通知
+  }
+
+  return {
+    name,
+    price,
+    imageUrl: validImageUrl,
+  };
+}
+
+// 建立 LINE 商品通知卡片
+function createProductFlexMessage(
+  product: any,
+  productUrl: string
+) {
+  const info = getProductInfo(product);
+
+  const contents: any[] = [];
+
+  // 商品照片
+  if (info.imageUrl) {
+    contents.push({
+      type: "image",
+      url: info.imageUrl,
+      size: "full",
+      aspectRatio: "16:9",
+      aspectMode: "cover",
+    });
+  }
+
+  // 商品名稱、價格與通知
+  contents.push({
+    type: "box",
+    layout: "vertical",
+    paddingAll: "18px",
+    spacing: "md",
+    contents: [
+      {
+        type: "text",
+        text: "🤝 收到買家購買意願通知！",
+        color: "#3385FF",
+        weight: "bold",
+        size: "md",
+        wrap: true,
+      },
+      {
+        type: "text",
+        text: info.name.slice(0, 100),
+        weight: "bold",
+        size: "xl",
+        color: "#333333",
+        wrap: true,
+      },
+      {
+        type: "box",
+        layout: "horizontal",
+        contents: [
+          {
+            type: "text",
+            text: "預售價格：",
+            size: "sm",
+            color: "#777777",
+            flex: 0,
+          },
+          {
+            type: "text",
+            text: info.price,
+            size: "md",
+            weight: "bold",
+            color: "#E65C00",
+            wrap: true,
+          },
+        ],
+      },
+      {
+        type: "separator",
+        margin: "md",
+      },
+      {
+        type: "text",
+        text: "有一位南臺同學對你的商品感興趣！",
+        size: "sm",
+        color: "#333333",
+        wrap: true,
+      },
+      {
+        type: "text",
+        text:
+          "對方剛剛點擊了「聯絡賣家」，" +
+          "請留意近期是否有新的 LINE 好友邀請。",
+        size: "sm",
+        color: "#666666",
+        wrap: true,
+      },
+      {
+        type: "text",
+        text: "資想聽你說｜自動通知",
+        size: "xs",
+        color: "#999999",
+        wrap: true,
+      },
+    ],
+  });
+
+  return {
+    type: "flex",
+    altText:
+      `🤝 收到買家購買意願通知！${info.name}`.slice(
+        0,
+        400
+      ),
+    contents: {
+      type: "bubble",
+      size: "mega",
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "0px",
+        contents,
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#3385FF",
+            action: {
+              type: "uri",
+              label: "查看商品",
+              uri: productUrl,
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
+// POST：買家聯絡賣家並發送商品通知
 export async function POST(req: NextRequest) {
   try {
     const { admin, lineUserId } =
@@ -257,7 +447,7 @@ export async function POST(req: NextRequest) {
     const product = result.product!;
     const lineFriendUrl = result.lineFriendUrl!;
 
-    // LINE 通知失敗，不影響買家取得聯絡連結
+    // 通知失敗不能影響買家聯絡賣家
     try {
       const { data: binding, error: bindingError } =
         await admin
@@ -275,6 +465,7 @@ export async function POST(req: NextRequest) {
         process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
 
       if (binding?.messaging_user_id && accessToken) {
+        // 30 分鐘通知限制
         const { data: claimed, error: claimError } =
           await admin.rpc(
             "claim_line_contact_notification",
@@ -289,12 +480,15 @@ export async function POST(req: NextRequest) {
         if (claimError) throw claimError;
 
         if (claimed === true) {
-          const message =
-            "🔔 南臺二手物平台｜商品聯絡通知\n\n" +
-            "有一位南臺同學對你的商品感興趣！\n\n" +
-            "對方剛剛點擊了「聯絡賣家」。\n\n" +
-            "請留意近期是否有新的 LINE 好友邀請。\n\n" +
-            "此訊息由「資想聽你說」自動發送。";
+          const productUrl =
+            `${req.nextUrl.origin}/products/` +
+            encodeURIComponent(String(product.id));
+
+          const flexMessage =
+            createProductFlexMessage(
+              product,
+              productUrl
+            );
 
           const response = await fetch(
             "https://api.line.me/v2/bot/message/push",
@@ -306,12 +500,7 @@ export async function POST(req: NextRequest) {
               },
               body: JSON.stringify({
                 to: binding.messaging_user_id,
-                messages: [
-                  {
-                    type: "text",
-                    text: message,
-                  },
-                ],
+                messages: [flexMessage],
               }),
               signal: AbortSignal.timeout(5000),
             }
@@ -338,9 +527,13 @@ export async function POST(req: NextRequest) {
               );
             }
           } else {
+            const errorText =
+              await response.text().catch(() => "");
+
             console.error(
-              "LINE 推播失敗:",
-              response.status
+              "LINE Flex 推播失敗:",
+              response.status,
+              errorText
             );
           }
         }
@@ -352,6 +545,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 保留原本成功的 LINE 跳轉
     return NextResponse.json({
       success: true,
       lineFriendUrl,
