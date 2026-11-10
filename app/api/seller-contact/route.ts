@@ -427,7 +427,7 @@ function createProductFlexMessage(
           {
             type: "button",
             style: "primary",
-            color: "#3385FF",
+            color: "#D35400",
             action: {
               type: "uri",
               label: "查看商品",
