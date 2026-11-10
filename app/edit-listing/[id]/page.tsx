@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 export default function EditListingPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { lineUserId, isLoading: liffLoading } = useLiff();
+  const { lineUserId, isAuthenticated, login, isLoading: liffLoading } = useLiff();
   const [initialData, setInitialData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -54,12 +54,16 @@ export default function EditListingPage() {
       }
     }
 
-    if (lineUserId) {
+    if (lineUserId && isAuthenticated) {
       fetchProductData();
     } else if (!liffLoading && !lineUserId) {
       setErrorMsg("請先登入 LINE 帳號再進行操作。");
+      setLoading(false);
+    } else {
+      setErrorMsg("請先完成校園信箱驗證。");
+      setLoading(false);
     }
-  }, [id, lineUserId, liffLoading, router]);
+  }, [id, lineUserId, isAuthenticated, liffLoading, router]);
 
   // 載入中的骨架屏
   if (liffLoading || loading) {
@@ -80,7 +84,7 @@ export default function EditListingPage() {
         </div>
         <p className="text-base font-black text-slate-800">{errorMsg}</p>
         <Button 
-          onClick={() => router.push("/my-listings")}
+          onClick={() => !lineUserId ? login() : router.push(!isAuthenticated ? "/" : "/my-listings")}
           className="bg-slate-800 text-white font-bold rounded-xl px-6"
         >
           返回我的商品
