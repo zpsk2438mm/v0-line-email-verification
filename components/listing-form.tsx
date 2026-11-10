@@ -36,7 +36,13 @@ interface ListingFormProps {
 
 export default function ListingForm({ initialData, isEditing = false }: ListingFormProps) {
   const router = useRouter();
-  const { lineId, displayName, isLoading: isLiffLoading } = useLiff();
+  const {
+  lineUserId: lineId,
+  userProfile,
+  isLoading: isLiffLoading,
+} = useLiff();
+
+const displayName = userProfile?.displayName || null;
   const { toast } = useToast();
 
   const [title, setTitle] = useState(initialData?.title || '');
