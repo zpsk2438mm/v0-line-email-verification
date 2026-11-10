@@ -1,10 +1,342 @@
+
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useLiff } from "@/components/liff-provider";
+import { supabase } from "@/lib/supabase";
+import { contactRequest } from "@/lib/contact-client";
+import { Navigation } from "@/components/navigation";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  User,
+  Package,
+  Mail,
+  Plus,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Clock3,
+  MessageCircle,
+  Bell,
+  Copy,
+} from "lucide-react";
+import Link from "next/link";
+
+interface MyProduct {
+  id: string;
+  name: string;
+  price: number;
+  status: string;
+  created_at: string;
+  image_url?: string | string[] | null;
+  display_image?: string;
+}
+
+export default function ProfilePage() {
+  const {
+    lineUserId,
+    userProfile,
+    userEmail,
+    isAuthenticated,
+    userName,
+    isLoading: liffLoading,
+  } = useLiff();
+
+  const [myProducts, setMyProducts] = useState<MyProduct[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+
+  const [lineFriendUrl, setLineFriendUrl] = useState("");
+  const [loadingContact, setLoadingContact] = useState(true);
+  const [savingContact, setSavingContact] = useState(false);
+  const [contactMessage, setContactMessage] = useState("");
+  const [contactError, setContactError] = useState("");
+
+  // LINE 官方帳號通知綁定
+  const [bindingCode, setBindingCode] = useState("");
+  const [bindingExpiresAt, setBindingExpiresAt] = useState("");
+  const [bindingAlreadyBound, setBindingAlreadyBound] = useState(false);
+  const [bindingLoading, setBindingLoading] = useState(false);
+  const [bindingError, setBindingError] = useState("");
+  const [bindingNotice, setBindingNotice] = useState("");
+
+  const createBindingCode = async () => {
+    setBindingLoading(true);
+    setBindingError("");
+    setBindingNotice("");
+
+    try {
+      const data = await contactRequest(
+        "/api/line-binding",
+        "POST"
+      );
+
+      if (data.alreadyBound) {
+        setBindingAlreadyBound(true);
+        setBindingCode("");
+        setBindingExpiresAt("");
+        setBindingNotice(
+          "你的帳號已綁定 LINE 商品通知。"
+        );
+      } else if (
+        typeof data.code === "string" &&
+        data.code
+      ) {
+        setBindingAlreadyBound(false);
+        setBindingCode(data.code);
+        setBindingExpiresAt(data.expiresAt || "");
+        setBindingNotice(
+          "請在 10 分鐘內將綁定碼傳給「資想聽你說」LINE 官方帳號。"
+        );
+      } else {
+        throw new Error(
+          "伺服器沒有回傳有效的綁定碼"
+        );
+      }
+    } catch (error) {
+      setBindingError(
+        error instanceof Error
+          ? error.message
+          : "取得綁定碼失敗"
+      );
+    } finally {
+      setBindingLoading(false);
+    }
+  };
+
+  const copyBindingCode = async () => {
+    if (!bindingCode) return;
+
+    try {
+      await navigator.clipboard.writeText(bindingCode);
+      setBindingNotice(
+        "綁定碼已複製，請貼到「資想聽你說」官方帳號聊天室。"
+      );
+    } catch {
+      setBindingError(
+        "無法自動複製，請長按或選取綁定碼複製。"
+      );
+    }
+  };
+
+  const fetchMyProducts = useCallback(async () => {
+    if (!isAuthenticated || !lineUserId) {
+      setIsLoadingProducts(false);
+      return;
+    }
+
+    try {
+      setIsLoadingProducts(true);
+
+      const cacheKey = `products_${lineUserId}`;
+      const cachedData = localStorage.getItem(cacheKey);
+
+      if (cachedData) {
+        try {
+          setMyProducts(JSON.parse(cachedData));
+        } catch {
+          localStorage.removeItem(cacheKey);
+        }
+      }
+
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "id, name, price, status, created_at, image_url"
+        )
+        .eq("line_user_id", lineUserId)
+        .order("created_at", {
+          ascending: false,
+        });
+
+      if (error) throw error;
+
+      const formattedData: MyProduct[] = (
+        data || []
+      ).map((item) => {
+        let displayImg = "/placeholder-logo.png";
+
+        if (item.image_url) {
+          if (Array.isArray(item.image_url)) {
+            displayImg =
+              item.image_url[0] || displayImg;
+          } else if (
+            typeof item.image_url === "string"
+          ) {
+            if (item.image_url.startsWith("[")) {
+              try {
+                const images = JSON.parse(
+                  item.image_url
+                );
+
+                if (
+                  Array.isArray(images) &&
+                  images.length > 0
+                ) {
+                  displayImg = images[0];
+                }
+              } catch {
+                displayImg = item.image_url;
+              }
+            } else {
+              displayImg = item.image_url;
+            }
+          }
+        }
+
+        return {
+          ...item,
+          display_image: displayImg,
+        };
+      });
+
+      setMyProducts(formattedData);
+
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify(formattedData)
+      );
+    } catch (err) {
+      console.error(
+        "個人商品讀取失敗:",
+        err
+      );
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, [isAuthenticated, lineUserId]);
+
+  useEffect(() => {
+    fetchMyProducts();
+  }, [fetchMyProducts]);
+
+  // 讀取賣家已儲存的 LINE 加好友連結
+  useEffect(() => {
+    if (!isAuthenticated || !lineUserId) {
+      setLoadingContact(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadContact() {
+      try {
+        setLoadingContact(true);
+        setContactError("");
+
+        const data = await contactRequest(
+          "/api/seller-contact"
+        );
+
+        if (!cancelled) {
+          setLineFriendUrl(
+            data.lineFriendUrl || ""
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setContactError(
+            err instanceof Error
+              ? err.message
+              : "無法讀取 LINE 聯絡方式"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingContact(false);
+        }
+      }
+    }
+
+    loadContact();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, lineUserId]);
+
+  // 儲存 LINE 加好友連結
+  const saveContact = async () => {
+    setContactMessage("");
+    setContactError("");
+
+    const cleanUrl = lineFriendUrl.trim();
+
+    if (cleanUrl) {
+      try {
+        const parsed = new URL(cleanUrl);
+
+        if (
+          parsed.protocol !== "https:" ||
+          !(
+            (parsed.hostname === "line.me" &&
+              parsed.pathname.startsWith(
+                "/ti/p/"
+              )) ||
+            parsed.hostname === "lin.ee"
+          )
+        ) {
+          setContactError(
+            "請輸入有效的 LINE 加好友連結"
+          );
+          return;
+        }
+      } catch {
+        setContactError(
+          "連結格式錯誤，請檢查後再試"
+        );
+        return;
+      }
+    }
+
+    try {
+      setSavingContact(true);
+
+      await contactRequest(
+        "/api/seller-contact",
+        "PUT",
+        {
+          lineFriendUrl: cleanUrl,
+        }
+      );
+
+      setLineFriendUrl(cleanUrl);
+      setContactMessage(
+        "LINE 加好友連結已成功儲存！"
+      );
+    } catch (err) {
+      setContactError(
+        err instanceof Error
+          ? err.message
+          : "儲存失敗，請稍後再試"
+      );
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
+  if (
+    liffLoading ||
+    !isAuthenticated ||
+    !lineUserId
+  ) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
+        <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
+        <p className="text-gray-500 font-bold">
           正在同步您的 LINE 個人資料...
         </p>
       </div>
     );
   }
 
-  const previewProducts = myProducts.slice(0, 4);
+  const previewProducts = myProducts.slice(
+    0,
+    4
+  );
 
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
@@ -44,7 +376,8 @@
                 <div className="flex flex-col gap-1 mt-1 opacity-80">
                   <p className="text-[11px] font-bold uppercase flex items-center gap-1 truncate">
                     <Mail className="h-3 w-3" />
-                    {userEmail || "已驗證南臺信箱"}
+                    {userEmail ||
+                      "已驗證南臺信箱"}
                   </p>
 
                   <p className="text-[10px] font-bold opacity-70">
@@ -58,7 +391,10 @@
 
         {/* 功能選單 */}
         <div className="grid grid-cols-2 gap-4">
-          <Link href="/my-listings" className="block">
+          <Link
+            href="/my-listings"
+            className="block"
+          >
             <Button
               variant="outline"
               className="w-full h-24 flex flex-col items-center justify-center gap-2 rounded-[24px] border-none bg-white shadow-sm hover:bg-orange-50/50 transition-all text-slate-800"
@@ -87,7 +423,7 @@
           </Link>
         </div>
 
-        {/* 新增：LINE 加好友連結設定 */}
+        {/* LINE 加好友連結設定 */}
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-5 space-y-4">
           <h3 className="font-black text-base text-slate-700 flex items-center gap-2">
             <MessageCircle className="h-5 w-5 text-[#D35400]" />
@@ -110,14 +446,18 @@
               setContactMessage("");
               setContactError("");
             }}
-            disabled={loadingContact || savingContact}
+            disabled={
+              loadingContact || savingContact
+            }
             className="rounded-xl"
           />
 
           <Button
             type="button"
             onClick={saveContact}
-            disabled={loadingContact || savingContact}
+            disabled={
+              loadingContact || savingContact
+            }
             className="w-full h-11 bg-[#D35400] hover:bg-[#A04000] text-white font-bold rounded-xl"
           >
             {loadingContact
@@ -152,14 +492,22 @@
             <Bell className="h-5 w-5 text-[#D35400]" />
             綁定 LINE 商品通知
           </h3>
+
           <p className="text-xs text-slate-500 leading-relaxed">
-            綁定「資想聽你說」LINE 官方帳號後，未來有買家點擊你的商品「聯絡賣家」時，就能收到官方帳號通知。
-            此功能需先加入官方帳號好友並完成綁定；自動通知功能將於後續啟用。
+            綁定「資想聽你說」LINE 官方帳號後，
+            未來有買家點擊你的商品「聯絡賣家」時，
+            就能收到官方帳號通知。
+            此功能需先加入官方帳號好友並完成綁定；
+            自動通知功能將於後續啟用。
           </p>
 
           {bindingAlreadyBound ? (
-            <p role="status" className="text-sm font-bold text-emerald-700 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" /> 已綁定 LINE 商品通知
+            <p
+              role="status"
+              className="text-sm font-bold text-emerald-700 flex items-center gap-2"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              已綁定 LINE 商品通知
             </p>
           ) : (
             <>
@@ -170,23 +518,152 @@
                 className="w-full h-11 bg-[#D35400] hover:bg-[#A04000] text-white font-bold rounded-xl"
               >
                 {bindingLoading ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />產生中...</>
-                ) : bindingCode ? "重新產生綁定碼" : "產生 LINE 通知綁定碼"}
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    產生中...
+                  </>
+                ) : bindingCode ? (
+                  "重新產生綁定碼"
+                ) : (
+                  "產生 LINE 通知綁定碼"
+                )}
               </Button>
 
               {bindingCode && (
                 <div className="rounded-2xl bg-orange-50 p-4 space-y-3 text-center">
-                  <p className="text-xs font-bold text-slate-600">你的 6 位數綁定碼</p>
+                  <p className="text-xs font-bold text-slate-600">
+                    你的 6 位數綁定碼
+                  </p>
+
                   <p className="text-3xl font-black tracking-[0.25em] text-[#D35400] select-all">
                     {bindingCode}
                   </p>
+
                   <Button
                     type="button"
                     variant="outline"
                     onClick={copyBindingCode}
                     className="rounded-xl"
                   >
-                    <Copy className="h-4 w-4 mr-2" />複製綁定碼
+                    <Copy className="h-4 w-4 mr-2" />
+                    複製綁定碼
                   </Button>
+
                   {bindingExpiresAt && (
                     <p className="text-xs text-slate-500">
+                      有效期限：
+                      {new Date(
+                        bindingExpiresAt
+                      ).toLocaleString("zh-TW", {
+                        hour12: false,
+                      })}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    請開啟「資想聽你說」LINE
+                    官方帳號聊天室，
+                    將這組數字單獨傳送出去，
+                    並等待綁定結果回覆。
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {bindingNotice && (
+            <p
+              role="status"
+              className="text-sm text-emerald-700"
+            >
+              {bindingNotice}
+            </p>
+          )}
+
+          {bindingError && (
+            <p
+              role="alert"
+              className="text-sm text-red-600"
+            >
+              {bindingError}
+            </p>
+          )}
+
+          <p className="text-xs text-slate-400">
+            已在官方帳號收到「綁定成功」回覆後，
+            可重新點擊「產生 LINE 通知綁定碼」
+            確認綁定狀態。
+          </p>
+        </Card>
+
+        {/* 最近發布商品 */}
+        <Card className="border-none shadow-sm rounded-[32px] bg-white p-5">
+          <div className="flex items-center justify-between mb-4 border-b border-orange-50/60 pb-3">
+            <h3 className="font-black text-base text-slate-700">
+              最近發布商品
+            </h3>
+          </div>
+
+          {isLoadingProducts &&
+          myProducts.length === 0 ? (
+            <div className="space-y-3">
+              <Skeleton className="h-20 w-full rounded-2xl" />
+              <Skeleton className="h-20 w-full rounded-2xl" />
+            </div>
+          ) : myProducts.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 text-sm font-medium">
+              目前還沒有上架過商品喔！
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {previewProducts.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-3 p-3 border border-orange-50/60 rounded-[22px] bg-[#FFFDFB]/50"
+                >
+                  <div className="h-14 w-14 bg-slate-100 rounded-xl overflow-hidden shrink-0">
+                    <img
+                      src={
+                        p.display_image ||
+                        "/placeholder-logo.png"
+                      }
+                      className="w-full h-full object-cover"
+                      alt={p.name}
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-sm text-slate-800 truncate">
+                      {p.name}
+                    </h4>
+
+                    <p className="text-[#D35400] font-black text-sm">
+                      NT$ {p.price}
+                    </p>
+                  </div>
+
+                  {p.status === "approved" ? (
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      已上架
+                    </Badge>
+                  ) : p.status === "rejected" ? (
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-600 border-none shadow-none flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      已退回
+                    </Badge>
+                  ) : (
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1">
+                      <Clock3 className="h-3 w-3" />
+                      審核中
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </main>
+  );
+}
