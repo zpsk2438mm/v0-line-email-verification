@@ -32,8 +32,8 @@ const ADMIN_LINE_IDS = [
 ];
 
 const NAV_ITEMS = [
-  { href: "/", label: "刊登商品", icon: Home },
-  { href: "/products", label: "市集瀏覽", icon: ShoppingBag },
+  { href: "/", label: "販售商品", icon: Home },
+  { href: "/products", label: "搜尋市集", icon: ShoppingBag },
   { href: "/profile", label: "個人中心", icon: User },
 ];
 
@@ -153,7 +153,7 @@ export function Navigation() {
             )}
           </nav>
 
-          <div className="p-6 bg-slate-50 border-t mt-auto">
+          {(isAuthenticated || lineUserId) && <div className="p-6 bg-slate-50 border-t mt-auto">
             <Button 
               variant="outline" 
               className="w-full h-11 border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 transition-all" 
@@ -161,7 +161,7 @@ export function Navigation() {
             >
               <LogOut className="h-4 w-4 mr-2" /> 退出登錄
             </Button>
-          </div>
+          </div>}
         </SheetContent>
       </Sheet>
     </nav>
