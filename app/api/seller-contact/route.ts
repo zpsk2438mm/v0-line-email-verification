@@ -23,10 +23,83 @@ function validLineUrl(value: string): boolean {
 }
 
 function fail(message: string, status = 400) {
-  return NextResponse.json(
-    { error: message },
-    { status }
-  );
+  return NextResponse.json({ error: message }, { status });
+}
+
+// 將商品圖片轉成 LINE 可以使用的公開網址
+function getProductImageUrl(value: unknown): string | null {
+  if (!value) return null;
+
+  let raw: unknown = value;
+
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+
+      if (Array.isArray(parsed)) {
+        raw = parsed[0];
+      } else if (
+        parsed &&
+        typeof parsed === "object" &&
+        "url" in parsed
+      ) {
+        raw = parsed.url;
+      }
+    } catch {
+      // 一般網址或圖片路徑
+    }
+  }
+
+  if (Array.isArray(raw)) {
+    raw = raw[0];
+  }
+
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "url" in raw
+  ) {
+    raw = raw.url;
+  }
+
+  if (typeof raw !== "string") return null;
+
+  const clean = raw.trim();
+  if (!clean) return null;
+
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "https://arcapfqiihchltdhysea.supabase.co";
+
+  let imageUrl: string;
+
+  if (
+    clean.startsWith("https://") ||
+    clean.startsWith("http://")
+  ) {
+    imageUrl = clean;
+  } else {
+    imageUrl =
+      supabaseUrl.replace(/\/$/, "") +
+      "/storage/v1/object/public/product-images/" +
+      clean.replace(/^\/+/, "");
+  }
+
+  try {
+    const url = new URL(imageUrl);
+
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password
+    ) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 // 確認商品與賣家聯絡方式
@@ -95,7 +168,7 @@ async function findSellerContact(
   };
 }
 
-// GET：讀取自己或商品賣家的 LINE 連結
+// GET：讀取 LINE 聯絡連結
 export async function GET(req: NextRequest) {
   try {
     const { admin, email, lineUserId } =
@@ -144,7 +217,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PUT：儲存自己的 LINE 加好友連結
+// PUT：儲存賣家的 LINE 加好友連結
 export async function PUT(req: NextRequest) {
   try {
     const { admin, email, lineUserId } =
@@ -159,8 +232,7 @@ export async function PUT(req: NextRequest) {
 
     if (
       lineFriendUrl.length > 500 ||
-      (lineFriendUrl &&
-        !validLineUrl(lineFriendUrl))
+      (lineFriendUrl && !validLineUrl(lineFriendUrl))
     ) {
       return fail(
         "請輸入有效的 LINE 加好友連結（https://line.me/ti/p/...）"
@@ -218,88 +290,48 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// 取得商品資訊
-function getProductInfo(product: any) {
-  const name = String(
-    product.name ??
-    product.title ??
-    "未命名商品"
-  );
-
-  const rawPrice =
-    product.price ??
-    product.expected_price ??
-    product.selling_price;
-
-  const numericPrice = Number(rawPrice);
-
-  const price =
-    rawPrice !== null &&
-    rawPrice !== undefined &&
-    rawPrice !== "" &&
-    Number.isFinite(numericPrice)
-      ? `NT$ ${numericPrice.toLocaleString("zh-TW")}`
-      : "請查看商品詳情";
-
-  const imageValue =
-    product.image_url ??
-    product.imageUrl ??
-    product.photo_url ??
-    product.images?.[0] ??
-    null;
-
-  const imageUrl =
-    typeof imageValue === "string"
-      ? imageValue
-      : typeof imageValue?.url === "string"
-        ? imageValue.url
-        : "";
-
-  let validImageUrl = "";
-
-  try {
-    const parsed = new URL(imageUrl);
-
-    if (
-      parsed.protocol === "https:" &&
-      !parsed.username &&
-      !parsed.password
-    ) {
-      validImageUrl = parsed.toString();
-    }
-  } catch {
-    // 沒有有效圖片時，仍可發送商品通知
-  }
-
-  return {
-    name,
-    price,
-    imageUrl: validImageUrl,
-  };
-}
-
 // 建立 LINE 商品通知卡片
 function createProductFlexMessage(
   product: any,
   productUrl: string
 ) {
-  const info = getProductInfo(product);
+  const name = String(
+    product.name ?? "未命名商品"
+  );
 
-  const contents: any[] = [];
+  const numericPrice = Number(product.price);
 
-  // 商品照片
-  if (info.imageUrl) {
-    contents.push({
+  const price =
+    product.price !== null &&
+    product.price !== undefined &&
+    product.price !== "" &&
+    Number.isFinite(numericPrice)
+      ? `NT$ ${numericPrice.toLocaleString("zh-TW")}`
+      : "請查看商品詳情";
+
+  const imageUrl = getProductImageUrl(
+    product.image_url || product.images
+  );
+
+  const bodyContents: any[] = [];
+
+  // 第一部分：商品照片放最上方
+  if (imageUrl) {
+    bodyContents.push({
       type: "image",
-      url: info.imageUrl,
+      url: imageUrl,
       size: "full",
-      aspectRatio: "16:9",
+      aspectRatio: "1:1",
       aspectMode: "cover",
+      action: {
+        type: "uri",
+        uri: productUrl,
+      },
     });
   }
 
-  // 商品名稱、價格與通知
-  contents.push({
+  // 第二部分：商品資訊
+  bodyContents.push({
     type: "box",
     layout: "vertical",
     paddingAll: "18px",
@@ -315,7 +347,7 @@ function createProductFlexMessage(
       },
       {
         type: "text",
-        text: info.name.slice(0, 100),
+        text: name.slice(0, 100),
         weight: "bold",
         size: "xl",
         color: "#333333",
@@ -334,7 +366,7 @@ function createProductFlexMessage(
           },
           {
             type: "text",
-            text: info.price,
+            text: price,
             size: "md",
             weight: "bold",
             color: "#E65C00",
@@ -375,7 +407,7 @@ function createProductFlexMessage(
   return {
     type: "flex",
     altText:
-      `🤝 收到買家購買意願通知！${info.name}`.slice(
+      `🤝 收到買家購買意願通知！${name}`.slice(
         0,
         400
       ),
@@ -386,7 +418,7 @@ function createProductFlexMessage(
         type: "box",
         layout: "vertical",
         paddingAll: "0px",
-        contents,
+        contents: bodyContents,
       },
       footer: {
         type: "box",
@@ -408,7 +440,7 @@ function createProductFlexMessage(
   };
 }
 
-// POST：買家聯絡賣家並發送商品通知
+// POST：買家聯絡賣家並發送 LINE 通知
 export async function POST(req: NextRequest) {
   try {
     const { admin, lineUserId } =
@@ -447,7 +479,7 @@ export async function POST(req: NextRequest) {
     const product = result.product!;
     const lineFriendUrl = result.lineFriendUrl!;
 
-    // 通知失敗不能影響買家聯絡賣家
+    // LINE 通知失敗不影響買家聯絡賣家
     try {
       const { data: binding, error: bindingError } =
         await admin
@@ -465,7 +497,7 @@ export async function POST(req: NextRequest) {
         process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
 
       if (binding?.messaging_user_id && accessToken) {
-        // 30 分鐘通知限制
+        // 保留原本 30 分鐘通知限制
         const { data: claimed, error: claimError } =
           await admin.rpc(
             "claim_line_contact_notification",
@@ -545,7 +577,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 保留原本成功的 LINE 跳轉
+    // 保留原本 LINE 加好友跳轉功能
     return NextResponse.json({
       success: true,
       lineFriendUrl,
