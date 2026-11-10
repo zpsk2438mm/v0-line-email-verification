@@ -25,13 +25,6 @@ export default function ProfilePage() {
   const [myProducts, setMyProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
-  // 自動登入防護
-  useEffect(() => {
-    if (!liffLoading && !isAuthenticated && login) {
-      login();
-    }
-  }, [liffLoading, isAuthenticated, login]);
-
   // 1. 商品撈取邏輯 (基於 line_user_id 撈取)
   const fetchMyProducts = useCallback(async () => {
     if (!isAuthenticated || !lineUserId) {
@@ -88,12 +81,28 @@ export default function ProfilePage() {
   }, [fetchMyProducts]);
 
   // 🎯 關鍵修正：同步中或是尚未拿到使用者核心資料前，絕對阻擋渲染底下的 UI
-  if (liffLoading || !isAuthenticated || !lineUserId) {
+  if (liffLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
         <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
         <p className="text-gray-500 font-bold">正在同步您的 LINE 個人資料...</p>
       </div>
+    );
+  }
+
+  if (!lineUserId || !isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-[#FDFBF7]">
+        <header className="border-b bg-white px-4 py-4 flex items-center gap-3"><Navigation /><h1 className="font-bold">個人中心</h1></header>
+        <div className="max-w-md mx-auto p-8 text-center space-y-5">
+          <h2 className="text-xl font-bold">請先完成身分驗證</h2>
+          {!lineUserId ? (
+            <><p className="text-slate-500">個人中心需要 LINE 登入以識別您的商品。</p><Button onClick={login}>使用 LINE 登入</Button></>
+          ) : (
+            <><p className="text-slate-500">LINE 已連線，請完成南臺校園信箱驗證。</p><Link href="/"><Button>前往校園信箱驗證</Button></Link></>
+          )}
+        </div>
+      </main>
     );
   }
 
