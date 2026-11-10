@@ -4,7 +4,7 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useLiff } from "@/components/liff-provider";
-import { ListingForm } from "@/components/listing-form";
+import ListingForm from "@/components/listing-form";
 import { Navigation } from "@/components/navigation";
 import {
   ShoppingBag,
