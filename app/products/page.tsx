@@ -64,13 +64,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ExploreProductsPage() {
-  const { 
-    isAuthenticated, 
-    login, 
-    isLoading: liffLoading, 
-    isLiffInit, 
-    userProfile 
-  } = useLiff();
+  const { isLoading: liffLoading } = useLiff();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -80,16 +74,7 @@ export default function ExploreProductsPage() {
 
   // --- 抓取商品邏輯 ---
   useEffect(() => {
-    // 🎯 1. 只要全域還在 loading，原地立定不動，絕不盲目觸發任何轉向
     if (liffLoading) return;
-    
-    // 🎯 2. 關鍵安全修正：當判定真的沒登入時，我們【只負責停止載入狀態、讓登入卡片安全顯示】
-    // ⭕ 絕對不要在 useEffect 裡面偷偷自動去跑 login()！否則手機外開瀏覽器一定會瘋狂重新整理！
-    if (isLiffInit && !isAuthenticated && !userProfile) {
-      setFetching(false);
-      console.log("偵測到未驗證狀態，停留在登入卡片畫面，等待使用者點擊。");
-      return;
-    }
 
     async function fetchAllApprovedProducts() {
       try {
@@ -111,12 +96,8 @@ export default function ExploreProductsPage() {
       }
     }
 
-    // 🎯 3. 只要 Supabase 驗證（信箱登入過）通過了，就允許撈取市集商品
-    if (isAuthenticated) {
-      fetchAllApprovedProducts();
-    }
-  }, [isAuthenticated, liffLoading, isLiffInit, userProfile]); 
-  // 🎯 注意：這裡移除了 login 依賴項，斷開無限刷新的因果鏈結！
+    fetchAllApprovedProducts();
+  }, [liffLoading]);
 
   // --- 搜尋與分類邏輯 ---
   useEffect(() => {
@@ -163,37 +144,6 @@ export default function ExploreProductsPage() {
     );
   }
 
-  // 🎯 關鍵守衛二：沒驗證成功時的 LINE 登入卡片畫面
-  if (!isAuthenticated) {
-    return (
-      <main className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between pb-12">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400]">
-            <ShoppingBag className="h-5 w-5 text-white" />
-          </div>
-          <h1 className="text-lg font-bold text-slate-800">南台校園市集</h1>
-        </header>
-        <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm border-none shadow-xl bg-white overflow-hidden rounded-2xl">
-            <div className="bg-gradient-to-tr from-[#D35400] to-[#E67E22] py-8 px-6 text-center text-white space-y-2">
-              <Sparkles className="h-10 w-10 mx-auto text-yellow-300 animate-pulse" />
-              <h2 className="text-xl font-extrabold tracking-wide">南台人限定二手市集</h2>
-              <p className="text-xs text-orange-50px">專專屬於南台科技大學的安全校園交易平台</p>
-            </div>
-            <CardContent className="pt-8 pb-8 text-center space-y-6 px-6">
-              {/* ⭕ 由使用者點擊手動安全發起 login() */}
-              <Button onClick={() => login?.()} className="w-full bg-[#D35400] hover:bg-[#E67E22] text-white font-bold py-6 rounded-xl shadow-lg transition-all text-sm">
-                <LogIn className="h-5 w-5 mr-2" />
-                使用 LINE 安全快速登入
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
-    );
-  }
-
-  // ⭕ 完美放行：能走到這裡，代表 isAuthenticated 絕對為 true，市集可以超級安全且流暢地渲染
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
