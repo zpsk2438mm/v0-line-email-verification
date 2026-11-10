@@ -13,9 +13,11 @@ import {
   Tag
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLiff } from "@/components/liff-provider";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
+  const { lineUserId, login, isLiffInit } = useLiff();
   const router = useRouter();
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -52,6 +54,12 @@ export default function ProductDetailPage() {
 
   // ✨ 修改重點：點擊按鈕，直接送出 API 觸發後端對賣家的 LINE 推播
   const handleContact = async () => {
+    if (!isLiffInit) return;
+    if (!lineUserId) {
+      toast.error("請先使用 LINE 登入，才能聯繫賣家");
+      login();
+      return;
+    }
     // 從 products 資料表中抓取賣家的 line_user_id (對應後端解析的欄位)
     const sellerLineUserId = product?.line_user_id || product?.lineUserId; 
     const contactValue = product?.contact;
@@ -65,8 +73,9 @@ export default function ProductDetailPage() {
       setSendingNotify(true);
 
       // 先貼心幫買家把聯絡資訊（比如 LINE ID）複製起來
-      if (contactValue) {
-        navigator.clipboard.writeText(contactValue);
+      // 聯絡資料只在登入後提供，複製失敗不影響通知
+      if (contactValue && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(contactValue).catch(() => {});
       }
 
       // 🎯 呼叫後端 API 傳送聯絡通知
@@ -150,7 +159,7 @@ export default function ProductDetailPage() {
         <Button 
           className="w-full bg-[#D35400] hover:bg-[#A04000] text-white py-10 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-1"
           onClick={handleContact}
-          disabled={sendingNotify}
+          disabled={sendingNotify || !isLiffInit}
         >
           {sendingNotify ? (
             <>
@@ -164,7 +173,7 @@ export default function ProductDetailPage() {
                 聯繫賣家 (發送 LINE 通知)
               </div>
               <div className="text-sm opacity-90 font-medium">
-                ({product.contact || "未提供 ID"})
+                {lineUserId ? (product.contact || "未提供 ID") : "請先使用 LINE 登入"}
               </div>
             </>
           )}
