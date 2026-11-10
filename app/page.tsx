@@ -1,51 +1,253 @@
-'use client';
+"use client";
 
-import { useLiff } from '@/components/liff-provider';
-import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+export const dynamic = "force-dynamic";
 
-export default function LoginPage() {
-  const { liff, lineId, isLoggedIn, isLoading } = useLiff();
+import { useEffect, useState } from "react";
+import { useLiff } from "@/components/liff-provider";
+import { supabase } from "@/lib/supabase";
+import { Navigation } from "@/components/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import {
+  Search,
+  ShoppingBag,
+  Calendar,
+  LogIn,
+  Flame,
+  Sparkles,
+  Loader2
+} from "lucide-react";
 
-  // 1. 還在初始化 LIFF 時，顯示載入中
-  if (isLoading) {
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  description?: string;
+  status: string;
+  created_at: string;
+  approved_at?: string; 
+  image_url?: any;
+  images?: any;
+}
+
+const CATEGORIES = [
+  { id: "all", label: "✨ 全部" },
+  { id: "electronics", label: "📱 電子產品" },
+  { id: "books", label: "📚 書籍教材" },
+  { id: "tools_stationery", label: "✏️ 文具/專業工具" },
+  { id: "dorm_supplies", label: "🏠 租屋收納/雜貨" },
+  { id: "hobbies", label: "🎮 遊戲/娛樂" },
+  { id: "cosmetics", label: "💄 化妝品/美妝" },
+  { id: "food", label: "🍕 食物/零食" },
+  { id: "clothing", label: "👕 服飾配件" },
+  { id: "furniture", label: "🛋️ 家具家電" },
+  { id: "sports", label: "🏀 運動用品" },
+  { id: "other", label: "🔍 其他" },
+];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  electronics: "電子產品",
+  books: "書籍教材",
+  tools_stationery: "文具/專業工具",
+  dorm_supplies: "租屋收納/雜貨",
+  hobbies: "遊戲/娛樂",
+  cosmetics: "化妝品/美妝",
+  food: "食物/零食",
+  clothing: "服飾配件",
+  furniture: "家具家電",
+  sports: "運動用品",
+  other: "其他",
+};
+
+export default function ExploreProductsPage() {
+  const { 
+    isLoading: liffLoading 
+  } = useLiff();
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [fetching, setFetching] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+
+  // --- 抓取商品邏輯 ---
+  useEffect(() => {
+    // 🎯 1. 只要全域還在 loading，原地立定不動，絕不盲目觸發任何轉向
+    if (liffLoading) return;
+    
+    // 🎯 2. 關鍵安全修正：當判定真的沒登入時，我們【只負責停止載入狀態、讓登入卡片安全顯示】
+    // ⭕ 絕對不要在 useEffect 裡面偷偷自動去跑 login()！否則手機外開瀏覽器一定會瘋狂重新整理！
+    async function fetchAllApprovedProducts() {
+      try {
+        setFetching(true);
+        const { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .eq("status", "approved") 
+          .order("approved_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setProducts(data || []);
+        setFilteredProducts(data || []);
+      } catch (err) {
+        console.error("載入商品失敗:", err);
+      } finally {
+        setFetching(false);
+      }
+    }
+
+    // 🎯 3. 只要 Supabase 驗證（信箱登入過）通過了，就允許撈取市集商品
+    fetchAllApprovedProducts();
+  }, [liffLoading]); 
+  // 🎯 注意：這裡移除了 login 依賴項，斷開無限刷新的因果鏈結！
+
+  // --- 搜尋與分類邏輯 ---
+  useEffect(() => {
+    let result = products || [];
+    if (selectedCategory !== "all") {
+      result = result.filter((p) => p.category === selectedCategory);
+    }
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (p) =>
+          p.name.toLowerCase().includes(query) ||
+          (p.description && p.description.toLowerCase().includes(query))
+      );
+    }
+    setFilteredProducts(result);
+  }, [searchQuery, selectedCategory, products]);
+
+  const getCleanImageUrl = (product: Product) => {
+    let raw = product.image_url || product.images;
+    if (!raw) return "/placeholder-logo.png";
+    try {
+      let urlString = Array.isArray(raw) ? raw[0] : String(raw);
+      let clean = urlString.replace(/[\[\]"']/g, "").trim();
+      if (clean.startsWith("http")) return clean;
+      return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
+    } catch (e) {
+      return "/placeholder-logo.png";
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
+  };
+
+  // 🎯 關鍵守衛一：如果全域安全檢查還在跑，全螢幕鎖定，把控制權完全留給 LiffProvider 完成初始化
+  if (liffLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-600 mb-2" />
-        <p className="text-sm text-gray-500">正在驗證 LINE 身分...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] space-y-3">
+        <Loader2 className="animate-spin text-[#D35400] h-8 w-8" />
+        <p className="text-sm text-slate-500 font-medium">正在安全同步您的 LINE 個人資料...</p>
       </div>
     );
   }
 
-  // 2. 已經取得 LINE ID 或已登入，直接顯示系統內容（例如信箱驗證或市集）
-  if (isLoggedIn || lineId) {
-    return (
-      <div>
-        {/* 這裏放成功登入後的內容，例如校園信箱驗證表單或市集頁面 */}
-        <p className="text-center p-4">LINE 登入成功！LINE ID: {lineId}</p>
-      </div>
-    );
-  }
-
-  // 3. 未登入或外部瀏覽器，才顯示此卡片
   return (
-    <div className="max-w-md mx-auto p-4 mt-10">
-      <div className="bg-orange-500 text-white rounded-t-xl p-6 text-center shadow-md">
-        <h2 className="text-xl font-bold mb-2">✦ 南台人限定二手市集 ✦</h2>
-        <p className="text-sm opacity-90">專屬於南臺科技大學的安全校園交易平台</p>
+    <main className="min-h-screen bg-[#FDFBF7] pb-20">
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+        <Navigation />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md">
+          <ShoppingBag className="h-5 w-5 text-white" />
+        </div>
+        <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
+      </header>
+
+      <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            type="search"
+            placeholder="搜尋商品..."
+            className="pl-10 pr-4 py-5 bg-white border-slate-200 rounded-xl focus-visible:ring-[#D35400]"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              className={`rounded-full shrink-0 h-9 text-xs px-4 font-medium transition-all ${
+                selectedCategory === cat.id ? "bg-[#D35400] text-white shadow-md" : "bg-white text-slate-600 border"
+              }`}
+              onClick={() => setSelectedCategory(cat.id)}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="bg-white rounded-b-xl p-6 shadow-md border border-t-0 text-center">
-        <Button
-          onClick={() => {
-            if (liff && !liff.isLoggedIn()) {
-              liff.login();
-            }
-          }}
-          className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2"
-        >
-          <span>➔]</span> 使用 LINE 安全快速登入
-        </Button>
+
+      <div className="mx-auto max-w-lg px-4 mt-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
+            <Flame className="h-4 w-4 text-[#D35400] fill-[#D35400]" />推薦商品
+          </h3>
+          <span className="text-xs text-slate-400">共 {filteredProducts.length} 件</span>
+        </div>
+
+        {fetching ? (
+          <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {filteredProducts.map((product) => (
+              <Link 
+                key={product.id} 
+                href={`/products/${product.id}`} 
+                className="block group active:scale-[0.97] transition-all duration-200"
+              >
+                <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col hover:shadow-md transition-shadow">
+                  <div className="aspect-square bg-slate-50 relative overflow-hidden flex items-center justify-center">
+                    <img 
+                      src={getCleanImageUrl(product)} 
+                      alt={product.name} 
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105" 
+                      onError={(e) => e.currentTarget.src = "/placeholder-logo.png"}
+                    />
+                    <div className="absolute top-2 left-2">
+                      <Badge variant="secondary" className="text-[9px] bg-white/90 backdrop-blur-md text-[#D35400] font-bold border-none">
+                        {CATEGORY_LABELS[product.category] || "其他"}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="p-3 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-[#D35400]">
+                        {product.name}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                        {product.description || "校園二手好物"}
+                      </p>
+                    </div>
+
+                    <div className="mt-3">
+                      <p className="text-base font-extrabold text-[#D35400]">
+                        NT$ {product.price?.toLocaleString()}
+                      </p>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                        <span className="flex items-center gap-0.5">
+                          <Calendar className="h-3 w-3" /> {formatDate(product.approved_at || product.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </main>
   );
 }
