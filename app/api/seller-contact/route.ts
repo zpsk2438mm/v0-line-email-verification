@@ -29,7 +29,73 @@ function fail(message: string, status = 400) {
   );
 }
 
-// GET：讀取自己的連結，或透過商品 ID 取得賣家連結
+// 共用：確認商品與賣家聯絡方式
+async function findSellerContact(
+  admin: any,
+  productId: string,
+  buyerLineUserId: string
+) {
+  const { data: product, error: productError } =
+    await admin
+      .from("products")
+      .select("id, status, line_user_id")
+      .eq("id", productId)
+      .eq("status", "approved")
+      .maybeSingle();
+
+  if (productError) throw productError;
+
+  if (!product) {
+    return {
+      error: "商品不存在或尚未通過審核",
+      status: 404,
+    };
+  }
+
+  if (!product.line_user_id) {
+    return {
+      error: "商品缺少賣家資料",
+      status: 404,
+    };
+  }
+
+  if (product.line_user_id === buyerLineUserId) {
+    return {
+      error: "無法聯絡自己刊登的商品",
+      status: 400,
+    };
+  }
+
+  const { data: contact, error: contactError } =
+    await admin
+      .from("seller_contacts")
+      .select("line_friend_url")
+      .eq("line_user_id", product.line_user_id)
+      .maybeSingle();
+
+  if (contactError) throw contactError;
+
+  if (!contact?.line_friend_url) {
+    return {
+      error: "賣家尚未設定 LINE 加好友連結",
+      status: 404,
+    };
+  }
+
+  if (!validLineUrl(contact.line_friend_url)) {
+    return {
+      error: "賣家 LINE 連結格式不正確",
+      status: 400,
+    };
+  }
+
+  return {
+    product,
+    lineFriendUrl: contact.line_friend_url,
+  };
+}
+
+// GET：讀取自己或商品賣家的 LINE 連結
 export async function GET(req: NextRequest) {
   try {
     const { admin, email, lineUserId } =
@@ -38,7 +104,6 @@ export async function GET(req: NextRequest) {
     const productId =
       req.nextUrl.searchParams.get("productId");
 
-    // 沒有 productId：只能讀取自己的設定
     if (!productId) {
       const { data, error } = await admin
         .from("seller_contacts")
@@ -54,57 +119,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 有 productId：先確認商品確實存在且已上架
-    const { data: product, error: productError } =
-      await admin
-        .from("products")
-        .select("id, status, line_user_id")
-        .eq("id", productId)
-        .eq("status", "approved")
-        .maybeSingle();
+    const result = await findSellerContact(
+      admin,
+      productId,
+      lineUserId
+    );
 
-    if (productError) throw productError;
-
-    if (!product) {
-      return fail(
-        "商品不存在或尚未通過審核",
-        404
-      );
-    }
-
-    if (!product.line_user_id) {
-      return fail("商品缺少賣家資料", 404);
-    }
-
-    if (product.line_user_id === lineUserId) {
-      return fail("這是你自己的商品", 400);
-    }
-
-    // 只能取得該商品真正賣家的聯絡連結
-    const { data, error } = await admin
-      .from("seller_contacts")
-      .select("line_friend_url")
-      .eq("line_user_id", product.line_user_id)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    if (!data?.line_friend_url) {
-      return fail(
-        "賣家尚未設定 LINE 加好友連結",
-        404
-      );
-    }
-
-    if (!validLineUrl(data.line_friend_url)) {
-      return fail(
-        "賣家聯絡連結格式不正確",
-        400
-      );
+    if ("error" in result) {
+      return fail(result.error!, result.status);
     }
 
     return NextResponse.json({
-      lineFriendUrl: data.line_friend_url,
+      lineFriendUrl: result.lineFriendUrl,
     });
   } catch (err) {
     console.error("seller-contact GET:", err);
@@ -118,7 +144,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PUT：只能修改自己的 LINE 加好友連結
+// PUT：儲存自己的 LINE 加好友連結
 export async function PUT(req: NextRequest) {
   try {
     const { admin, email, lineUserId } =
@@ -141,7 +167,6 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // 避免同一個 LINE 帳號被不同學校信箱覆蓋
     const { data: existing, error: lookupError } =
       await admin
         .from("seller_contacts")
@@ -156,7 +181,7 @@ export async function PUT(req: NextRequest) {
       existing.verified_email !== email
     ) {
       return fail(
-        "此 LINE 帳號已綁定其他學校信箱，請聯絡管理員",
+        "此 LINE 帳號已綁定其他學校信箱",
         409
       );
     }
@@ -188,6 +213,156 @@ export async function PUT(req: NextRequest) {
       err instanceof Error
         ? err.message
         : "儲存聯絡資料失敗",
+      401
+    );
+  }
+}
+
+// POST：買家聯絡賣家，並嘗試發送 LINE 通知
+export async function POST(req: NextRequest) {
+  try {
+    const { admin, lineUserId } =
+      await verifiedIdentity(req);
+
+    let body: unknown;
+
+    try {
+      body = await req.json();
+    } catch {
+      return fail("請提供有效的商品資料");
+    }
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      !("productId" in body) ||
+      typeof body.productId !== "string" ||
+      !body.productId.trim()
+    ) {
+      return fail("缺少商品 ID");
+    }
+
+    const productId = body.productId.trim();
+
+    const result = await findSellerContact(
+      admin,
+      productId,
+      lineUserId
+    );
+
+    if ("error" in result) {
+      return fail(result.error!, result.status);
+    }
+
+    const product = result.product!;
+    const lineFriendUrl = result.lineFriendUrl!;
+
+    // LINE 通知失敗，不影響買家取得聯絡連結
+    try {
+      const { data: binding, error: bindingError } =
+        await admin
+          .from("line_notification_bindings")
+          .select("messaging_user_id")
+          .eq(
+            "line_login_user_id",
+            product.line_user_id
+          )
+          .maybeSingle();
+
+      if (bindingError) throw bindingError;
+
+      const accessToken =
+        process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
+
+      if (binding?.messaging_user_id && accessToken) {
+        const { data: claimed, error: claimError } =
+          await admin.rpc(
+            "claim_line_contact_notification",
+            {
+              p_product_id: String(product.id),
+              p_buyer_line_user_id: lineUserId,
+              p_seller_line_user_id:
+                product.line_user_id,
+            }
+          );
+
+        if (claimError) throw claimError;
+
+        if (claimed === true) {
+          const message =
+            "🔔 南臺二手物平台｜商品聯絡通知\n\n" +
+            "有一位南臺同學對你的商品感興趣！\n\n" +
+            "對方剛剛點擊了「聯絡賣家」。\n\n" +
+            "請留意近期是否有新的 LINE 好友邀請。\n\n" +
+            "此訊息由「資想聽你說」自動發送。";
+
+          const response = await fetch(
+            "https://api.line.me/v2/bot/message/push",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                to: binding.messaging_user_id,
+                messages: [
+                  {
+                    type: "text",
+                    text: message,
+                  },
+                ],
+              }),
+              signal: AbortSignal.timeout(5000),
+            }
+          );
+
+          if (response.ok) {
+            const { error: updateError } =
+              await admin
+                .from("line_contact_notifications")
+                .update({
+                  last_sent_at:
+                    new Date().toISOString(),
+                })
+                .eq("product_id", String(product.id))
+                .eq(
+                  "buyer_line_user_id",
+                  lineUserId
+                );
+
+            if (updateError) {
+              console.error(
+                "更新通知紀錄失敗:",
+                updateError
+              );
+            }
+          } else {
+            console.error(
+              "LINE 推播失敗:",
+              response.status
+            );
+          }
+        }
+      }
+    } catch (notificationError) {
+      console.error(
+        "LINE 通知處理失敗:",
+        notificationError
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      lineFriendUrl,
+    });
+  } catch (err) {
+    console.error("seller-contact POST:", err);
+
+    return fail(
+      err instanceof Error
+        ? err.message
+        : "聯絡賣家失敗",
       401
     );
   }
