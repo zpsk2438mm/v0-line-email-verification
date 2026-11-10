@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useLiff } from "@/components/liff-provider";
-import { ListingForm } from "@/components/listing-form"; // 👈 請根據你專案中表單元件的實際路徑調整
+import ListingForm from "@/components/listing-form";// 👈 請根據你專案中表單元件的實際路徑調整
 import { Loader2, ChevronLeft, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
