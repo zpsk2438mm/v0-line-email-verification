@@ -205,10 +205,10 @@ export default function ProductDetailPage() {
       // 透過已驗證身分的後端 API
       // 取得賣家自行設定的 LINE 加好友連結
       const result = await contactRequest(
-        `/api/seller-contact?sellerId=${encodeURIComponent(
-          sellerId
-        )}`
-      );
+  `/api/seller-contact?productId=${encodeURIComponent(
+    product.id
+  )}`
+);
 
       const friendUrl = result.lineFriendUrl;
 
