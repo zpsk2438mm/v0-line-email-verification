@@ -7,6 +7,7 @@ import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { contactRequest } from "@/lib/contact-client";
 import { useToast } from "@/hooks/use-toast";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
 import {
   Loader2,
   Upload,
@@ -27,11 +29,13 @@ import {
 
 interface ProductInitialData {
   id?: string;
+  name?: string;
   title?: string;
   category?: string;
   price?: number | string;
-  contact_info?: string;
+  contact?: string;
   description?: string;
+  image_url?: string | null;
   images?: string[];
 }
 
@@ -40,8 +44,7 @@ interface ListingFormProps {
   isEditing?: boolean;
 }
 
-// 與市集首頁相同的分類 ID
-// 「全部」僅用於市集篩選，不提供商品刊登
+// 與市集首頁一致的分類 ID
 const CATEGORIES = [
   { id: "electronics", label: "📱 電子產品" },
   { id: "books", label: "📚 書籍教材" },
@@ -73,6 +76,22 @@ function validLineUrl(value: string): boolean {
   }
 }
 
+function formatDatabaseError(error: {
+  message: string;
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+}) {
+  return [
+    `資料庫錯誤：${error.message}`,
+    error.code ? `錯誤代碼：${error.code}` : "",
+    error.details ? `詳細資訊：${error.details}` : "",
+    error.hint ? `建議：${error.hint}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export default function ListingForm({
   initialData,
   isEditing = false,
@@ -80,18 +99,16 @@ export default function ListingForm({
   const router = useRouter();
 
   const {
-    lineUserId: lineId,
-    userProfile,
+    lineUserId,
+    userEmail,
+    isAuthenticated,
     isLoading: isLiffLoading,
   } = useLiff();
-
-  const displayName =
-    userProfile?.displayName || null;
 
   const { toast } = useToast();
 
   const [title, setTitle] = useState(
-    initialData?.title || ""
+    initialData?.name || initialData?.title || ""
   );
 
   const [category, setCategory] = useState(
@@ -106,8 +123,11 @@ export default function ListingForm({
     initialData?.description || ""
   );
 
-  const [images, setImages] = useState<string[]>(
-    initialData?.images || []
+  // 現有 products 資料表只有 image_url
+  const [imageUrl, setImageUrl] = useState(
+    initialData?.image_url ||
+      initialData?.images?.[0] ||
+      ""
   );
 
   const [uploadingImage, setUploadingImage] =
@@ -119,99 +139,96 @@ export default function ListingForm({
   const [submitError, setSubmitError] =
     useState("");
 
-  // 上傳商品照片
+  // 上傳單張商品圖片
   const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const files = e.target.files;
+    const file = e.target.files?.[0];
 
-    if (!files || files.length === 0) return;
+    if (!file) return;
 
-    if (images.length + files.length > 5) {
+    if (!file.type.startsWith("image/")) {
       toast({
-        title: "圖片數量限制",
-        description: "最多只能上傳 5 張商品照片！",
+        title: "檔案格式錯誤",
+        description: "請選擇圖片檔案。",
         variant: "destructive",
       });
+      e.target.value = "";
+      return;
+    }
 
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "圖片太大",
+        description: "請上傳小於 10MB 的圖片。",
+        variant: "destructive",
+      });
       e.target.value = "";
       return;
     }
 
     setUploadingImage(true);
-
-    const newUploadedUrls: string[] = [];
+    setSubmitError("");
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      const fileExt =
+        file.name.split(".").pop()?.toLowerCase() ||
+        "jpg";
 
-        const fileExt =
-          file.name.split(".").pop() || "jpg";
+      const fileName =
+        `${Date.now()}_` +
+        `${Math.random().toString(36).slice(2)}.` +
+        fileExt;
 
-        const fileName =
-          `${Date.now()}_${i}_` +
-          `${Math.random()
-            .toString(36)
-            .substring(7)}.${fileExt}`;
+      const filePath = `products/${fileName}`;
 
-        const filePath = `products/${fileName}`;
+      // 優先使用原本的 product-images bucket
+      const { error: uploadError } =
+        await supabase.storage
+          .from("product-images")
+          .upload(filePath, file);
 
-        const { error: uploadError } =
+      let uploadedBucket = "product-images";
+
+      if (uploadError) {
+        // 保留原本的備用 bucket
+        const { error: fallbackError } =
           await supabase.storage
-            .from("product-images")
+            .from("products")
             .upload(filePath, file);
 
-        if (uploadError) {
-          // 保留原本的備用 Storage bucket
-          const { error: fallbackError } =
-            await supabase.storage
-              .from("products")
-              .upload(filePath, file);
-
-          if (fallbackError) {
-            throw uploadError;
-          }
-
-          const { data: publicUrlData } =
-            supabase.storage
-              .from("products")
-              .getPublicUrl(filePath);
-
-          newUploadedUrls.push(
-            publicUrlData.publicUrl
-          );
-        } else {
-          const { data: publicUrlData } =
-            supabase.storage
-              .from("product-images")
-              .getPublicUrl(filePath);
-
-          newUploadedUrls.push(
-            publicUrlData.publicUrl
+        if (fallbackError) {
+          throw new Error(
+            `圖片上傳失敗：${uploadError.message}；` +
+              `備用空間：${fallbackError.message}`
           );
         }
+
+        uploadedBucket = "products";
       }
 
-      setImages((prev) => [
-        ...prev,
-        ...newUploadedUrls,
-      ]);
+      const { data: publicUrlData } =
+        supabase.storage
+          .from(uploadedBucket)
+          .getPublicUrl(filePath);
+
+      setImageUrl(publicUrlData.publicUrl);
 
       toast({
-        title: "上傳成功",
-        description:
-          `成功上傳 ${newUploadedUrls.length} 張圖片`,
+        title: "圖片上傳成功",
+        description: "商品照片已準備完成。",
       });
     } catch (err: unknown) {
-      console.error("圖片上傳失敗:", err);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "圖片上傳失敗，請稍後再試。";
+
+      setSubmitError(msg);
 
       toast({
         title: "圖片上傳失敗",
-        description:
-          err instanceof Error
-            ? err.message
-            : "請確認 Supabase Storage 權限設定",
+        description: msg,
         variant: "destructive",
       });
     } finally {
@@ -220,15 +237,8 @@ export default function ListingForm({
     }
   };
 
-  // 移除商品照片
-  const handleRemoveImage = (
-    indexToRemove: number
-  ) => {
-    setImages((prev) =>
-      prev.filter(
-        (_, index) => index !== indexToRemove
-      )
-    );
+  const handleRemoveImage = () => {
+    setImageUrl("");
   };
 
   // 送出商品
@@ -237,113 +247,77 @@ export default function ListingForm({
   ) => {
     e.preventDefault();
 
-    if (isSubmitting || uploadingImage) {
-      return;
-    }
+    if (isSubmitting || uploadingImage) return;
 
     setSubmitError("");
 
-    // 取得目前登入的 LINE ID
-    const activeLineId =
-      lineId ||
-      (typeof window !== "undefined"
-        ? localStorage.getItem("line_user_id")
-        : null);
-
-    if (!activeLineId) {
-      const msg =
-        "無法取得 LINE 身分，請重新登入。";
-
-      setSubmitError(msg);
-
-      toast({
-        title: "無法讀取 LINE ID",
-        description: msg,
-        variant: "destructive",
-      });
-
+    if (!lineUserId) {
+      setSubmitError(
+        "無法取得 LINE 身分，請重新登入。"
+      );
       return;
     }
 
-    // 檢查必填資料
+    if (
+      !isAuthenticated ||
+      !userEmail?.toLowerCase().endsWith("@stust.edu.tw")
+    ) {
+      setSubmitError(
+        "請先完成南臺學校信箱驗證。"
+      );
+      return;
+    }
+
     if (
       !title.trim() ||
       !category ||
       price.trim() === ""
     ) {
-      const msg =
-        "請填寫商品名稱、分類及價格。";
-
-      setSubmitError(msg);
-
-      toast({
-        title: "未填寫完整",
-        description: msg,
-        variant: "destructive",
-      });
-
+      setSubmitError(
+        "請填寫商品名稱、分類及價格。"
+      );
       return;
     }
 
-    // 檢查分類是否有效
     const categoryExists = CATEGORIES.some(
       (item) => item.id === category
     );
 
     if (!categoryExists) {
-      const msg =
-        "請重新選擇商品分類。";
-
-      setSubmitError(msg);
-
-      toast({
-        title: "分類錯誤",
-        description: msg,
-        variant: "destructive",
-      });
-
+      setSubmitError("請重新選擇商品分類。");
       return;
     }
 
     const numericPrice = Number(price);
 
     if (
-      !Number.isFinite(numericPrice) ||
+      !Number.isSafeInteger(numericPrice) ||
       numericPrice < 0
     ) {
-      const msg =
-        "請輸入有效的商品價格。";
-
-      setSubmitError(msg);
-
-      toast({
-        title: "價格錯誤",
-        description: msg,
-        variant: "destructive",
-      });
-
+      setSubmitError(
+        "請輸入有效的整數商品價格。"
+      );
       return;
     }
 
-    if (images.length === 0) {
-      const msg =
-        "請至少上傳 1 張商品照片。";
+    if (!imageUrl) {
+      setSubmitError(
+        "請先上傳商品照片。"
+      );
+      return;
+    }
 
-      setSubmitError(msg);
-
-      toast({
-        title: "未提供商品照片",
-        description: msg,
-        variant: "destructive",
-      });
-
+    if (isEditing && !initialData?.id) {
+      setSubmitError(
+        "找不到要編輯的商品 ID。"
+      );
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // 送出前重新檢查賣家 LINE 聯絡方式
+      // 每次刊登前確認賣家私人 LINE 連結
       const contactData = await contactRequest(
         "/api/seller-contact"
       );
@@ -355,76 +329,71 @@ export default function ListingForm({
 
       if (!validLineUrl(sellerLineUrl)) {
         throw new Error(
-          "尚未設定有效的私人 LINE 加好友連結，請先前往個人中心設定。"
+          "尚未設定有效的私人 LINE 加好友連結，" +
+            "請先前往個人中心設定。"
         );
       }
 
-      // 商品資料
-      // category 儲存分類 ID，例如 electronics、books
+      // 與現有 Supabase products 資料表一致
       const payload = {
-        title: title.trim(),
+        name: title.trim(),
         category,
         price: numericPrice,
         description: description.trim(),
-        images,
-        line_user_id: activeLineId,
-        seller_name:
-          displayName || "校園賣家",
+        contact: sellerLineUrl,
+        image_url: imageUrl,
+        line_user_id: lineUserId,
+        verified_email: userEmail,
         status: "pending",
-        updated_at: new Date().toISOString(),
-        ...(isEditing && initialData?.id
-          ? { id: initialData.id }
-          : {}),
+        is_approved: false,
       };
 
       console.log("準備儲存商品:", {
-        title: payload.title,
+        name: payload.name,
         category: payload.category,
         price: payload.price,
-        imageCount: payload.images.length,
+        hasImage: Boolean(payload.image_url),
         isEditing,
       });
 
-      // 寫入 Supabase products
-      const { data, error } = await supabase
-        .from("products")
-        .upsert(payload)
-        .select()
-        .single();
+      let savedProductId: string | undefined;
 
-      // 顯示完整 Supabase 錯誤
-      if (error) {
-        console.error(
-          "Supabase 商品儲存錯誤:",
-          {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-          }
-        );
+      if (isEditing && initialData?.id) {
+        // 編輯時只更新自己的商品
+        const { data, error } = await supabase
+          .from("products")
+          .update(payload)
+          .eq("id", initialData.id)
+          .eq("line_user_id", lineUserId)
+          .select("id")
+          .single();
 
-        const errorDetails = [
-          `資料庫錯誤：${error.message}`,
-          error.code
-            ? `錯誤代碼：${error.code}`
-            : "",
-          error.details
-            ? `詳細資訊：${error.details}`
-            : "",
-          error.hint
-            ? `建議：${error.hint}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n");
+        if (error) {
+          console.error("商品更新失敗:", error);
+          throw new Error(formatDatabaseError(error));
+        }
 
-        throw new Error(errorDetails);
+        savedProductId = data.id;
+      } else {
+        // 新增商品使用 insert，避免誤更新既有商品
+        const { data, error } = await supabase
+          .from("products")
+          .insert(payload)
+          .select("id")
+          .single();
+
+        if (error) {
+          console.error("商品新增失敗:", error);
+          throw new Error(formatDatabaseError(error));
+        }
+
+        savedProductId = data.id;
       }
 
-      // 保留管理員通知功能
+      // 保留原本的通知 API 呼叫
+      // 通知失敗不影響商品刊登
       try {
-        await fetch("/api/notify", {
+        const response = await fetch("/api/notify", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -433,28 +402,33 @@ export default function ListingForm({
             type: isEditing
               ? "product_updated"
               : "product_created",
-            productId:
-              data?.id || initialData?.id,
-            title: payload.title,
-            sellerLineId: activeLineId,
+            productId: savedProductId,
+            title: payload.name,
+            sellerLineId: lineUserId,
           }),
         });
+
+        if (!response.ok) {
+          console.warn(
+            "通知 API 回傳錯誤:",
+            response.status
+          );
+        }
       } catch (notifyErr) {
         console.warn(
-          "管理員通知發送失敗，不影響商品儲存:",
+          "通知發送失敗，不影響商品儲存:",
           notifyErr
         );
       }
 
       toast({
-        title: isEditing
-          ? "更新成功"
-          : "刊登成功",
+        title: isEditing ? "更新成功" : "刊登成功",
         description:
-          "商品已送出審核，管理員審核通過後將公開於市集！",
+          "商品已送出審核，審核通過後將公開於市集！",
       });
 
       router.push("/my-listings");
+      router.refresh();
     } catch (err: unknown) {
       console.error("商品刊登失敗:", err);
 
@@ -475,12 +449,10 @@ export default function ListingForm({
     }
   };
 
-  // 等待 LINE 初始化
   if (isLiffLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-12 space-y-4">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-
+        <Loader2 className="w-8 h-8 animate-spin text-[#D95300]" />
         <p className="text-sm text-muted-foreground">
           正在驗證 LINE 身分與環境...
         </p>
@@ -506,59 +478,48 @@ export default function ListingForm({
           {/* 商品照片 */}
           <div className="space-y-2">
             <Label>
-              商品照片 ({images.length}/5) *
+              商品照片（1 張）*
             </Label>
 
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-              {images.map((url, idx) => (
-                <div
-                  key={`${url}-${idx}`}
-                  className="relative aspect-square rounded-md overflow-hidden border group"
+            {imageUrl ? (
+              <div className="relative w-40 h-40 rounded-xl overflow-hidden border">
+                <img
+                  src={imageUrl}
+                  alt="商品照片"
+                  className="w-full h-full object-cover"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="absolute top-2 right-2 rounded-full bg-black/60 p-2 text-white"
+                  aria-label="移除商品照片"
                 >
-                  <img
-                    src={url}
-                    alt={`商品圖 ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex h-40 w-40 flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer hover:border-[#D95300]">
+                {uploadingImage ? (
+                  <Loader2 className="w-6 h-6 animate-spin text-[#D95300]" />
+                ) : (
+                  <>
+                    <Upload className="w-6 h-6 mb-2 text-gray-500" />
+                    <span className="text-sm text-gray-500">
+                      新增照片
+                    </span>
+                  </>
+                )}
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleRemoveImage(idx)
-                    }
-                    className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full hover:bg-red-600 transition"
-                    aria-label={`移除第 ${idx + 1} 張照片`}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-
-              {images.length < 5 && (
-                <label className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-md cursor-pointer hover:border-primary transition bg-gray-50/50">
-                  {uploadingImage ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                  ) : (
-                    <>
-                      <Upload className="w-5 h-5 text-muted-foreground mb-1" />
-
-                      <span className="text-xs text-muted-foreground">
-                        新增照片
-                      </span>
-                    </>
-                  )}
-
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    disabled={uploadingImage}
-                    className="hidden"
-                  />
-                </label>
-              )}
-            </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  disabled={uploadingImage}
+                  className="hidden"
+                />
+              </label>
+            )}
           </div>
 
           {/* 商品名稱 */}
@@ -569,16 +530,16 @@ export default function ListingForm({
 
             <Input
               id="title"
-              placeholder="例：大一英文課本 / 羅技無線滑鼠"
               value={title}
               onChange={(e) =>
                 setTitle(e.target.value)
               }
+              placeholder="例：大一英文課本"
               required
             />
           </div>
 
-          {/* 分類：手機原生下拉選單 */}
+          {/* 手機原生分類選單 */}
           <div className="space-y-2">
             <Label htmlFor="category">
               分類 *
@@ -631,7 +592,7 @@ export default function ListingForm({
             />
           </div>
 
-          {/* 自動使用賣家的 LINE 聯絡方式 */}
+          {/* LINE 聯絡方式 */}
           <div className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
 
@@ -641,9 +602,8 @@ export default function ListingForm({
               </p>
 
               <p className="text-xs leading-relaxed text-emerald-700">
-                系統會使用你已設定的私人 LINE
-                加好友連結，不需要重複輸入
-                LINE ID 或手機號碼。
+                系統會使用你在個人中心設定的私人
+                LINE 加好友連結，刊登時不需要重複輸入。
               </p>
             </div>
           </div>
@@ -657,16 +617,16 @@ export default function ListingForm({
             <Textarea
               id="description"
               rows={4}
-              placeholder="說明物品新舊程度、面交地點（如：南臺修齊大樓）等"
               value={description}
               onChange={(e) =>
                 setDescription(e.target.value)
               }
+              placeholder="說明物品新舊程度、面交地點等"
               className="rounded-xl"
             />
           </div>
 
-          {/* 顯示完整錯誤訊息 */}
+          {/* 資料庫錯誤訊息 */}
           {submitError && (
             <div
               role="alert"
@@ -680,13 +640,12 @@ export default function ListingForm({
             </div>
           )}
 
-          {/* 刊登按鈕 */}
+          {/* 送出審核 */}
           <Button
             type="submit"
             className="w-full h-12 rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white font-bold text-base"
             disabled={
-              isSubmitting ||
-              uploadingImage
+              isSubmitting || uploadingImage
             }
           >
             {isSubmitting ? (
