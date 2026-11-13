@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { contactRequest } from "@/lib/contact-client";
 import { Button } from "@/components/ui/button";
 import { Navigation } from "@/components/navigation";
+import { FavoriteButton } from "@/components/favorite-button";
 import { useLiff } from "@/components/liff-provider";
 import {
   Loader2,
@@ -315,24 +316,27 @@ export default function ProductDetailPage() {
 
       <div className="max-w-md mx-auto p-4 space-y-6">
         {/* 商品圖片 */}
-        <div className="aspect-square w-full rounded-3xl overflow-hidden bg-white shadow-sm border border-orange-50">
+        <div className="relative aspect-square w-full rounded-3xl overflow-hidden bg-white shadow-sm border border-orange-50">
           <img
-            src={getImageUrl(
-              product.image_url || product.images
-            )}
-            alt={product.name}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              const fallback = "/placeholder-logo.png";
+    src={getImageUrl(
+      product.image_url || product.images
+    )}
+    alt={product.name}
+    className="w-full h-full object-cover"
+    onError={(e) => {
+      const fallback = "/placeholder-logo.png";
 
-              if (
-                !e.currentTarget.src.endsWith(fallback)
-              ) {
-                e.currentTarget.src = fallback;
-              }
-            }}
-          />
-        </div>
+      if (!e.currentTarget.src.endsWith(fallback)) {
+        e.currentTarget.src = fallback;
+      }
+    }}
+  />
+
+  {/* 右上角收藏愛心 */}
+  <div className="absolute top-3 right-3 z-10">
+    <FavoriteButton productId={product.id} />
+  </div>
+</div>
 
         {/* 商品名稱及價格 */}
         <div className="space-y-2">
