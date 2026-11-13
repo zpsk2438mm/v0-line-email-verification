@@ -1,8 +1,13 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Heart, Loader2 } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type MouseEvent,
+} from "react";
+import { Heart } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useLiff } from "@/components/liff-provider";
 import { useToast } from "@/hooks/use-toast";
@@ -13,127 +18,292 @@ interface FavoriteButtonProps {
   onChange?: (isFavorite: boolean) => void;
 }
 
+// 所有愛心共用一份收藏資料，減少重複查詢
+let cachedUserId: string | null = null;
+let cachedFavorites = new Set<string>();
+let loaded = false;
+let loadingPromise: Promise<void> | null = null;
+let sessionPromise: ReturnType<
+  typeof supabase.auth.getSession
+> | null = null;
+
+const listeners = new Set<() => void>();
+
+function notifyListeners() {
+  listeners.forEach((listener) => listener());
+}
+
+function resetCache() {
+  cachedUserId = null;
+  cachedFavorites = new Set();
+  loaded = false;
+  loadingPromise = null;
+  sessionPromise = null;
+  notifyListeners();
+}
+
+async function getCurrentUserId() {
+  if (!sessionPromise) {
+    sessionPromise = supabase.auth.getSession();
+  }
+
+  try {
+    const { data, error } = await sessionPromise;
+
+    if (error) throw error;
+
+    return data.session?.user?.id ?? null;
+  } finally {
+    sessionPromise = null;
+  }
+}
+
+async function loadFavorites(userId: string) {
+  if (cachedUserId !== userId) {
+    cachedUserId = userId;
+    cachedFavorites = new Set();
+    loaded = false;
+    loadingPromise = null;
+  }
+
+  if (loaded) return;
+  if (loadingPromise) return loadingPromise;
+
+  loadingPromise = (async () => {
+    const { data, error } = await supabase
+      .from("favorites")
+      .select("product_id")
+      .eq("user_id", userId);
+
+    if (error) throw error;
+
+    // 防止舊帳號的查詢結果覆蓋新帳號
+    if (cachedUserId !== userId) return;
+
+    cachedFavorites = new Set(
+      (data ?? []).map(
+        (item: { product_id: string }) =>
+          item.product_id
+      )
+    );
+
+    loaded = true;
+    notifyListeners();
+  })();
+
+  try {
+    await loadingPromise;
+  } finally {
+    loadingPromise = null;
+  }
+}
+
+function updateFavoriteCache(
+  productId: string,
+  value: boolean
+) {
+  const next = new Set(cachedFavorites);
+
+  if (value) {
+    next.add(productId);
+  } else {
+    next.delete(productId);
+  }
+
+  cachedFavorites = next;
+  notifyListeners();
+}
+
 export function FavoriteButton({
   productId,
   className = "",
   onChange,
 }: FavoriteButtonProps) {
-  const { lineUserId, isLoading } = useLiff();
+  const {
+    lineUserId,
+    isAuthenticated,
+    isLoading,
+  } = useLiff();
+
   const { toast } = useToast();
 
-  const [favorite, setFavorite] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [favorite, setFavorite] =
+    useState(false);
 
-  const loadFavorite = useCallback(async () => {
-    setLoading(true);
+  const [saving, setSaving] =
+    useState(false);
 
-    try {
-      const { data: userData, error: userError } =
-        await supabase.auth.getUser();
+  const fullyLoggedIn =
+    Boolean(lineUserId) &&
+    isAuthenticated;
 
-      if (userError || !userData.user || !lineUserId) {
-        setFavorite(false);
-        return;
-      }
+  // 讓所有商品卡片同步共用的收藏狀態
+  useEffect(() => {
+    const syncFavorite = () => {
+      setFavorite(
+        cachedFavorites.has(productId)
+      );
+    };
 
-      const { data, error } = await supabase
-        .from("favorites")
-        .select("product_id")
-        .eq("user_id", userData.user.id)
-        .eq("product_id", productId)
-        .maybeSingle();
+    listeners.add(syncFavorite);
+    syncFavorite();
 
-      if (error) throw error;
+    return () => {
+      listeners.delete(syncFavorite);
+    };
+  }, [productId]);
 
-      setFavorite(Boolean(data));
-    } catch (error) {
-      console.error("讀取收藏失敗:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [productId, lineUserId]);
-
+  // 登入完成後，一次取得所有收藏
   useEffect(() => {
     if (isLoading) return;
 
-    void loadFavorite();
+    if (!fullyLoggedIn) {
+      resetCache();
+      return;
+    }
 
-    const { data: { subscription } } =
-      supabase.auth.onAuthStateChange(() => {
-        void loadFavorite();
-      });
+    let cancelled = false;
 
-    return () => subscription.unsubscribe();
-  }, [isLoading, loadFavorite]);
+    async function initialize() {
+      try {
+        const userId =
+          await getCurrentUserId();
+
+        if (cancelled || !userId) return;
+
+        await loadFavorites(userId);
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "讀取收藏資料失敗:",
+            error
+          );
+        }
+      }
+    }
+
+    void initialize();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fullyLoggedIn, isLoading]);
+
+  const goToLogin = useCallback(() => {
+    // 記住目前商品所在的頁面
+    // 從市集點愛心，登入後返回市集
+    // 從商品詳情點愛心，登入後返回該商品
+    const currentPath =
+      window.location.pathname +
+      window.location.search;
+
+    const target =
+      currentPath.startsWith("/") &&
+      !currentPath.startsWith("//") &&
+      !currentPath.startsWith("/\\") &&
+      currentPath !== "/"
+        ? currentPath
+        : `/products/${encodeURIComponent(
+            productId
+          )}`;
+
+    sessionStorage.setItem(
+      "login_next",
+      target
+    );
+
+    // 先進入首頁的 LINE + 學校信箱驗證
+    // 驗證成功後會自動返回 target
+    window.location.assign(
+      `/?next=${encodeURIComponent(target)}`
+    );
+  }, [productId]);
 
   async function toggleFavorite(
-    event: React.MouseEvent<HTMLButtonElement>
+    event: MouseEvent<HTMLButtonElement>
   ) {
     event.preventDefault();
     event.stopPropagation();
 
-    if (saving || loading) return;
+    if (saving) return;
 
-    if (!lineUserId) {
-      toast({
-        title: "請先登入 LINE",
-        description: "登入 LINE 後才能收藏商品。",
-        variant: "destructive",
-      });
+    // 尚未登入直接前往驗證畫面
+    if (!fullyLoggedIn) {
+      goToLogin();
       return;
     }
 
     setSaving(true);
 
     try {
-      const { data: userData, error: userError } =
-        await supabase.auth.getUser();
+      const userId =
+        await getCurrentUserId();
 
-      if (userError || !userData.user) {
-        throw new Error("請先完成學校信箱登入驗證。");
+      if (!userId) {
+        goToLogin();
+        return;
       }
 
-      const userId = userData.user.id;
+      // 確保第一次操作前取得正確收藏狀態
+      await loadFavorites(userId);
 
-      if (favorite) {
-        const { error } = await supabase
-          .from("favorites")
-          .delete()
-          .eq("user_id", userId)
-          .eq("product_id", productId);
+      const previous =
+        cachedFavorites.has(productId);
 
-        if (error) throw error;
+      const next = !previous;
 
-        setFavorite(false);
-        onChange?.(false);
+      // 立即更新畫面，不等待網路回應
+      updateFavoriteCache(productId, next);
+      onChange?.(next);
+
+      try {
+        if (next) {
+          const { error } = await supabase
+            .from("favorites")
+            .upsert(
+              {
+                user_id: userId,
+                product_id: productId,
+              },
+              {
+                onConflict:
+                  "user_id,product_id",
+              }
+            );
+
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from("favorites")
+            .delete()
+            .eq("user_id", userId)
+            .eq("product_id", productId);
+
+          if (error) throw error;
+        }
 
         toast({
-          title: "已取消收藏",
+          title: next
+            ? "❤️ 已加入我的最愛"
+            : "已取消收藏",
         });
-      } else {
-        const { error } = await supabase
-          .from("favorites")
-          .upsert(
-            {
-              user_id: userId,
-              product_id: productId,
-            },
-            {
-              onConflict: "user_id,product_id",
-            }
-          );
+      } catch (error) {
+        // 儲存失敗，恢復原本的愛心狀態
+        updateFavoriteCache(
+          productId,
+          previous
+        );
 
-        if (error) throw error;
+        onChange?.(previous);
 
-        setFavorite(true);
-        onChange?.(true);
-
-        toast({
-          title: "❤️ 已加入我的最愛",
-        });
+        throw error;
       }
     } catch (error) {
+      console.error(
+        "收藏操作失敗:",
+        error
+      );
+
       toast({
         title: "收藏操作失敗",
         description:
@@ -151,23 +321,31 @@ export function FavoriteButton({
     <button
       type="button"
       onClick={toggleFavorite}
-      disabled={loading || saving}
-      aria-label={favorite ? "取消收藏" : "加入最愛"}
+      disabled={saving}
+      aria-label={
+        favorite
+          ? "取消收藏"
+          : "加入我的最愛"
+      }
       aria-pressed={favorite}
-      title={favorite ? "取消收藏" : "加入我的最愛"}
-      className={`z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-md transition-transform hover:scale-110 disabled:opacity-60 ${className}`}
+      title={
+        favorite
+          ? "取消收藏"
+          : "加入我的最愛"
+      }
+      className={`z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-md transition-all hover:scale-110 active:scale-95 ${
+        saving
+          ? "cursor-wait opacity-80"
+          : ""
+      } ${className}`}
     >
-      {loading || saving ? (
-        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-      ) : (
-        <Heart
-          className={`h-5 w-5 ${
-            favorite
-              ? "fill-rose-500 text-rose-500"
-              : "text-slate-500"
-          }`}
-        />
-      )}
+      <Heart
+        className={`h-5 w-5 transition-colors duration-150 ${
+          favorite
+            ? "fill-rose-500 text-rose-500"
+            : "text-slate-500"
+        }`}
+      />
     </button>
   );
 }
