@@ -3,166 +3,85 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Calendar } from "lucide-react";
 import { FavoriteButton } from "@/components/favorite-button";
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  description?: string | null;
-  image_url?: unknown;
-  images?: unknown;
-  created_at?: string;
-  approved_at?: string | null;
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  electronics: "電子產品",
-  books: "書籍教材",
-  tools_stationery: "文具/專業工具",
-  dorm_supplies: "租屋收納/雜貨",
-  hobbies: "遊戲/娛樂",
-  cosmetics: "化妝品/美妝",
-  food: "食物/零食",
-  clothing: "服飾配件",
-  furniture: "家具家電",
-  sports: "運動用品",
-  other: "其他",
-};
-
-function getDisplayImage(value: unknown): string {
-  if (!value) return "/placeholder-logo.png";
-
-  if (Array.isArray(value)) {
-    return getDisplayImage(value[0]);
-  }
-
-  if (typeof value !== "string") {
-    return "/placeholder-logo.png";
-  }
-
-  let result = value.trim();
-
-  if (result.startsWith("[")) {
-    try {
-      return getDisplayImage(JSON.parse(result));
-    } catch {
-      return "/placeholder-logo.png";
-    }
-  }
-
-  if (!result) return "/placeholder-logo.png";
-
-  if (result.startsWith("https://")) return result;
-
-  if (result.startsWith("/")) {
-    if (result === "/placeholder-logo.png") return result;
-    result = result.slice(1);
-  }
-
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  if (!supabaseUrl) return "/placeholder-logo.png";
-
-  return `${supabaseUrl}/storage/v1/object/public/product-images/${result}`;
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "";
-
-  return date.toLocaleDateString("zh-TW", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-export function ProductCard({
-  product,
-  onFavoriteChange,
-}: {
-  product: Product;
-  onFavoriteChange?: (isFavorite: boolean) => void;
-}) {
+export function ProductCard({ product }: { product: any }) {
   if (!product?.id) return null;
 
-  const dateText = formatDate(
-    product.approved_at || product.created_at
-  );
+  const getDisplayImage = (url: any) => {
+    if (!url) return "/placeholder-logo.png";
+
+    if (Array.isArray(url)) {
+      return url[0] || "/placeholder-logo.png";
+    }
+
+    if (typeof url === "string" && url.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(url);
+        return Array.isArray(parsed)
+          ? parsed[0] || "/placeholder-logo.png"
+          : url;
+      } catch {
+        return url;
+      }
+    }
+
+    return url;
+  };
 
   return (
     <div className="relative group h-full">
-      <Link
-        href={`/products/${product.id}`}
-        className="block h-full no-underline active:scale-[0.98] transition-transform"
-      >
-        <div className="h-full overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-md">
+
+        {/* 商品詳情連結 */}
+        <Link
+          href={`/products/${product.id}`}
+          className="flex h-full flex-col no-underline"
+        >
+          {/* 商品圖片 */}
           <div className="relative aspect-square overflow-hidden bg-slate-50">
             <img
-              src={getDisplayImage(
-                product.image_url || product.images
-              )}
-              alt={product.name}
+              src={getDisplayImage(product.image_url)}
+              alt={product.name || "商品圖片"}
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={(event) => {
-                event.currentTarget.onerror = null;
-                event.currentTarget.src =
-                  "/placeholder-logo.png";
+              onError={(e) => {
+                e.currentTarget.src = "/placeholder-logo.png";
               }}
             />
 
-            <Badge
-              variant="secondary"
-              className="absolute left-2 top-2 max-w-[65%] truncate border-none bg-white/90 text-[9px] font-bold text-[#D35400]"
-            >
-              {CATEGORY_LABELS[product.category] ||
-                product.category ||
-                "其他"}
+            {/* 左上角分類 */}
+            <Badge className="absolute left-3 top-3 border-none bg-white/90 text-slate-700 backdrop-blur-md">
+              {product.category}
             </Badge>
           </div>
 
-          <div className="flex flex-1 flex-col justify-between p-3">
-            <div>
-              <h3 className="line-clamp-1 text-sm font-bold text-slate-800 group-hover:text-[#D35400]">
-                {product.name}
-              </h3>
+          {/* 商品文字 */}
+          <div className="flex flex-1 flex-col p-4">
+            <h3 className="mb-1 truncate font-bold text-slate-800">
+              {product.name}
+            </h3>
 
-              <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-400">
-                {product.description || "校園二手好物"}
-              </p>
-            </div>
+            <p className="mb-4 line-clamp-1 text-xs text-slate-400">
+              {product.description || "校園二手好物"}
+            </p>
 
-            <div className="mt-3">
-              <p className="text-base font-extrabold text-[#D35400]">
+            <div className="mt-auto flex items-end justify-between gap-1">
+              <span className="text-lg font-black text-[#D35400]">
                 NT$ {Number(product.price || 0).toLocaleString("zh-TW")}
-              </p>
+              </span>
 
-              <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {dateText}
-                </span>
-
-                <span className="font-bold text-blue-500">
-                  查看詳情
-                </span>
-              </div>
+              <span className="text-[11px] font-bold text-blue-500">
+                查看詳情
+              </span>
             </div>
           </div>
-        </div>
-      </Link>
+        </Link>
 
-      <FavoriteButton
-        productId={product.id}
-        onChange={onFavoriteChange}
-        className="absolute right-2 top-2"
-      />
+        {/* 右上角愛心：獨立於 Link 外 */}
+        <div className="absolute right-2 top-2 z-10">
+          <FavoriteButton productId={product.id} />
+        </div>
+      </div>
     </div>
   );
 }
