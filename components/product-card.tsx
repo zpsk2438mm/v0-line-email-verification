@@ -5,58 +5,72 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { FavoriteButton } from "@/components/favorite-button";
 
-// 資料庫英文分類轉換成中文
-
+// 統一使用刊登商品表單的 11 種分類名稱
 const CATEGORY_LABELS: Record<string, string> = {
+  // 電子產品
   electronics: "電子產品",
   electronic: "電子產品",
   digital: "電子產品",
 
+  // 書籍教材
   books: "書籍教材",
   book: "書籍教材",
-  textbooks: "教科書",
+  textbooks: "書籍教材",
   books_textbooks: "書籍教材",
 
+  // 文具 / 事業工具
+  tools_stationery: "文具/事業工具",
+  tools: "文具/事業工具",
+  stationery: "文具/事業工具",
+  supplies: "文具/事業工具",
+
+  // 租屋收納 / 雜貨
+  home_living: "租屋收納/雜貨",
+  home: "租屋收納/雜貨",
+  household: "租屋收納/雜貨",
+  daily: "租屋收納/雜貨",
+  daily_necessities: "租屋收納/雜貨",
+
+  // 遊戲 / 娛樂
+  games_entertainment: "遊戲/娛樂",
+  games: "遊戲/娛樂",
+  toys: "遊戲/娛樂",
+  entertainment: "遊戲/娛樂",
+
+  // 化妝品 / 美妝
+  beauty_cosmetics: "化妝品/美妝",
+  beauty: "化妝品/美妝",
+  cosmetics: "化妝品/美妝",
+
+  // 食物 / 零食
+  food_snacks: "食物/零食",
+  food: "食物/零食",
+  snacks: "食物/零食",
+
+  // 服飾配件
+  clothing_accessories: "服飾配件",
   clothing: "服飾配件",
   clothes: "服飾配件",
   fashion: "服飾配件",
-  accessories: "配件飾品",
-  clothing_accessories: "服飾配件",
+  accessories: "服飾配件",
 
-  tools_stationery: "工具文具",
-  tools: "工具用品",
-  stationery: "文具用品",
-  supplies: "文具用品",
+  // 家具家電
+  furniture_appliances: "家具家電",
+  furniture: "家具家電",
+  appliances: "家具家電",
 
-  furniture: "家具用品",
-  home: "生活用品",
-  household: "生活用品",
-  daily: "生活用品",
-  daily_necessities: "生活用品",
-  home_living: "生活用品",
-
+  // 運動用品
   sports: "運動用品",
   sport: "運動用品",
-  sports_outdoors: "運動戶外",
+  sports_outdoors: "運動用品",
 
-  beauty: "美妝保養",
-  cosmetics: "美妝保養",
-
-  toys: "玩具娛樂",
-  games: "遊戲娛樂",
-  entertainment: "休閒娛樂",
-
-  food: "食品",
-  appliances: "家電用品",
-  transportation: "交通工具",
-  vehicles: "交通工具",
-
+  // 其他
   other: "其他",
   others: "其他",
   miscellaneous: "其他",
 };
 
-
+// 英文分類轉換成中文
 function getCategoryLabel(
   category: unknown
 ): string {
@@ -73,6 +87,7 @@ function getCategoryLabel(
   return CATEGORY_LABELS[key] || value;
 }
 
+// 取得商品圖片
 function getDisplayImage(
   value: unknown
 ): string {
@@ -145,15 +160,12 @@ export function ProductCard({
           <div className="relative aspect-square overflow-hidden bg-slate-50">
             <img
               src={imageUrl}
-              alt={
-                product.name || "商品圖片"
-              }
+              alt={product.name || "商品圖片"}
               loading="lazy"
               decoding="async"
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               onError={(event) => {
-                const img =
-                  event.currentTarget;
+                const img = event.currentTarget;
 
                 if (
                   !img.src.endsWith(
@@ -172,7 +184,7 @@ export function ProductCard({
             </Badge>
           </div>
 
-          {/* 商品文字 */}
+          {/* 商品名稱、描述、價格 */}
           <div className="flex flex-1 flex-col p-4">
             <h3 className="mb-1 truncate font-bold text-slate-800">
               {product.name || "未命名商品"}
@@ -187,9 +199,7 @@ export function ProductCard({
               <span className="text-lg font-black text-[#D35400]">
                 NT${" "}
                 {Number.isFinite(price)
-                  ? price.toLocaleString(
-                      "zh-TW"
-                    )
+                  ? price.toLocaleString("zh-TW")
                   : "0"}
               </span>
 
@@ -200,11 +210,9 @@ export function ProductCard({
           </div>
         </Link>
 
-        {/* 愛心與商品連結分開，避免誤點 */}
+        {/* 右上角收藏愛心 */}
         <div className="absolute right-2 top-2 z-10">
-          <FavoriteButton
-            productId={product.id}
-          />
+          <FavoriteButton productId={product.id} />
         </div>
       </div>
     </div>
