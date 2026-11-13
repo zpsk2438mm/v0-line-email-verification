@@ -1,225 +1,374 @@
-import { NextResponse } from 'next/server';
 
-export async function POST(req: Request) {
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+export const runtime = "nodejs";
+
+const SITE_URL =
+  "https://v0-supabase-form-integration-two.vercel.app";
+
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+  image_url: string | null;
+  line_user_id: string | null;
+  status: string | null;
+};
+
+function jsonError(message: string, status: number) {
+  return NextResponse.json(
+    { success: false, error: message },
+    { status }
+  );
+}
+
+function getStatus(product: Product): string {
+  return product.status || "pending";
+}
+
+function getNotificationContent(status: string) {
+  switch (status) {
+    case "approved":
+      return {
+        title: "🎉 商品審核通過！已成功上架",
+        color: "#10B981",
+        message:
+          "恭喜！您的二手寶貝已經通過管理員審核，現在已經在平台上公開展示，祝您順利成交！",
+        footer:
+          "請留意買家的 LINE 訊息與好友申請。",
+      };
+
+    case "rejected":
+      return {
+        title: "⚠️ 商品未通過審核",
+        color: "#EF4444",
+        message:
+          "您的商品目前未通過審核，請前往「我的刊登」查看商品狀態，確認是否需要修改內容。",
+        footer:
+          "修改完成後，可依平台流程重新送出審核。",
+      };
+
+    case "pending":
+      return {
+        title: "⏳ 商品已送出審核",
+        color: "#D35400",
+        message:
+          "您的二手寶貝已成功送出審核，目前正在等待管理員審核。審核通過後，商品就會公開顯示在平台上。",
+        footer:
+          "請稍後至「我的刊登」查看最新狀態。",
+      };
+
+    default:
+      return null;
+  }
+}
+
+function getImageUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const cleaned = value.trim();
+
+  if (!cleaned) return null;
+
   try {
-    const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-    
-    if (!CHANNEL_ACCESS_TOKEN) {
-      console.error("錯誤：缺少 LINE_CHANNEL_ACCESS_TOKEN 環境變數");
-      return NextResponse.json({ error: "伺服器設定錯誤" }, { status: 500 });
+    const url = new URL(cleaned);
+
+    if (url.protocol !== "https:") return null;
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function createFlexMessage(product: Product) {
+  const status = getStatus(product);
+  const content = getNotificationContent(status);
+
+  if (!content) return null;
+
+  const price = Number(product.price || 0);
+  const displayPrice = Number.isFinite(price)
+    ? price.toLocaleString("zh-TW")
+    : "0";
+
+  const imageUrl = getImageUrl(product.image_url);
+
+  const bubble: any = {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "lg",
+      spacing: "md",
+      contents: [
+        {
+          type: "text",
+          text: content.title,
+          weight: "bold",
+          color: content.color,
+          size: "md",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: product.name || "未命名商品",
+          weight: "bold",
+          size: "xl",
+          wrap: true,
+        },
+        {
+          type: "box",
+          layout: "baseline",
+          spacing: "xs",
+          contents: [
+            {
+              type: "text",
+              text: "預售價格：",
+              size: "sm",
+              color: "#666666",
+              flex: 0,
+            },
+            {
+              type: "text",
+              text: `NT$ ${displayPrice}`,
+              weight: "bold",
+              size: "md",
+              color: "#D35400",
+              flex: 1,
+            },
+          ],
+        },
+        {
+          type: "text",
+          text: content.message,
+          color: "#444444",
+          size: "sm",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: content.footer,
+          size: "xs",
+          color: "#777777",
+          wrap: true,
+        },
+        {
+          type: "separator",
+          color: "#E5E5E5",
+          margin: "md",
+        },
+        {
+          type: "text",
+          text: "📍 南臺二手市集 · 自動通知系統",
+          size: "xs",
+          color: "#A0A0A0",
+          wrap: true,
+        },
+      ],
+    },
+  };
+
+  if (imageUrl) {
+    bubble.hero = {
+      type: "image",
+      url: imageUrl,
+      size: "full",
+      aspectRatio: "16:9",
+      aspectMode: "cover",
+    };
+  }
+
+  return {
+    type: "flex",
+    altText: content.title,
+    contents: bubble,
+  };
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    // 只允許帶有伺服器密鑰的 Webhook 呼叫
+    const webhookSecret = process.env.NOTIFY_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error("缺少 NOTIFY_WEBHOOK_SECRET");
+      return jsonError("通知服務尚未設定", 500);
     }
+
+    const suppliedSecret =
+      req.headers.get("x-notify-secret");
+
+    if (suppliedSecret !== webhookSecret) {
+      return jsonError("未授權的通知請求", 401);
+    }
+
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const channelAccessToken =
+      process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN ||
+      process.env.LINE_CHANNEL_ACCESS_TOKEN;
+
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey ||
+      !channelAccessToken
+    ) {
+      console.error("通知服務缺少必要環境變數");
+      return jsonError("通知服務設定不完整", 500);
+    }
+
+    const admin = createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
 
     const body = await req.json();
-    console.log("收到原始請求內容:", JSON.stringify(body));
 
-    // 🎯 1. 判定事件類型 (Supabase Webhook 為 'INSERT' 或 'UPDATE')
-    let type = body.type || 'INSERT'; 
-    
-    // 🎯 2. 解析資料本體
-    let productData = body.record || body; 
+    // Supabase Database Webhook 格式
+    const eventType = String(body.type || "").toUpperCase();
 
-    if (type === 'DELETE') {
-      productData = body.old_record || body;
+    if (!["INSERT", "UPDATE"].includes(eventType)) {
+      return NextResponse.json({
+        success: true,
+        skipped: "不需要發送通知的事件",
+      });
     }
 
-    // 🎯 3. 取得 LINE 用戶 ID
-    const lineUserId = productData.line_user_id || productData.lineUserId || body.line_user_id || body.lineUserId;
-    if (!lineUserId) {
-      console.log("⚠️ 找不到使用者的 Line ID，跳過通知。");
-      return NextResponse.json({ message: "找不到使用者的 Line ID，跳過通知" });
+    const record = body.record;
+    const oldRecord = body.old_record;
+
+    if (!record?.id || typeof record.id !== "string") {
+      return jsonError("缺少商品 ID", 400);
     }
 
-    // 取得商品基本資訊
-    const productName = productData.name || "未命名商品";
-    const productPrice = productData.price || "0";
-    
-    // 🎯 4. 全方位清洗商品圖片網址
-    let rawImageUrl = body.productImage || productData.image_url || body.image_url;
-    let parsedImageUrl = "";
+    // 從資料庫取得可信的商品資料
+    const { data: product, error: productError } =
+      await admin
+        .from("products")
+        .select(
+          "id, name, price, image_url, line_user_id, status"
+        )
+        .eq("id", record.id)
+        .single();
 
-    if (rawImageUrl) {
-      try {
-        if (Array.isArray(rawImageUrl)) {
-          parsedImageUrl = rawImageUrl[0];
-        } else if (typeof rawImageUrl === 'string' && (rawImageUrl.startsWith('[') || rawImageUrl.startsWith('{'))) {
-          const parsed = JSON.parse(rawImageUrl);
-          parsedImageUrl = Array.isArray(parsed) ? parsed[0] : (parsed.url || rawImageUrl);
-        } else if (typeof rawImageUrl === 'string') {
-          parsedImageUrl = rawImageUrl;
-        }
+    if (productError || !product) {
+      console.error("讀取商品失敗:", productError);
+      return jsonError("無法取得商品資料", 404);
+    }
 
-        if (parsedImageUrl && typeof parsedImageUrl === 'string') {
-          parsedImageUrl = parsedImageUrl.replace(/[\[\]"']/g, '').replace(/\\/g, '').trim();
-          
-          if (parsedImageUrl && !parsedImageUrl.startsWith('http') && parsedImageUrl !== "/placeholder-logo.png") {
-            const cleanPath = parsedImageUrl.replace(/^\//, "");
-            parsedImageUrl = `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${cleanPath}`;
-          }
-        }
-      } catch (e) {
-        console.error("解析圖片網址出錯:", e);
-        parsedImageUrl = "";
+    const status = getStatus(product as Product);
+
+    if (!["pending", "approved", "rejected"].includes(status)) {
+      return NextResponse.json({
+        success: true,
+        skipped: "此狀態不需要通知",
+      });
+    }
+
+    // UPDATE 只有審核狀態真的變更時才通知
+    if (eventType === "UPDATE") {
+      const previousStatus = oldRecord?.status;
+
+      if (!oldRecord || previousStatus === status) {
+        return NextResponse.json({
+          success: true,
+          skipped: "商品審核狀態沒有變更",
+        });
       }
     }
 
-    console.log("🧼 [後端自動補全] 最終送往 LINE 的圖片網址為:", parsedImageUrl);
+    const sellerLoginId = product.line_user_id;
 
-    // 🎯 5. 根據狀態決定文案與主題顏色
-    const productStatus = productData.status || body.status;
-
-    let title = "📦 商品刊登成功 (審核中)";
-    let color = "#D35400"; // 暖橘色
-    let subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
-
-    // ✨ 新增分支：當前端按下「聯繫賣家」時發送此通知
-    if (productStatus === 'contact_seller') {
-      title = "🤝 收到買家購買意願通知！";
-      color = "#3B82F6"; // 亮藍色，代表聯絡與媒合
-      subText = "太棒了！有買家對您的二手寶貝表示非常有興趣，並已取得您的聯絡方式。請隨時留意您的 LINE 訊息與好友申請，主動與買家取得聯繫確認交貨細節喔！";
-    } else if (productStatus === 'approved') {
-      title = "🎉 商品審核通過！已成功上架";
-      color = "#10B981"; // 翠綠色
-      subText = "恭喜！您的二手寶貝已經在平台上公開展示，祝您順利成交！";
-    } else if (productStatus === 'rejected') {
-      title = "⚠️ 商品未通過審核 (已被退回)";
-      color = "#EF4444"; // 玫瑰紅
-      subText = "您的商品因未符合規範已被退回，您可以到「個人中心」查看並修改。";
-    } else if (productStatus === 'pending' || type === 'INSERT') {
-      title = "📦 商品刊登成功 (審核中)";
-      color = "#D35400";
-      subText = "管理員正在全力審核您的商品，審核通過或退回都會第一時間通知您喔！";
-    } else if (type === 'DELETE') {
-      title = "❌ 商品已被移除";
-      color = "#64748B"; // 灰藍色
-      subText = "您的商品已被下架或刪除。";
+    if (!sellerLoginId) {
+      return NextResponse.json({
+        success: true,
+        skipped: "商品沒有賣家 LINE ID",
+      });
     }
 
-    // 安全轉換價格數字
-    const parsedPrice = parseInt(String(productPrice).replace(/[^0-9]/g, ''), 10);
-    const displayPrice = isNaN(parsedPrice) ? "0" : parsedPrice.toLocaleString();
+    // 優先使用已建立的 Messaging API 帳號對應
+    const { data: binding, error: bindingError } =
+      await admin
+        .from("line_notification_bindings")
+        .select("messaging_user_id")
+        .eq("login_user_id", sellerLoginId)
+        .maybeSingle();
 
-    // 🎯 6. 建立標準的 LINE 氣泡結構
-    const bubbleStructure: any = {
-      type: 'bubble',
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        paddingAll: 'lg',
-        spacing: 'md',
-        contents: [
-          {
-            type: 'text',
-            text: title,
-            weight: 'bold',
-            color: color,
-            size: 'md'
-          },
-          {
-            type: 'text',
-            text: productName,
-            weight: 'bold',
-            size: 'xl',
-            wrap: true
-          },
-          {
-            type: 'box',
-            layout: 'baseline',
-            spacing: 'xs',
-            contents: [
-              {
-                type: 'text',
-                text: '預售價格：',
-                size: 'sm',
-                color: '#666666',
-                flex: 0
-              },
-              {
-                type: 'text',
-                text: `NT$ ${displayPrice}`,
-                weight: 'bold',
-                size: 'md',
-                color: '#D35400',
-                flex: 1
-              }
-            ]
-          },
-          {
-            type: 'text',
-            text: subText,
-            color: '#444444',
-            size: 'sm',
-            wrap: true
-          },
-          {
-            type: 'box',
-            layout: 'vertical',
-            margin: 'lg',
-            contents: [
-              {
-                type: 'text',
-                text: "請與買家雙方確認好付款與交貨時間。",
-                size: 'xs',
-                color: '#777777',
-                margin: 'none',
-                wrap: true
-              },
-              {
-                type: 'separator',
-                color: '#E5E5E5',
-                margin: 'md'
-              },
-              {
-                type: 'text',
-                text: "📍 南臺二手市集 · 自動通知系統",
-                size: 'xs',
-                color: '#A0A0A0',
-                margin: 'md'
-              }
-            ]
-          }
-        ]
+    if (bindingError) {
+      console.error("查詢 LINE 綁定失敗:", bindingError);
+      return jsonError("無法確認通知收件人", 500);
+    }
+
+    // 保留舊版直接使用 LINE User ID 的相容方式
+    // 不同 Provider 的 ID 可能無法直接推播
+    const recipientLineId =
+      binding?.messaging_user_id || sellerLoginId;
+
+    const flexMessage = createFlexMessage(
+      product as Product
+    );
+
+    if (!flexMessage) {
+      return NextResponse.json({
+        success: true,
+        skipped: "不支援的通知狀態",
+      });
+    }
+
+    const response = await fetch(
+      "https://api.line.me/v2/bot/message/push",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${channelAccessToken}`,
+        },
+        body: JSON.stringify({
+          to: recipientLineId,
+          messages: [flexMessage],
+        }),
       }
-    };
-
-    // 如果清洗補全出合法的圖片，直接掛載至 hero 區塊
-    if (rawImageUrl && parsedImageUrl && parsedImageUrl.startsWith('http')) {
-      bubbleStructure.hero = {
-        type: 'image',
-        url: parsedImageUrl,
-        size: 'full',
-        aspectRatio: '16:9',
-        aspectMode: 'cover'
-      };
-    }
-
-    const flexPayload = {
-      to: lineUserId,
-      messages: [{
-        type: 'flex',
-        altText: title,
-        contents: bubbleStructure
-      }]
-    };
-
-    const response = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: JSON.stringify(flexPayload),
-    });
+    );
 
     if (!response.ok) {
-      const errorMsg = await response.json();
-      console.error("🔴 LINE API 傳送失敗，完整錯誤回應：", JSON.stringify(errorMsg, null, 2));
-      return NextResponse.json({ error: "LINE API 失敗", details: errorMsg }, { status: response.status });
+      const errorText = await response.text();
+
+      console.error(
+        "LINE 推播失敗:",
+        response.status,
+        errorText
+      );
+
+      return jsonError("LINE 推播失敗", 502);
     }
 
-    console.log(`🟢 LINE 通知發送成功！`);
-    return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error("💥 Notify 路由發生崩潰:", err);
-    return NextResponse.json({ error: "伺服器內部錯誤", details: err.message }, { status: 500 });
+    console.log("LINE 商品審核通知已提交:", {
+      productId: product.id,
+      status,
+      eventType,
+    });
+
+    return NextResponse.json({
+      success: true,
+      productId: product.id,
+      status,
+      message: "LINE 通知已提交",
+    });
+  } catch (error) {
+    console.error("商品審核通知發生錯誤:", error);
+
+    return jsonError("通知服務發生錯誤", 500);
   }
 }
