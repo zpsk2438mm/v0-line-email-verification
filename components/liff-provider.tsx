@@ -9,11 +9,20 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+
 import { supabase } from "@/lib/supabase";
 import { Loader2 } from "lucide-react";
 
+// LINE Developers 的 LIFF ID
 const LIFF_ID =
   process.env.NEXT_PUBLIC_LIFF_ID || "";
+
+// LINE Developers 已設定的正式網站網址
+const PRODUCTION_URL =
+  "https://v0-supabase-form-integration-two.vercel.app/";
+
+const PRODUCTION_ORIGIN =
+  new URL(PRODUCTION_URL).origin;
 
 interface LiffContextType {
   isAuthenticated: boolean;
@@ -91,42 +100,88 @@ export function LiffProvider({
   const [liffInstance, setLiffInstance] =
     useState<any>(null);
 
+  // 從學校信箱取得學號
   const extractNameFromEmail = (
     email: string | null
   ) => {
     if (!email) return null;
+
     return email
       .split("@")[0]
       .toUpperCase();
   };
 
+  // 判斷目前是否在正式網站
+  const isProductionWebsite = () => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return (
+      window.location.origin ===
+      PRODUCTION_ORIGIN
+    );
+  };
+
   // LINE 登入
   const login = useCallback(() => {
-    if (!liffInstance) {
-      console.warn(
-        "LIFF 尚未初始化，無法登入"
-      );
+    if (typeof window === "undefined") {
       return;
     }
 
+    // 防止 Preview 網址造成 LINE 400
+    // 只在使用者點擊登入時進行轉址
+    if (!isProductionWebsite()) {
+      console.log(
+        "目前不是正式網站，正在轉往正式網址..."
+      );
+
+      window.location.replace(
+        PRODUCTION_URL
+      );
+
+      return;
+    }
+
+    // 確認 LIFF 已初始化
+    if (!liffInstance) {
+      console.warn(
+        "LIFF 尚未初始化，無法執行登入"
+      );
+
+      return;
+    }
+
+    // 已登入 LINE 就不需要重複登入
     if (liffInstance.isLoggedIn()) {
+      console.log(
+        "LINE 已登入，無須重複驗證"
+      );
+
       return;
     }
 
     try {
+      // 在 LINE App 內使用原本的 LIFF 流程
       if (liffInstance.isInClient()) {
-        // LINE App 內使用 LIFF 預設登入
-        liffInstance.login();
-      } else {
-        // 外部瀏覽器固定返回網站首頁
-        // 避免目前網址帶有不必要的參數
-        const redirectUri =
-          `${window.location.origin}/`;
+        console.log(
+          "正在使用 LINE App 內建登入"
+        );
 
-        liffInstance.login({
-          redirectUri,
-        });
+        liffInstance.login();
+
+        return;
       }
+
+      // 在電腦 Chrome、Edge 等外部瀏覽器
+      // 固定使用 LINE Developers 設定的正式網址
+      console.log(
+        "正在使用電腦版 LINE 登入"
+      );
+
+      liffInstance.login({
+        redirectUri: PRODUCTION_URL,
+      });
     } catch (err) {
       console.error(
         "LINE 登入啟動失敗:",
@@ -146,7 +201,7 @@ export function LiffProvider({
 
     async function initAuthAndLiff() {
       try {
-        // 1. 初始化 Supabase 登入狀態
+        // 1. 讀取 Supabase 登入狀態
         const {
           data: { session },
         } =
@@ -170,11 +225,13 @@ export function LiffProvider({
           );
         }
 
-        // 2. 監聽 Supabase 驗證狀態
+        // 2. 監聽 Supabase 登入狀態
         const authListener =
           supabase.auth.onAuthStateChange(
             (_event, session) => {
-              if (!isMounted) return;
+              if (!isMounted) {
+                return;
+              }
 
               if (session) {
                 const email =
@@ -223,8 +280,8 @@ export function LiffProvider({
             setLiffInstance(liff);
           }
 
-          // 4. 只讀取已登入的 LINE 身分
-          // 不在初始化時強制登入
+          // 4. 讀取已登入的 LINE 資料
+          // 不主動呼叫 login，避免無限跳轉
           if (liff.isLoggedIn()) {
             const profile =
               await liff.getProfile();
@@ -240,17 +297,17 @@ export function LiffProvider({
             }
           } else {
             console.log(
-              "LINE LIFF 初始化成功，等待使用者手動登入。"
+              "LINE LIFF 初始化完成，目前尚未登入。"
             );
           }
         } else {
           console.warn(
-            "尚未設定 NEXT_PUBLIC_LIFF_ID"
+            "未設定 NEXT_PUBLIC_LIFF_ID"
           );
         }
       } catch (err) {
         console.error(
-          "LINE / Supabase 初始化失敗:",
+          "LINE 或 Supabase 初始化失敗:",
           err
         );
       } finally {
@@ -265,11 +322,12 @@ export function LiffProvider({
 
     return () => {
       isMounted = false;
+
       subscription?.unsubscribe();
     };
   }, []);
 
-  // 發送學校信箱驗證碼
+  // 發送南臺學校信箱驗證碼
   const sendOtp = async (
     email: string
   ) => {
@@ -287,6 +345,11 @@ export function LiffProvider({
         success: true,
       };
     } catch (err: any) {
+      console.error(
+        "學校信箱驗證碼發送失敗:",
+        err
+      );
+
       return {
         success: false,
         error:
@@ -296,7 +359,7 @@ export function LiffProvider({
     }
   };
 
-  // 驗證學校信箱 OTP
+  // 驗證南臺學校信箱 OTP
   const verifyOtp = async (
     email: string,
     token: string
@@ -347,6 +410,11 @@ export function LiffProvider({
           "驗證成功，但未能建立安全工作階段",
       };
     } catch (err: any) {
+      console.error(
+        "學校信箱驗證失敗:",
+        err
+      );
+
       return {
         success: false,
         error:
