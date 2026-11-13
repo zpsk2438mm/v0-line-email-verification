@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from "react";
@@ -110,7 +111,7 @@ export default function ListingForm({
   const [submitError, setSubmitError] =
     useState("");
 
-  // 上傳圖片至 Supabase Storage
+  // 上傳商品照片
   const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -142,7 +143,9 @@ export default function ListingForm({
 
         const fileName =
           `${Date.now()}_${i}_` +
-          `${Math.random().toString(36).substring(7)}.${fileExt}`;
+          `${Math.random()
+            .toString(36)
+            .substring(7)}.${fileExt}`;
 
         const filePath = `products/${fileName}`;
 
@@ -152,7 +155,7 @@ export default function ListingForm({
             .upload(filePath, file);
 
         if (uploadError) {
-          // 保留原本相容的備用 bucket
+          // 保留原本的備用 Storage bucket
           const { error: fallbackError } =
             await supabase.storage
               .from("products")
@@ -209,7 +212,7 @@ export default function ListingForm({
     }
   };
 
-  // 移除照片
+  // 移除商品照片
   const handleRemoveImage = (
     indexToRemove: number
   ) => {
@@ -220,7 +223,7 @@ export default function ListingForm({
     );
   };
 
-  // 刊登或修改商品
+  // 送出商品
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
@@ -232,7 +235,7 @@ export default function ListingForm({
 
     setSubmitError("");
 
-    // 取得 LINE ID
+    // 取得目前登入的 LINE ID
     const activeLineId =
       lineId ||
       (typeof window !== "undefined"
@@ -254,7 +257,7 @@ export default function ListingForm({
       return;
     }
 
-    // 檢查商品資料
+    // 檢查必填資料
     if (
       !title.trim() ||
       !category ||
@@ -275,7 +278,8 @@ export default function ListingForm({
     }
 
     if (!CATEGORIES.includes(category)) {
-      const msg = "請重新選擇商品分類。";
+      const msg =
+        "請重新選擇商品分類。";
 
       setSubmitError(msg);
 
@@ -326,8 +330,7 @@ export default function ListingForm({
     setIsSubmitting(true);
 
     try {
-      // 每次送出時，重新向伺服器確認
-      // 賣家是否已設定私人 LINE 加好友連結
+      // 送出前重新檢查賣家 LINE 聯絡方式
       const contactData = await contactRequest(
         "/api/seller-contact"
       );
@@ -339,12 +342,11 @@ export default function ListingForm({
 
       if (!validLineUrl(sellerLineUrl)) {
         throw new Error(
-          "尚未設定有效的私人 LINE 加好友連結，請先前往個人中心設定後再刊登。"
+          "尚未設定有效的私人 LINE 加好友連結，請先前往個人中心設定。"
         );
       }
 
-      // 保留 products 原本的資料欄位
-      // contact_info 自動填入已驗證的 LINE 連結
+      // 商品資料
       const payload = {
         title: title.trim(),
         category,
@@ -362,18 +364,52 @@ export default function ListingForm({
           : {}),
       };
 
-      // 保留原本的 Supabase 商品儲存流程
+      console.log("準備儲存商品:", {
+        title: payload.title,
+        category: payload.category,
+        price: payload.price,
+        imageCount: payload.images.length,
+        isEditing,
+      });
+
+      // 寫入 Supabase products
       const { data, error } = await supabase
         .from("products")
         .upsert(payload)
         .select()
         .single();
 
+      // 顯示完整 Supabase 錯誤
       if (error) {
-        throw error;
+        console.error(
+          "Supabase 商品儲存錯誤:",
+          {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          }
+        );
+
+        const errorDetails = [
+          `資料庫錯誤：${error.message}`,
+          error.code
+            ? `錯誤代碼：${error.code}`
+            : "",
+          error.details
+            ? `詳細資訊：${error.details}`
+            : "",
+          error.hint
+            ? `建議：${error.hint}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        throw new Error(errorDetails);
       }
 
-      // 保留原本的管理員通知
+      // 保留管理員通知功能
       try {
         await fetch("/api/notify", {
           method: "POST",
@@ -407,12 +443,12 @@ export default function ListingForm({
 
       router.push("/my-listings");
     } catch (err: unknown) {
-      console.error("儲存失敗:", err);
+      console.error("商品刊登失敗:", err);
 
       const msg =
         err instanceof Error
           ? err.message
-          : "無法寫入資料庫，請稍後再試。";
+          : "發生未知錯誤，請稍後再試。";
 
       setSubmitError(msg);
 
@@ -426,6 +462,7 @@ export default function ListingForm({
     }
   };
 
+  // 等待 LINE 初始化
   if (isLiffLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-12 space-y-4">
@@ -528,13 +565,12 @@ export default function ListingForm({
             />
           </div>
 
-          {/* 分類 */}
+          {/* 分類：手機原生選單 */}
           <div className="space-y-2">
             <Label htmlFor="category">
               分類 *
             </Label>
 
-            {/* 使用手機原生下拉選單，避免選項重疊 */}
             <select
               id="category"
               name="category"
@@ -543,7 +579,7 @@ export default function ListingForm({
                 setCategory(e.target.value)
               }
               required
-              className="flex h-12 w-full min-w-0 appearance-auto rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#D95300] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-12 w-full min-w-0 appearance-auto rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#D95300]"
             >
               <option value="" disabled>
                 請選擇分類
@@ -582,7 +618,7 @@ export default function ListingForm({
             />
           </div>
 
-          {/* LINE 聯絡方式已於刊登前設定 */}
+          {/* 自動使用賣家的 LINE 聯絡方式 */}
           <div className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
 
@@ -592,8 +628,8 @@ export default function ListingForm({
               </p>
 
               <p className="text-xs leading-relaxed text-emerald-700">
-                系統會使用你在個人中心設定的私人
-                LINE 加好友連結，不需要重複輸入
+                系統會使用你已設定的私人 LINE
+                加好友連結，不需要重複輸入
                 LINE ID 或手機號碼。
               </p>
             </div>
@@ -617,7 +653,7 @@ export default function ListingForm({
             />
           </div>
 
-          {/* 錯誤訊息直接顯示在按鈕上方 */}
+          {/* 顯示完整錯誤訊息 */}
           {submitError && (
             <div
               role="alert"
@@ -625,7 +661,7 @@ export default function ListingForm({
             >
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
-              <p className="break-words">
+              <p className="whitespace-pre-wrap break-words">
                 {submitError}
               </p>
             </div>
