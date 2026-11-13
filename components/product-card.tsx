@@ -1,59 +1,168 @@
+
 "use client";
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "lucide-react";
+import { FavoriteButton } from "@/components/favorite-button";
 
-export function ProductCard({ product }: { product: any }) {
-  // 檢查 ID 是否存在，避免產生無效的連結
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  description?: string | null;
+  image_url?: unknown;
+  images?: unknown;
+  created_at?: string;
+  approved_at?: string | null;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  electronics: "電子產品",
+  books: "書籍教材",
+  tools_stationery: "文具/專業工具",
+  dorm_supplies: "租屋收納/雜貨",
+  hobbies: "遊戲/娛樂",
+  cosmetics: "化妝品/美妝",
+  food: "食物/零食",
+  clothing: "服飾配件",
+  furniture: "家具家電",
+  sports: "運動用品",
+  other: "其他",
+};
+
+function getDisplayImage(value: unknown): string {
+  if (!value) return "/placeholder-logo.png";
+
+  if (Array.isArray(value)) {
+    return getDisplayImage(value[0]);
+  }
+
+  if (typeof value !== "string") {
+    return "/placeholder-logo.png";
+  }
+
+  let result = value.trim();
+
+  if (result.startsWith("[")) {
+    try {
+      return getDisplayImage(JSON.parse(result));
+    } catch {
+      return "/placeholder-logo.png";
+    }
+  }
+
+  if (!result) return "/placeholder-logo.png";
+
+  if (result.startsWith("https://")) return result;
+
+  if (result.startsWith("/")) {
+    if (result === "/placeholder-logo.png") return result;
+    result = result.slice(1);
+  }
+
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  if (!supabaseUrl) return "/placeholder-logo.png";
+
+  return `${supabaseUrl}/storage/v1/object/public/product-images/${result}`;
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleDateString("zh-TW", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function ProductCard({
+  product,
+  onFavoriteChange,
+}: {
+  product: Product;
+  onFavoriteChange?: (isFavorite: boolean) => void;
+}) {
   if (!product?.id) return null;
 
-  // 處理圖片顯示邏輯，相容陣列與字串格式
-  const getDisplayImage = (url: any) => {
-    if (!url) return "/placeholder-logo.png";
-    if (Array.isArray(url)) return url[0];
-    if (typeof url === "string" && url.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(url);
-        return Array.isArray(parsed) ? parsed[0] : url;
-      } catch {
-        return url;
-      }
-    }
-    return url;
-  };
+  const dateText = formatDate(
+    product.approved_at || product.created_at
+  );
 
   return (
-    <Link 
-      href={`/products/${product.id}`} 
-      // relative z-10 確保卡片不會被背景元素遮擋，block 確保整個區域都可點擊
-      className="relative z-10 block group cursor-pointer no-underline"
-    >
-      <div className="bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-slate-100 flex flex-col h-full">
-        {/* 圖片區域 */}
-        <div className="relative aspect-square bg-slate-50 overflow-hidden">
-          <img 
-            src={getDisplayImage(product.image_url)} 
-            alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-          <Badge className="absolute top-3 left-3 bg-white/80 backdrop-blur-md text-slate-700 border-none">
-            {product.category}
-          </Badge>
-        </div>
+    <div className="relative group h-full">
+      <Link
+        href={`/products/${product.id}`}
+        className="block h-full no-underline active:scale-[0.98] transition-transform"
+      >
+        <div className="h-full overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col">
+          <div className="relative aspect-square overflow-hidden bg-slate-50">
+            <img
+              src={getDisplayImage(
+                product.image_url || product.images
+              )}
+              alt={product.name}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src =
+                  "/placeholder-logo.png";
+              }}
+            />
 
-        {/* 文字區域 */}
-        <div className="p-4 flex flex-col flex-1">
-          <h3 className="font-bold text-slate-800 truncate mb-1">{product.name}</h3>
-          <p className="text-xs text-slate-400 line-clamp-1 mb-4">{product.description}</p>
-          
-          <div className="flex justify-between items-end mt-auto">
-            <span className="text-rose-500 font-black text-lg">
-              NT$ {Number(product.price).toLocaleString()}
-            </span>
-            <span className="text-[11px] text-blue-500 font-bold">查看詳情 🔍</span>
+            <Badge
+              variant="secondary"
+              className="absolute left-2 top-2 max-w-[65%] truncate border-none bg-white/90 text-[9px] font-bold text-[#D35400]"
+            >
+              {CATEGORY_LABELS[product.category] ||
+                product.category ||
+                "其他"}
+            </Badge>
+          </div>
+
+          <div className="flex flex-1 flex-col justify-between p-3">
+            <div>
+              <h3 className="line-clamp-1 text-sm font-bold text-slate-800 group-hover:text-[#D35400]">
+                {product.name}
+              </h3>
+
+              <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-400">
+                {product.description || "校園二手好物"}
+              </p>
+            </div>
+
+            <div className="mt-3">
+              <p className="text-base font-extrabold text-[#D35400]">
+                NT$ {Number(product.price || 0).toLocaleString("zh-TW")}
+              </p>
+
+              <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {dateText}
+                </span>
+
+                <span className="font-bold text-blue-500">
+                  查看詳情
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+
+      <FavoriteButton
+        productId={product.id}
+        onChange={onFavoriteChange}
+        className="absolute right-2 top-2"
+      />
+    </div>
   );
 }
