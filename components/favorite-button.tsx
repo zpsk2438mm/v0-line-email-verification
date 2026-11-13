@@ -155,7 +155,7 @@ export function FavoriteButton({
       aria-label={favorite ? "取消收藏" : "加入最愛"}
       aria-pressed={favorite}
       title={favorite ? "取消收藏" : "加入我的最愛"}
-      className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-md transition-transform hover:scale-110 disabled:opacity-60 ${className}`}
+      className={`z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-md transition-transform hover:scale-110 disabled:opacity-60 ${className}`}
     >
       {loading || saving ? (
         <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
