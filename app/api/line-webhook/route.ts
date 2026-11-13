@@ -20,6 +20,10 @@ interface LineEvent {
     type?: string;
     text?: string;
   };
+  link?: {
+    result?: string;
+    nonce?: string;
+  };
   replyToken?: string;
   webhookEventId?: string;
   deliveryContext?: {
@@ -31,7 +35,7 @@ interface LineWebhookBody {
   events?: LineEvent[];
 }
 
-// 驗證 LINE 官方請求簽章
+// 驗證 LINE Webhook 簽章
 function verifySignature(
   rawBody: string,
   signature: string,
@@ -59,10 +63,10 @@ function verifySignature(
   return timingSafeEqual(expected, received);
 }
 
-// 將綁定碼轉換為 SHA-256
-function hashCode(code: string): string {
+// SHA-256 雜湊
+function hashValue(value: string): string {
   return createHash("sha256")
-    .update(code)
+    .update(value, "utf8")
     .digest("hex");
 }
 
@@ -89,18 +93,20 @@ async function replyLine(
           },
         ],
       }),
+      signal: AbortSignal.timeout(5000),
     }
   );
 
   if (!response.ok) {
     console.error(
-      "LINE 回覆訊息失敗，HTTP:",
-      response.status
+      "LINE 回覆訊息失敗:",
+      response.status,
+      await response.text().catch(() => "")
     );
   }
 }
 
-// 將資料庫回傳結果轉換成提示訊息
+// 舊版六位數綁定結果
 function bindingResultMessage(
   result: string
 ): string {
@@ -134,8 +140,40 @@ function bindingResultMessage(
       );
 
     default:
+      return "⚠️ 綁定暫時無法完成，請稍後再試。";
+  }
+}
+
+// 新版 LINE Account Linking 結果
+function accountLinkResultMessage(
+  result: string
+): string {
+  switch (result) {
+    case "success":
       return (
-        "⚠️ 綁定暫時無法完成，請稍後再試。"
+        "🎉 LINE 商品通知已成功啟用！\n\n" +
+        "你的「資想聽你說」網站帳號" +
+        "已經和 LINE 官方帳號完成安全配對。\n\n" +
+        "以後有買家點擊你的商品「聯絡賣家」，" +
+        "就會透過本官方帳號通知你。\n\n" +
+        "不需要再輸入六位數綁定碼！🧡"
+      );
+
+    case "already_bound":
+      return (
+        "⚠️ 你的 LINE 帳號已經綁定通知。\n\n" +
+        "如果需要更換帳號，請先解除原本的綁定。"
+      );
+
+    case "invalid":
+      return (
+        "⚠️ 配對連結已過期或無效。\n\n" +
+        "請重新開啟網站，取得新的配對連結。"
+      );
+
+    default:
+      return (
+        "⚠️ LINE 通知配對暫時失敗，請稍後再試。"
       );
   }
 }
@@ -169,7 +207,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // LINE 簽章驗證
+  // 驗證 LINE 官方簽章
   const signature =
     req.headers.get("x-line-signature");
 
@@ -222,35 +260,140 @@ export async function POST(req: NextRequest) {
     : [];
 
   for (const event of events) {
-    // 只處理使用者傳送的文字訊息
+    const messagingUserId =
+      event.source?.userId;
+
     if (
-      event.type !== "message" ||
       event.source?.type !== "user" ||
-      event.message?.type !== "text" ||
-      !event.source.userId ||
-      !event.replyToken
+      !messagingUserId
     ) {
       continue;
     }
 
-    const message = (
-      event.message.text || ""
-    ).trim();
-
-    // 只接受六位數綁定碼
-    // 一般聊天訊息不會觸發綁定
-    if (!/^[0-9]{6}$/.test(message)) {
-      continue;
-    }
-
-    const messagingUserId =
-      event.source.userId;
-
-    const codeHash = hashCode(message);
-
     try {
-      // 呼叫 Supabase 原子性綁定函式
-      // 驗證、限流及資料寫入都在資料庫完成
+      // 新版：LINE Account Linking
+      if (event.type === "accountLink") {
+        const linkResult =
+          event.link?.result;
+
+        const nonce =
+          event.link?.nonce;
+
+        // 只有 LINE 確認成功的事件才能綁定
+        if (
+          linkResult !== "ok" ||
+          !nonce
+        ) {
+          console.log(
+            "LINE Account Linking 未成功完成"
+          );
+          continue;
+        }
+
+        const nonceHash =
+          hashValue(nonce);
+
+        // 由 Supabase 驗證 nonce 是否有效、
+        // 是否過期、是否已經使用
+        const { data, error } = await admin.rpc(
+          "complete_line_account_link",
+          {
+            p_nonce_hash: nonceHash,
+            p_messaging_user_id:
+              messagingUserId,
+          }
+        );
+
+        if (error) {
+          console.error(
+            "LINE Account Linking 資料庫失敗:",
+            error.code,
+            error.message
+          );
+
+          // 失敗時拋出錯誤，讓 LINE 可以重送事件
+          throw error;
+        }
+
+        const result = String(
+          data || ""
+        );
+
+        console.log(
+          "LINE Account Linking 結果:",
+          result
+        );
+
+        // accountLink 事件沒有 replyToken，
+        // 因此使用 Push API 發送結果
+        if (
+          result === "success" ||
+          result === "already_bound" ||
+          result === "invalid"
+        ) {
+          const response = await fetch(
+            "https://api.line.me/v2/bot/message/push",
+            {
+              method: "POST",
+              headers: {
+                Authorization:
+                  `Bearer ${accessToken}`,
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                to: messagingUserId,
+                messages: [
+                  {
+                    type: "text",
+                    text:
+                      accountLinkResultMessage(
+                        result
+                      ),
+                  },
+                ],
+              }),
+              signal:
+                AbortSignal.timeout(5000),
+            }
+          );
+
+          if (!response.ok) {
+            console.error(
+              "LINE 配對結果通知失敗:",
+              response.status,
+              await response
+                .text()
+                .catch(() => "")
+            );
+          }
+        }
+
+        continue;
+      }
+
+      // 舊版：六位數綁定碼
+      // 暫時保留，避免影響原本使用者
+      if (
+        event.type !== "message" ||
+        event.message?.type !== "text" ||
+        !event.replyToken
+      ) {
+        continue;
+      }
+
+      const message = (
+        event.message.text || ""
+      ).trim();
+
+      // 只接受六位數
+      if (!/^[0-9]{6}$/.test(message)) {
+        continue;
+      }
+
+      const codeHash =
+        hashValue(message);
+
       const { data, error } = await admin.rpc(
         "complete_line_binding",
         {
@@ -262,7 +405,7 @@ export async function POST(req: NextRequest) {
 
       if (error) {
         console.error(
-          "LINE 綁定資料庫操作失敗:",
+          "舊版 LINE 綁定資料庫失敗:",
           error.code,
           error.message
         );
@@ -276,22 +419,29 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const result = String(data || "");
-
       await replyLine(
         event.replyToken,
-        bindingResultMessage(result),
+        bindingResultMessage(
+          String(data || "")
+        ),
         accessToken
       );
     } catch (error) {
       console.error(
-        "LINE 綁定事件處理失敗:",
+        "LINE Webhook 事件處理失敗:",
         error instanceof Error
           ? error.message
           : "未知錯誤"
       );
 
-      // 不讓單一事件的失敗影響其他事件
+      // Account Linking 的資料庫錯誤，
+      // 不應回報成處理成功
+      if (event.type === "accountLink") {
+        return NextResponse.json(
+          { error: "Account Linking 處理失敗" },
+          { status: 500 }
+        );
+      }
     }
   }
 
