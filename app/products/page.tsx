@@ -1,24 +1,19 @@
+
 "use client";
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { ProductCard } from "@/components/product-card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
 import {
   Search,
   ShoppingBag,
-  Calendar,
-  LogIn,
   Flame,
-  Sparkles,
-  Loader2
+  Loader2,
 } from "lucide-react";
 
 interface Product {
@@ -26,12 +21,11 @@ interface Product {
   name: string;
   price: number;
   category: string;
-  description?: string;
+  description?: string | null;
   status: string;
   created_at: string;
-  approved_at?: string; 
-  image_url?: any;
-  images?: any;
+  approved_at?: string | null;
+  image_url?: unknown;
 }
 
 const CATEGORIES = [
@@ -49,97 +43,94 @@ const CATEGORIES = [
   { id: "other", label: "🔍 其他" },
 ];
 
-const CATEGORY_LABELS: Record<string, string> = {
-  electronics: "電子產品",
-  books: "書籍教材",
-  tools_stationery: "文具/專業工具",
-  dorm_supplies: "租屋收納/雜貨",
-  hobbies: "遊戲/娛樂",
-  cosmetics: "化妝品/美妝",
-  food: "食物/零食",
-  clothing: "服飾配件",
-  furniture: "家具家電",
-  sports: "運動用品",
-  other: "其他",
-};
-
 export default function ExploreProductsPage() {
   const { isLoading: liffLoading } = useLiff();
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCategory, setSelectedCategory] =
+    useState("all");
 
-  // --- 抓取商品邏輯 ---
   useEffect(() => {
     if (liffLoading) return;
 
-    async function fetchAllApprovedProducts() {
+    let cancelled = false;
+
+    async function fetchProducts() {
       try {
         setFetching(true);
+        setErrorMessage("");
+
         const { data, error } = await supabase
           .from("products")
-          .select("*")
-          .eq("status", "approved") 
-          .order("approved_at", { ascending: false, nullsFirst: false })
-          .order("created_at", { ascending: false });
+          .select(
+            "id, name, price, category, description, status, created_at, approved_at, image_url"
+          )
+          .eq("status", "approved")
+          .order("approved_at", {
+            ascending: false,
+            nullsFirst: false,
+          })
+          .order("created_at", {
+            ascending: false,
+          });
 
         if (error) throw error;
-        setProducts(data || []);
-        setFilteredProducts(data || []);
-      } catch (err) {
-        console.error("載入商品失敗:", err);
+
+        if (!cancelled) {
+          setProducts((data || []) as Product[]);
+        }
+      } catch (error) {
+        console.error("載入商品失敗:", error);
+
+        if (!cancelled) {
+          setErrorMessage("商品載入失敗，請重新整理頁面。");
+        }
       } finally {
-        setFetching(false);
+        if (!cancelled) setFetching(false);
       }
     }
 
-    fetchAllApprovedProducts();
+    void fetchProducts();
+
+    return () => {
+      cancelled = true;
+    };
   }, [liffLoading]);
 
-  // --- 搜尋與分類邏輯 ---
-  useEffect(() => {
-    let result = products || [];
+  const filteredProducts = useMemo(() => {
+    let result = products;
+
     if (selectedCategory !== "all") {
-      result = result.filter((p) => p.category === selectedCategory);
-    }
-    if (searchQuery.trim() !== "") {
-      const query = searchQuery.toLowerCase().trim();
       result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          (p.description && p.description.toLowerCase().includes(query))
+        (product) => product.category === selectedCategory
       );
     }
-    setFilteredProducts(result);
-  }, [searchQuery, selectedCategory, products]);
 
-  const getCleanImageUrl = (product: Product) => {
-    let raw = product.image_url || product.images;
-    if (!raw) return "/placeholder-logo.png";
-    try {
-      let urlString = Array.isArray(raw) ? raw[0] : String(raw);
-      let clean = urlString.replace(/[\[\]"']/g, "").trim();
-      if (clean.startsWith("http")) return clean;
-      return `https://arcapfqiihchltdhysea.supabase.co/storage/v1/object/public/product-images/${clean.replace(/^\//, "")}`;
-    } catch (e) {
-      return "/placeholder-logo.png";
+    const query = searchQuery.trim().toLowerCase();
+
+    if (query) {
+      result = result.filter(
+        (product) =>
+          product.name.toLowerCase().includes(query) ||
+          (product.description || "")
+            .toLowerCase()
+            .includes(query)
+      );
     }
-  };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
-  };
+    return result;
+  }, [products, selectedCategory, searchQuery]);
 
-  // 🎯 關鍵守衛一：如果全域安全檢查還在跑，全螢幕鎖定，把控制權完全留給 LiffProvider 完成初始化
   if (liffLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] space-y-3">
-        <Loader2 className="animate-spin text-[#D35400] h-8 w-8" />
-        <p className="text-sm text-slate-500 font-medium">正在安全同步您的 LINE 個人資料...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#FDFBF7]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+        <p className="text-sm text-slate-500">
+          正在安全同步您的 LINE 個人資料...
+        </p>
       </div>
     );
   }
@@ -148,95 +139,82 @@ export default function ExploreProductsPage() {
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
         <Navigation />
+
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D35400] shadow-md">
           <ShoppingBag className="h-5 w-5 text-white" />
         </div>
-        <h1 className="text-lg font-bold text-slate-800">市集首頁</h1>
+
+        <h1 className="text-lg font-bold text-slate-800">
+          市集首頁
+        </h1>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 pt-5 space-y-4">
+      <div className="mx-auto max-w-lg space-y-4 px-4 pt-5">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
           <Input
             type="search"
             placeholder="搜尋商品..."
-            className="pl-10 pr-4 py-5 bg-white border-slate-200 rounded-xl focus-visible:ring-[#D35400]"
+            className="rounded-xl border-slate-200 bg-white py-5 pl-10 pr-4 focus-visible:ring-[#D35400]"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(event) =>
+              setSearchQuery(event.target.value)
+            }
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none">
-          {CATEGORIES.map((cat) => (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
+          {CATEGORIES.map((category) => (
             <button
-              key={cat.id}
-              className={`rounded-full shrink-0 h-9 text-xs px-4 font-medium transition-all ${
-                selectedCategory === cat.id ? "bg-[#D35400] text-white shadow-md" : "bg-white text-slate-600 border"
+              type="button"
+              key={category.id}
+              onClick={() =>
+                setSelectedCategory(category.id)
+              }
+              className={`h-9 shrink-0 rounded-full px-4 text-xs font-medium transition-all ${
+                selectedCategory === category.id
+                  ? "bg-[#D35400] text-white shadow-md"
+                  : "border bg-white text-slate-600"
               }`}
-              onClick={() => setSelectedCategory(cat.id)}
             >
-              {cat.label}
+              {category.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mx-auto max-w-lg px-4 mt-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1">
-            <Flame className="h-4 w-4 text-[#D35400] fill-[#D35400]" />推薦商品
-          </h3>
-          <span className="text-xs text-slate-400">共 {filteredProducts.length} 件</span>
+      <div className="mx-auto mt-4 max-w-lg px-4">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-1 text-sm font-bold text-slate-700">
+            <Flame className="h-4 w-4 fill-[#D35400] text-[#D35400]" />
+            推薦商品
+          </h2>
+
+          <span className="text-xs text-slate-400">
+            共 {filteredProducts.length} 件
+          </span>
         </div>
 
         {fetching ? (
-          <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-orange-200" /></div>
+          <div className="py-20 text-center">
+            <Loader2 className="mx-auto animate-spin text-orange-300" />
+          </div>
+        ) : errorMessage ? (
+          <div className="rounded-xl bg-red-50 p-5 text-center text-sm text-red-600">
+            {errorMessage}
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="rounded-xl bg-white p-10 text-center text-sm text-slate-400">
+            目前沒有符合條件的商品
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredProducts.map((product) => (
-              <Link 
-                key={product.id} 
-                href={`/products/${product.id}`} 
-                className="block group active:scale-[0.97] transition-all duration-200"
-              >
-                <Card className="h-full overflow-hidden bg-white border-none shadow-sm rounded-2xl flex flex-col hover:shadow-md transition-shadow">
-                  <div className="aspect-square bg-slate-50 relative overflow-hidden flex items-center justify-center">
-                    <img 
-                      src={getCleanImageUrl(product)} 
-                      alt={product.name} 
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105" 
-                      onError={(e) => e.currentTarget.src = "/placeholder-logo.png"}
-                    />
-                    <div className="absolute top-2 left-2">
-                      <Badge variant="secondary" className="text-[9px] bg-white/90 backdrop-blur-md text-[#D35400] font-bold border-none">
-                        {CATEGORY_LABELS[product.category] || "其他"}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="p-3 flex-1 flex flex-col justify-between">
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1 group-hover:text-[#D35400]">
-                        {product.name}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
-                        {product.description || "校園二手好物"}
-                      </p>
-                    </div>
-
-                    <div className="mt-3">
-                      <p className="text-base font-extrabold text-[#D35400]">
-                        NT$ {product.price?.toLocaleString()}
-                      </p>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                        <span className="flex items-center gap-0.5">
-                          <Calendar className="h-3 w-3" /> {formatDate(product.approved_at || product.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </Link>
+              <ProductCard
+                key={product.id}
+                product={product}
+              />
             ))}
           </div>
         )}
