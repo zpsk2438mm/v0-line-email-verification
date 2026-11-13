@@ -40,12 +40,20 @@ interface ListingFormProps {
   isEditing?: boolean;
 }
 
+// 與市集首頁相同的分類 ID
+// 「全部」僅用於市集篩選，不提供商品刊登
 const CATEGORIES = [
-  "書籍教材",
-  "電子產品",
-  "生活用品",
-  "美妝穿搭",
-  "其他",
+  { id: "electronics", label: "📱 電子產品" },
+  { id: "books", label: "📚 書籍教材" },
+  { id: "tools_stationery", label: "✏️ 文具/專業工具" },
+  { id: "dorm_supplies", label: "🏠 租屋收納/雜貨" },
+  { id: "hobbies", label: "🎮 遊戲/娛樂" },
+  { id: "cosmetics", label: "💄 化妝品/美妝" },
+  { id: "food", label: "🍕 食物/零食" },
+  { id: "clothing", label: "👕 服飾配件" },
+  { id: "furniture", label: "🛋️ 家具家電" },
+  { id: "sports", label: "🏀 運動用品" },
+  { id: "other", label: "🔍 其他" },
 ];
 
 function validLineUrl(value: string): boolean {
@@ -277,7 +285,12 @@ export default function ListingForm({
       return;
     }
 
-    if (!CATEGORIES.includes(category)) {
+    // 檢查分類是否有效
+    const categoryExists = CATEGORIES.some(
+      (item) => item.id === category
+    );
+
+    if (!categoryExists) {
       const msg =
         "請重新選擇商品分類。";
 
@@ -347,6 +360,7 @@ export default function ListingForm({
       }
 
       // 商品資料
+      // category 儲存分類 ID，例如 electronics、books
       const payload = {
         title: title.trim(),
         category,
@@ -565,7 +579,7 @@ export default function ListingForm({
             />
           </div>
 
-          {/* 分類：手機原生選單 */}
+          {/* 分類：手機原生下拉選單 */}
           <div className="space-y-2">
             <Label htmlFor="category">
               分類 *
@@ -587,10 +601,10 @@ export default function ListingForm({
 
               {CATEGORIES.map((item) => (
                 <option
-                  key={item}
-                  value={item}
+                  key={item.id}
+                  value={item.id}
                 >
-                  {item}
+                  {item.label}
                 </option>
               ))}
             </select>
