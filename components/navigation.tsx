@@ -3,7 +3,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import {
+  usePathname,
+  useRouter,
+} from "next/navigation";
 import {
   Sheet,
   SheetContent,
@@ -25,6 +28,8 @@ import {
   Heart,
 } from "lucide-react";
 
+const LOGIN_NEXT_KEY = "login_next";
+
 const ADMIN_LINE_IDS = [
   "Ued7dfd77b63273d497cebc62f1a7b1df",
   "Uf7c4668bc96315297b02b0a67fff88ea",
@@ -33,16 +38,37 @@ const ADMIN_LINE_IDS = [
 ];
 
 const NAV_ITEMS = [
-  { href: "/", label: "販售商品", icon: Home },
-  { href: "/products", label: "搜尋市集", icon: ShoppingBag },
-  { href: "/favorites", label: "我的最愛", icon: Heart },
-  { href: "/profile", label: "個人中心", icon: User },
+  {
+    href: "/",
+    label: "販售商品",
+    icon: Home,
+  },
+  {
+    href: "/products",
+    label: "搜尋市集",
+    icon: ShoppingBag,
+  },
+  {
+    href: "/favorites",
+    label: "我的最愛",
+    icon: Heart,
+  },
+  {
+    href: "/profile",
+    label: "個人中心",
+    icon: User,
+  },
 ];
 
 export function Navigation() {
-  const [open, setOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
+  const [open, setOpen] =
+    useState(false);
+
+  const [loggingOut, setLoggingOut] =
+    useState(false);
+
   const pathname = usePathname();
+  const router = useRouter();
 
   const {
     userEmail,
@@ -51,51 +77,120 @@ export function Navigation() {
     isAuthenticated,
     userName,
     isLiffInit,
+    isLoading,
     login,
+    logout,
   } = useLiff();
 
+  // LINE + 學校信箱都完成才算登入
+  const fullyLoggedIn =
+    Boolean(lineUserId) &&
+    isAuthenticated;
+
   const isAdmin = Boolean(
-    lineUserId && ADMIN_LINE_IDS.includes(lineUserId)
+    lineUserId &&
+      ADMIN_LINE_IDS.includes(lineUserId)
   );
 
+  // 判斷是否需要先完成登入
+  function requiresLogin(href: string) {
+    return (
+      href === "/" ||
+      href === "/favorites" ||
+      href === "/profile"
+    );
+  }
+
+  // 點擊側邊欄選項
+  function handleNavigate(
+    href: string
+  ) {
+    setOpen(false);
+
+    // 搜尋市集可直接瀏覽
+    if (
+      !requiresLogin(href) ||
+      fullyLoggedIn
+    ) {
+      router.push(href);
+      return;
+    }
+
+    // 刊登商品本身就是登入頁面
+    if (href === "/") {
+      sessionStorage.removeItem(
+        LOGIN_NEXT_KEY
+      );
+
+      router.push("/");
+      return;
+    }
+
+    // 記住原本想去的頁面
+    sessionStorage.setItem(
+      LOGIN_NEXT_KEY,
+      href
+    );
+
+    // 導向首頁的雙重登入畫面
+    router.push(
+      `/?next=${encodeURIComponent(href)}`
+    );
+  }
+
+  // 完整登出 LINE 與學校信箱
   async function handleLogout() {
     if (loggingOut) return;
 
     setLoggingOut(true);
 
     try {
-      const { supabase } = await import("@/lib/supabase");
-      const { error } = await supabase.auth.signOut();
+      setOpen(false);
 
-      if (error) throw error;
-
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("stust_authenticated");
-        localStorage.removeItem("line_user_id");
-
-        const { default: liff } = await import("@line/liff");
-
-        if (liff.isLoggedIn()) {
-          liff.logout();
-        }
-
-        window.location.replace("/");
-      }
+      // 使用 LiffProvider 的登出函式
+      // 同時登出 Supabase 和 LINE
+      await logout();
     } catch (error) {
-      console.error("登出失敗:", error);
-      alert("登出失敗，請再試一次。");
+      console.error(
+        "登出失敗:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "登出失敗，請再試一次。"
+      );
+
       setLoggingOut(false);
     }
   }
 
+  // 點擊 LINE 登入
   function handleLogin() {
     setOpen(false);
+
+    // 如果目前在個人中心或我的最愛，
+    // 登入後應返回該頁面
+    if (
+      pathname === "/profile" ||
+      pathname === "/favorites"
+    ) {
+      sessionStorage.setItem(
+        LOGIN_NEXT_KEY,
+        pathname
+      );
+    }
+
     login();
   }
 
   return (
     <nav>
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet
+        open={open}
+        onOpenChange={setOpen}
+      >
         <SheetTrigger asChild>
           <Button
             variant="ghost"
@@ -129,6 +224,7 @@ export function Navigation() {
                 {!isLiffInit ? (
                   <div className="flex w-full items-center justify-center gap-3 py-1">
                     <Loader2 className="h-4 w-4 animate-spin text-[#D35400]" />
+
                     <span className="text-xs font-medium text-slate-400">
                       LINE 資料同步中...
                     </span>
@@ -138,7 +234,9 @@ export function Navigation() {
                     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-white shadow-sm ring-2 ring-white">
                       {userProfile?.pictureUrl ? (
                         <img
-                          src={userProfile.pictureUrl}
+                          src={
+                            userProfile.pictureUrl
+                          }
                           alt="使用者頭像"
                           className="h-full w-full object-cover"
                           referrerPolicy="no-referrer"
@@ -158,7 +256,8 @@ export function Navigation() {
                       </p>
 
                       <p className="truncate text-[10px] font-medium tracking-tighter text-slate-400">
-                        {userEmail || "已連結 LINE 帳號"}
+                        {userEmail ||
+                          "已連結 LINE 帳號"}
                       </p>
                     </div>
                   </>
@@ -171,14 +270,21 @@ export function Navigation() {
             <ul className="space-y-1.5">
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
-                const active = pathname === item.href;
+
+                const active =
+                  pathname === item.href;
 
                 return (
                   <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-bold transition-all ${
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() =>
+                        handleNavigate(
+                          item.href
+                        )
+                      }
+                      className={`flex w-full items-center gap-4 rounded-2xl px-5 py-3.5 text-left text-sm font-bold transition-all ${
                         active
                           ? "bg-[#D35400] text-white shadow-md shadow-orange-100"
                           : "text-slate-500 hover:bg-slate-50"
@@ -188,14 +294,15 @@ export function Navigation() {
                         className={`h-5 w-5 ${
                           active
                             ? "text-white"
-                            : item.href === "/favorites"
+                            : item.href ===
+                                "/favorites"
                               ? "text-rose-500"
                               : "text-slate-400"
                         }`}
                       />
 
                       {item.label}
-                    </Link>
+                    </button>
                   </li>
                 );
               })}
@@ -205,7 +312,9 @@ export function Navigation() {
               <div className="border-t border-dashed border-slate-200 pt-4">
                 <Link
                   href="/admin"
-                  onClick={() => setOpen(false)}
+                  onClick={() =>
+                    setOpen(false)
+                  }
                   className={`flex items-center gap-4 rounded-2xl px-5 py-3.5 text-sm font-black transition-all ${
                     pathname === "/admin"
                       ? "bg-amber-500 text-white shadow-lg"
@@ -220,19 +329,25 @@ export function Navigation() {
           </nav>
 
           <div className="mt-auto border-t bg-slate-50 p-6">
-            {isAuthenticated || lineUserId ? (
+            {isAuthenticated ||
+            lineUserId ? (
               <Button
                 variant="outline"
                 disabled={loggingOut}
                 className="h-11 w-full rounded-xl border-slate-200 font-bold text-slate-600 transition-all hover:border-rose-100 hover:bg-rose-50 hover:text-rose-600"
-                onClick={handleLogout}
+                onClick={() => {
+                  void handleLogout();
+                }}
               >
                 {loggingOut ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <LogOut className="mr-2 h-4 w-4" />
                 )}
-                {loggingOut ? "正在登出..." : "退出登入"}
+
+                {loggingOut
+                  ? "正在登出..."
+                  : "退出登入"}
               </Button>
             ) : (
               <Button
