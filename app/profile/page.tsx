@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -21,8 +20,6 @@ import {
   AlertCircle,
   Clock3,
   MessageCircle,
-  Bell,
-  Copy,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -55,73 +52,7 @@ export default function ProfilePage() {
   const [contactMessage, setContactMessage] = useState("");
   const [contactError, setContactError] = useState("");
 
-  // LINE 官方帳號通知綁定
-  const [bindingCode, setBindingCode] = useState("");
-  const [bindingExpiresAt, setBindingExpiresAt] = useState("");
-  const [bindingAlreadyBound, setBindingAlreadyBound] = useState(false);
-  const [bindingLoading, setBindingLoading] = useState(false);
-  const [bindingError, setBindingError] = useState("");
-  const [bindingNotice, setBindingNotice] = useState("");
-
-  const createBindingCode = async () => {
-    setBindingLoading(true);
-    setBindingError("");
-    setBindingNotice("");
-
-    try {
-      const data = await contactRequest(
-        "/api/line-binding",
-        "POST"
-      );
-
-      if (data.alreadyBound) {
-        setBindingAlreadyBound(true);
-        setBindingCode("");
-        setBindingExpiresAt("");
-        setBindingNotice(
-          "你的帳號已綁定 LINE 商品通知。"
-        );
-      } else if (
-        typeof data.code === "string" &&
-        data.code
-      ) {
-        setBindingAlreadyBound(false);
-        setBindingCode(data.code);
-        setBindingExpiresAt(data.expiresAt || "");
-        setBindingNotice(
-          "請在 10 分鐘內將綁定碼傳給「資想聽你說」LINE 官方帳號。"
-        );
-      } else {
-        throw new Error(
-          "伺服器沒有回傳有效的綁定碼"
-        );
-      }
-    } catch (error) {
-      setBindingError(
-        error instanceof Error
-          ? error.message
-          : "取得綁定碼失敗"
-      );
-    } finally {
-      setBindingLoading(false);
-    }
-  };
-
-  const copyBindingCode = async () => {
-    if (!bindingCode) return;
-
-    try {
-      await navigator.clipboard.writeText(bindingCode);
-      setBindingNotice(
-        "綁定碼已複製，請貼到「資想聽你說」官方帳號聊天室。"
-      );
-    } catch {
-      setBindingError(
-        "無法自動複製，請長按或選取綁定碼複製。"
-      );
-    }
-  };
-
+  // 讀取我的商品
   const fetchMyProducts = useCallback(async () => {
     if (!isAuthenticated || !lineUserId) {
       setIsLoadingProducts(false);
@@ -200,10 +131,7 @@ export default function ProfilePage() {
         JSON.stringify(formattedData)
       );
     } catch (err) {
-      console.error(
-        "個人商品讀取失敗:",
-        err
-      );
+      console.error("個人商品讀取失敗:", err);
     } finally {
       setIsLoadingProducts(false);
     }
@@ -484,116 +412,6 @@ export default function ProfilePage() {
               {contactError}
             </p>
           )}
-        </Card>
-
-        {/* LINE 官方帳號商品通知綁定 */}
-        <Card className="border-none shadow-sm rounded-[32px] bg-white p-5 space-y-4">
-          <h3 className="font-black text-base text-slate-700 flex items-center gap-2">
-            <Bell className="h-5 w-5 text-[#D35400]" />
-            綁定 LINE 商品通知
-          </h3>
-
-          <p className="text-xs text-slate-500 leading-relaxed">
-            綁定「資想聽你說」LINE 官方帳號後，
-            未來有買家點擊你的商品「聯絡賣家」時，
-            就能收到官方帳號通知。
-            此功能需先加入官方帳號好友並完成綁定；
-            自動通知功能將於後續啟用。
-          </p>
-
-          {bindingAlreadyBound ? (
-            <p
-              role="status"
-              className="text-sm font-bold text-emerald-700 flex items-center gap-2"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              已綁定 LINE 商品通知
-            </p>
-          ) : (
-            <>
-              <Button
-                type="button"
-                onClick={createBindingCode}
-                disabled={bindingLoading}
-                className="w-full h-11 bg-[#D35400] hover:bg-[#A04000] text-white font-bold rounded-xl"
-              >
-                {bindingLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    產生中...
-                  </>
-                ) : bindingCode ? (
-                  "重新產生綁定碼"
-                ) : (
-                  "產生 LINE 通知綁定碼"
-                )}
-              </Button>
-
-              {bindingCode && (
-                <div className="rounded-2xl bg-orange-50 p-4 space-y-3 text-center">
-                  <p className="text-xs font-bold text-slate-600">
-                    你的 6 位數綁定碼
-                  </p>
-
-                  <p className="text-3xl font-black tracking-[0.25em] text-[#D35400] select-all">
-                    {bindingCode}
-                  </p>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={copyBindingCode}
-                    className="rounded-xl"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    複製綁定碼
-                  </Button>
-
-                  {bindingExpiresAt && (
-                    <p className="text-xs text-slate-500">
-                      有效期限：
-                      {new Date(
-                        bindingExpiresAt
-                      ).toLocaleString("zh-TW", {
-                        hour12: false,
-                      })}
-                    </p>
-                  )}
-
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    請開啟「資想聽你說」LINE
-                    官方帳號聊天室，
-                    將這組數字單獨傳送出去，
-                    並等待綁定結果回覆。
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-
-          {bindingNotice && (
-            <p
-              role="status"
-              className="text-sm text-emerald-700"
-            >
-              {bindingNotice}
-            </p>
-          )}
-
-          {bindingError && (
-            <p
-              role="alert"
-              className="text-sm text-red-600"
-            >
-              {bindingError}
-            </p>
-          )}
-
-          <p className="text-xs text-slate-400">
-            已在官方帳號收到「綁定成功」回覆後，
-            可重新點擊「產生 LINE 通知綁定碼」
-            確認綁定狀態。
-          </p>
         </Card>
 
         {/* 最近發布商品 */}
