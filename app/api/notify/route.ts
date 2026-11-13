@@ -4,9 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const SITE_URL =
-  "https://v0-supabase-form-integration-two.vercel.app";
-
 type Product = {
   id: string;
   name: string;
@@ -35,8 +32,7 @@ function getNotificationContent(status: string) {
         color: "#10B981",
         message:
           "恭喜！您的二手寶貝已經通過管理員審核，現在已經在平台上公開展示，祝您順利成交！",
-        footer:
-          "請留意買家的 LINE 訊息與好友申請。",
+        footer: "請留意買家的 LINE 訊息與好友申請。",
       };
 
     case "rejected":
@@ -45,8 +41,7 @@ function getNotificationContent(status: string) {
         color: "#EF4444",
         message:
           "您的商品目前未通過審核，請前往「我的刊登」查看商品狀態，確認是否需要修改內容。",
-        footer:
-          "修改完成後，可依平台流程重新送出審核。",
+        footer: "修改完成後，可依平台流程重新送出審核。",
       };
 
     case "pending":
@@ -55,8 +50,7 @@ function getNotificationContent(status: string) {
         color: "#D35400",
         message:
           "您的二手寶貝已成功送出審核，目前正在等待管理員審核。審核通過後，商品就會公開顯示在平台上。",
-        footer:
-          "請稍後至「我的刊登」查看最新狀態。",
+        footer: "請稍後至「我的刊登」查看最新狀態。",
       };
 
     default:
@@ -68,14 +62,11 @@ function getImageUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
 
   const cleaned = value.trim();
-
   if (!cleaned) return null;
 
   try {
     const url = new URL(cleaned);
-
     if (url.protocol !== "https:") return null;
-
     return url.toString();
   } catch {
     return null;
@@ -189,7 +180,7 @@ function createFlexMessage(product: Product) {
 
 export async function POST(req: NextRequest) {
   try {
-    // 只允許帶有伺服器密鑰的 Webhook 呼叫
+    // 驗證 Supabase Webhook 密鑰
     const webhookSecret = process.env.NOTIFY_WEBHOOK_SECRET;
 
     if (!webhookSecret) {
@@ -197,46 +188,36 @@ export async function POST(req: NextRequest) {
       return jsonError("通知服務尚未設定", 500);
     }
 
-    const suppliedSecret =
-      req.headers.get("x-notify-secret");
+    const suppliedSecret = req.headers.get("x-notify-secret");
 
     if (suppliedSecret !== webhookSecret) {
+      console.error("Webhook 密鑰不符合");
       return jsonError("未授權的通知請求", 401);
     }
 
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    const serviceRoleKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // 取得伺服器環境變數
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     const channelAccessToken =
       process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN ||
       process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
-    if (
-      !supabaseUrl ||
-      !serviceRoleKey ||
-      !channelAccessToken
-    ) {
+    if (!supabaseUrl || !serviceRoleKey || !channelAccessToken) {
       console.error("通知服務缺少必要環境變數");
       return jsonError("通知服務設定不完整", 500);
     }
 
-    const admin = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      }
-    );
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
 
     const body = await req.json();
 
-    // Supabase Database Webhook 格式
+    // Supabase Database Webhook 事件
     const eventType = String(body.type || "").toUpperCase();
 
     if (!["INSERT", "UPDATE"].includes(eventType)) {
@@ -253,15 +234,12 @@ export async function POST(req: NextRequest) {
       return jsonError("缺少商品 ID", 400);
     }
 
-    // 從資料庫取得可信的商品資料
-    const { data: product, error: productError } =
-      await admin
-        .from("products")
-        .select(
-          "id, name, price, image_url, line_user_id, status"
-        )
-        .eq("id", record.id)
-        .single();
+    // 讀取資料庫中的正式商品資料
+    const { data: product, error: productError } = await admin
+      .from("products")
+      .select("id, name, price, image_url, line_user_id, status")
+      .eq("id", record.id)
+      .single();
 
     if (productError || !product) {
       console.error("讀取商品失敗:", productError);
@@ -277,7 +255,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // UPDATE 只有審核狀態真的變更時才通知
+    // 更新商品時，只有審核狀態改變才發通知
     if (eventType === "UPDATE") {
       const previousStatus = oldRecord?.status;
 
@@ -298,27 +276,31 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 優先使用已建立的 Messaging API 帳號對應
-    const { data: binding, error: bindingError } =
-      await admin
-        .from("line_notification_bindings")
-        .select("messaging_user_id")
-        .eq("login_user_id", sellerLoginId)
-        .maybeSingle();
+    // 查詢 LINE Login 與 Messaging API 帳號對應
+    // 已依照 Supabase 實際欄位修正
+    const { data: binding, error: bindingError } = await admin
+      .from("line_notification_bindings")
+      .select("messaging_user_id")
+      .eq("line_login_user_id", sellerLoginId)
+      .maybeSingle();
 
     if (bindingError) {
-      console.error("查詢 LINE 綁定失敗:", bindingError);
+      console.error("查詢 LINE 綁定失敗:", {
+        code: bindingError.code,
+        message: bindingError.message,
+        details: bindingError.details,
+        hint: bindingError.hint,
+      });
+
       return jsonError("無法確認通知收件人", 500);
     }
 
-    // 保留舊版直接使用 LINE User ID 的相容方式
-    // 不同 Provider 的 ID 可能無法直接推播
+    // 有綁定紀錄時使用 Messaging API User ID
+    // 無綁定紀錄時保留舊版 LINE ID 相容方式
     const recipientLineId =
       binding?.messaging_user_id || sellerLoginId;
 
-    const flexMessage = createFlexMessage(
-      product as Product
-    );
+    const flexMessage = createFlexMessage(product as Product);
 
     if (!flexMessage) {
       return NextResponse.json({
@@ -327,6 +309,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // 發送 LINE 官方帳號 Flex Message
     const response = await fetch(
       "https://api.line.me/v2/bot/message/push",
       {
@@ -345,11 +328,10 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
 
-      console.error(
-        "LINE 推播失敗:",
-        response.status,
-        errorText
-      );
+      console.error("LINE 推播失敗:", {
+        statusCode: response.status,
+        details: errorText,
+      });
 
       return jsonError("LINE 推播失敗", 502);
     }
@@ -358,6 +340,9 @@ export async function POST(req: NextRequest) {
       productId: product.id,
       status,
       eventType,
+      recipientSource: binding?.messaging_user_id
+        ? "line_notification_bindings"
+        : "product.line_user_id",
     });
 
     return NextResponse.json({
@@ -368,7 +353,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("商品審核通知發生錯誤:", error);
-
     return jsonError("通知服務發生錯誤", 500);
   }
 }
