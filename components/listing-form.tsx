@@ -365,7 +365,6 @@ export default function ListingForm({
         title: title.trim(),
         category,
         price: numericPrice,
-        contact_info: sellerLineUrl,
         description: description.trim(),
         images,
         line_user_id: activeLineId,
