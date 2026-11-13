@@ -6,39 +6,56 @@ import { Badge } from "@/components/ui/badge";
 import { FavoriteButton } from "@/components/favorite-button";
 
 // 資料庫英文分類轉換成中文
+
 const CATEGORY_LABELS: Record<string, string> = {
   electronics: "電子產品",
   electronic: "電子產品",
   digital: "電子產品",
+
   books: "書籍教材",
   book: "書籍教材",
   textbooks: "教科書",
+  books_textbooks: "書籍教材",
+
   clothing: "服飾配件",
   clothes: "服飾配件",
   fashion: "服飾配件",
   accessories: "配件飾品",
+  clothing_accessories: "服飾配件",
+
+  tools_stationery: "工具文具",
+  tools: "工具用品",
+  stationery: "文具用品",
+  supplies: "文具用品",
+
   furniture: "家具用品",
   home: "生活用品",
   household: "生活用品",
   daily: "生活用品",
   daily_necessities: "生活用品",
+  home_living: "生活用品",
+
   sports: "運動用品",
   sport: "運動用品",
+  sports_outdoors: "運動戶外",
+
   beauty: "美妝保養",
   cosmetics: "美妝保養",
-  stationery: "文具用品",
-  supplies: "文具用品",
+
   toys: "玩具娛樂",
   games: "遊戲娛樂",
   entertainment: "休閒娛樂",
+
   food: "食品",
   appliances: "家電用品",
   transportation: "交通工具",
   vehicles: "交通工具",
+
   other: "其他",
   others: "其他",
   miscellaneous: "其他",
 };
+
 
 function getCategoryLabel(
   category: unknown
