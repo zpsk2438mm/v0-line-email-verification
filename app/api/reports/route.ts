@@ -19,18 +19,21 @@ const UUID_PATTERN =
 
 function fail(message: string, status = 400) {
   return NextResponse.json(
-    { success: false, error: message },
+    {
+      success: false,
+      error: message,
+    },
     { status }
   );
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. 驗證 LINE + 南臺學校信箱
+    // 1. 驗證 LINE 登入與學校信箱
     const { admin, lineUserId, email } =
       await verifiedIdentity(req);
 
-    // 2. 取得已驗證的 Supabase 使用者 UUID
+    // 2. 取得 Supabase 使用者身分
     const bearer = req.headers
       .get("authorization")
       ?.replace(/^Bearer\s+/i, "")
@@ -53,7 +56,7 @@ export async function POST(req: NextRequest) {
       return fail("使用者身分驗證失敗", 401);
     }
 
-    // 3. 讀取表單
+    // 3. 解析檢舉資料
     const raw = await req.text();
 
     if (raw.length > 10000) {
@@ -106,16 +109,20 @@ export async function POST(req: NextRequest) {
       return fail("補充說明不可超過 2000 字");
     }
 
-    // 5. 查詢被檢舉商品
-    const { data: product, error: productError } =
-      await admin
-        .from("products")
-        .select("id, name, line_user_id, status, is_approved")
-        .eq("id", productId)
-        .maybeSingle();
+    // 5. 確認商品存在且仍然公開上架
+    const {
+      data: product,
+      error: productError,
+    } = await admin
+      .from("products")
+      .select(
+        "id, name, line_user_id, status, is_approved"
+      )
+      .eq("id", productId)
+      .maybeSingle();
 
     if (productError) {
-      console.error("查詢檢舉商品失敗:", productError);
+      console.error("查詢商品失敗:", productError);
       return fail("無法確認商品資料", 500);
     }
 
@@ -127,22 +134,28 @@ export async function POST(req: NextRequest) {
       return fail("商品不存在或已經下架", 404);
     }
 
-    // 6. 不允許檢舉自己的商品
+    // 6. 不允許檢舉自己刊登的商品
     if (product.line_user_id === lineUserId) {
       return fail("不能檢舉自己刊登的商品", 403);
     }
 
-    // 7. 防止重複檢舉
-    const { data: existing, error: existingError } =
-      await admin
-        .from("product_reports")
-        .select("id")
-        .eq("product_id", productId)
-        .eq("reporter_id", user.id)
-        .maybeSingle();
+    // 7. 防止同一使用者重複檢舉
+    const {
+      data: existing,
+      error: existingError,
+    } = await admin
+      .from("product_reports")
+      .select("id")
+      .eq("product_id", productId)
+      .eq("reporter_id", user.id)
+      .maybeSingle();
 
     if (existingError) {
-      console.error("查詢重複檢舉失敗:", existingError);
+      console.error(
+        "檢查重複檢舉失敗:",
+        existingError
+      );
+
       return fail("無法確認檢舉紀錄", 500);
     }
 
@@ -150,42 +163,70 @@ export async function POST(req: NextRequest) {
       return fail("你已經檢舉過這項商品", 409);
     }
 
-    // 8. 寫入檢舉紀錄
-    // reporter_id 由後端驗證結果取得，
-    // 不接受前端自行指定
-    const { data: report, error: insertError } =
-      await admin
-        .from("product_reports")
-        .insert({
-          product_id: productId,
-          reporter_id: user.id,
-          reason,
-          description,
-        })
-        .select("id")
-        .single();
+    // 8. 呼叫資料庫函式：
+    // 建立檢舉紀錄 + 立即隱藏商品
+    // 兩個動作在同一筆交易中完成
+    const {
+      data: reportId,
+      error: rpcError,
+    } = await admin.rpc(
+      "submit_product_report",
+      {
+        p_product_id: productId,
+        p_reporter_id: user.id,
+        p_reason: reason,
+        p_description: description,
+      }
+    );
 
-    if (insertError) {
-      // 資料庫唯一約束，避免同時送出造成重複檢舉
-      if (insertError.code === "23505") {
+    if (rpcError) {
+      console.error(
+        "檢舉與隱藏商品 RPC 失敗:",
+        {
+          code: rpcError.code,
+          message: rpcError.message,
+          details: rpcError.details,
+          hint: rpcError.hint,
+        }
+      );
+
+      if (rpcError.code === "23505") {
         return fail("你已經檢舉過這項商品", 409);
       }
 
-      // 商品在送出過程中被刪除
-      if (insertError.code === "23503") {
-        return fail("商品或使用者資料不存在", 409);
+      if (
+        rpcError.message.includes(
+          "Product is not available"
+        )
+      ) {
+        return fail(
+          "商品已經被檢舉或下架，無法再次檢舉",
+          409
+        );
       }
 
-      console.error("建立檢舉紀錄失敗:", insertError);
+      if (
+        rpcError.message.includes(
+          "Product not found"
+        )
+      ) {
+        return fail("找不到商品", 404);
+      }
 
-      return fail("檢舉送出失敗，請稍後再試", 500);
+      return fail(
+        "檢舉送出失敗，請稍後再試",
+        500
+      );
     }
 
+    // 9. 檢舉成功
     return NextResponse.json(
       {
         success: true,
-        message: "檢舉已成功送出，等待管理員審核",
-        reportId: report.id,
+        message:
+          "檢舉成功，商品已暫時隱藏，等待管理員審核",
+        reportId,
+        productHidden: true,
       },
       { status: 201 }
     );
@@ -204,7 +245,9 @@ export async function POST(req: NextRequest) {
       message.includes("LINE");
 
     return fail(
-      authError ? message : "檢舉送出失敗，請稍後再試",
+      authError
+        ? message
+        : "檢舉送出失敗，請稍後再試",
       authError ? 401 : 500
     );
   }
