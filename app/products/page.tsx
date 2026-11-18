@@ -3,7 +3,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
 import { useLiff } from "@/components/liff-provider";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
@@ -53,59 +58,88 @@ export default function ExploreProductsPage() {
   const [selectedCategory, setSelectedCategory] =
     useState("all");
 
+  // 只載入已審核通過、正常上架的商品
+  const fetchProducts = useCallback(async () => {
+    try {
+      setFetching(true);
+      setErrorMessage("");
+
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "id, name, price, category, description, status, created_at, approved_at, image_url"
+        )
+        .eq("status", "approved")
+        .eq("is_approved", true)
+        .order("approved_at", {
+          ascending: false,
+          nullsFirst: false,
+        })
+        .order("created_at", {
+          ascending: false,
+        });
+
+      if (error) throw error;
+
+      setProducts((data || []) as Product[]);
+    } catch (error) {
+      console.error("載入商品失敗:", error);
+      setProducts([]);
+      setErrorMessage("商品載入失敗，請重新整理頁面。");
+    } finally {
+      setFetching(false);
+    }
+  }, []);
+
+  // 初次進入市集時載入商品
   useEffect(() => {
     if (liffLoading) return;
 
-    let cancelled = false;
-
-    async function fetchProducts() {
-      try {
-        setFetching(true);
-        setErrorMessage("");
-
-        const { data, error } = await supabase
-          .from("products")
-          .select(
-            "id, name, price, category, description, status, created_at, approved_at, image_url"
-          )
-          .eq("status", "approved")
-          .order("approved_at", {
-            ascending: false,
-            nullsFirst: false,
-          })
-          .order("created_at", {
-            ascending: false,
-          });
-
-        if (error) throw error;
-
-        if (!cancelled) {
-          setProducts((data || []) as Product[]);
-        }
-      } catch (error) {
-        console.error("載入商品失敗:", error);
-
-        if (!cancelled) {
-          setErrorMessage("商品載入失敗，請重新整理頁面。");
-        }
-      } finally {
-        if (!cancelled) setFetching(false);
-      }
-    }
-
     void fetchProducts();
+  }, [liffLoading, fetchProducts]);
+
+  // 使用者返回市集或切回分頁時，重新確認商品狀態
+  useEffect(() => {
+    if (liffLoading) return;
+
+    const refreshOnVisible = () => {
+      if (document.visibilityState === "visible") {
+        void fetchProducts();
+      }
+    };
+
+    const refreshOnFocus = () => {
+      void fetchProducts();
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      refreshOnVisible
+    );
+
+    window.addEventListener("focus", refreshOnFocus);
 
     return () => {
-      cancelled = true;
-    };
-  }, [liffLoading]);
+      document.removeEventListener(
+        "visibilitychange",
+        refreshOnVisible
+      );
 
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+    };
+  }, [liffLoading, fetchProducts]);
+
+  // 搜尋與分類篩選
   const filteredProducts = useMemo(() => {
     let result = products;
 
     if (selectedCategory !== "all") {
       result = result.filter(
-        (product) => product.category === selectedCategory
+        (product) =>
+          product.category === selectedCategory
       );
     }
 
