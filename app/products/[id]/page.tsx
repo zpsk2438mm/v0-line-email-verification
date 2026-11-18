@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Navigation } from "@/components/navigation";
 import { FavoriteButton } from "@/components/favorite-button";
 import { useLiff } from "@/components/liff-provider";
+import ReportProductDialog from "@/components/report-product-dialog";
 import {
   Loader2,
   ChevronLeft,
@@ -17,6 +18,7 @@ import {
   Tag,
   AlertCircle,
   PackageCheck,
+  Flag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -195,6 +197,9 @@ export default function ProductDetailPage() {
 
   const [error, setError] = useState("");
 
+  // 新增：檢舉視窗開關
+  const [reportOpen, setReportOpen] = useState(false);
+
   // 讀取商品詳情
   useEffect(() => {
     if (!id) {
@@ -321,6 +326,45 @@ export default function ProductDetailPage() {
     } finally {
       setContactLoading(false);
     }
+  };
+
+  // 新增：開啟商品檢舉視窗
+  const handleReport = () => {
+    if (!product) return;
+
+    if (liffLoading) {
+      toast.info("登入狀態載入中，請稍後再試");
+      return;
+    }
+
+    const sellerId =
+      product.line_user_id || product.lineUserId;
+
+    if (lineUserId && sellerId === lineUserId) {
+      toast.error("不能檢舉自己刊登的商品");
+      return;
+    }
+
+    if (!lineUserId || !isAuthenticated) {
+      const currentPath =
+        window.location.pathname +
+        window.location.search;
+
+      sessionStorage.setItem(
+        "login_next",
+        currentPath
+      );
+
+      toast.info("請先完成 LINE 與學校信箱驗證");
+
+      router.push(
+        `/?next=${encodeURIComponent(currentPath)}`
+      );
+
+      return;
+    }
+
+    setReportOpen(true);
   };
 
   // 商品載入中
@@ -454,7 +498,7 @@ export default function ProductDetailPage() {
           </p>
         </div>
 
-        {/* 新增：商品新舊程度 */}
+        {/* 商品新舊程度 */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-orange-50/50">
           <h3 className="text-xs font-bold text-slate-400 flex items-center gap-2 mb-3 tracking-wider">
             <PackageCheck className="h-4 w-4" />
@@ -534,11 +578,32 @@ export default function ProductDetailPage() {
           </Button>
         )}
 
+        {/* 新增：檢舉商品按鈕 */}
+        {!isOwnProduct && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleReport}
+            className="w-full h-12 rounded-2xl border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center justify-center gap-2 font-bold"
+          >
+            <Flag className="h-4 w-4" />
+            檢舉商品
+          </Button>
+        )}
+
         <p className="text-center text-xs text-slate-400 leading-relaxed">
           交易前請確認商品狀況及面交資訊，
           避免提供不必要的個人資料。
         </p>
       </div>
+
+      {/* 新增：商品檢舉視窗 */}
+      <ReportProductDialog
+        productId={product.id}
+        productName={product.name}
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+      />
     </main>
   );
 }
