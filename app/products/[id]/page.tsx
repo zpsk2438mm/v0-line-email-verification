@@ -16,6 +16,7 @@ import {
   Calendar,
   Tag,
   AlertCircle,
+  PackageCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,6 +25,7 @@ interface Product {
   name: string;
   price: number;
   category: string;
+  condition?: string | null;
   description?: string | null;
   status: string;
   created_at: string;
@@ -31,6 +33,80 @@ interface Product {
   images?: unknown;
   line_user_id?: string | null;
   lineUserId?: string | null;
+}
+
+// 與刊登表單的 11 種分類保持一致
+const CATEGORY_LABELS: Record<string, string> = {
+  electronics: "電子產品",
+  books: "書籍教材",
+  tools_stationery: "文具/專業工具",
+  dorm_supplies: "租屋收納/雜貨",
+  hobbies: "遊戲/娛樂",
+  cosmetics: "化妝品/美妝",
+  food: "食物/零食",
+  clothing: "服飾配件",
+  furniture: "家具家電",
+  sports: "運動用品",
+  other: "其他",
+
+  // 舊資料可能使用的分類代碼
+  electronic: "電子產品",
+  digital: "電子產品",
+  book: "書籍教材",
+  textbooks: "書籍教材",
+  books_textbooks: "書籍教材",
+  tools: "文具/專業工具",
+  stationery: "文具/專業工具",
+  supplies: "文具/專業工具",
+  home: "租屋收納/雜貨",
+  household: "租屋收納/雜貨",
+  home_living: "租屋收納/雜貨",
+  games: "遊戲/娛樂",
+  entertainment: "遊戲/娛樂",
+  beauty: "化妝品/美妝",
+  snacks: "食物/零食",
+  clothes: "服飾配件",
+  fashion: "服飾配件",
+  accessories: "服飾配件",
+  appliances: "家具家電",
+  sport: "運動用品",
+  others: "其他",
+};
+
+// 商品新舊程度
+const CONDITION_LABELS: Record<string, string> = {
+  new_sealed: "全新未拆封",
+  new_opened: "全新已拆封",
+  like_new: "近全新（9成新以上）",
+  good: "保存良好（7～8成新）",
+  fair: "有使用痕跡（5～6成新）",
+  used: "明顯使用痕跡（5成新以下）",
+};
+
+function getCategoryLabel(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    return "其他";
+  }
+
+  const category = value.trim();
+
+  return (
+    CATEGORY_LABELS[category.toLowerCase()] ||
+    category
+  );
+}
+
+function getConditionLabel(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    return "未提供";
+  }
+
+  const condition = value.trim();
+
+  return (
+    CONDITION_LABELS[condition.toLowerCase()] ||
+    condition
+  );
 }
 
 function getImageUrl(value: unknown): string {
@@ -113,11 +189,13 @@ export default function ProductDetailPage() {
     useState<Product | null>(null);
 
   const [loading, setLoading] = useState(true);
+
   const [contactLoading, setContactLoading] =
     useState(false);
 
   const [error, setError] = useState("");
 
+  // 讀取商品詳情
   useEffect(() => {
     if (!id) {
       setLoading(false);
@@ -176,6 +254,12 @@ export default function ProductDetailPage() {
       const currentPath =
         window.location.pathname +
         window.location.search;
+
+      // 記錄登入前的商品頁面
+      sessionStorage.setItem(
+        "login_next",
+        currentPath
+      );
 
       router.push(
         `/?next=${encodeURIComponent(currentPath)}`
@@ -239,6 +323,7 @@ export default function ProductDetailPage() {
     }
   };
 
+  // 商品載入中
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] gap-3">
@@ -251,6 +336,7 @@ export default function ProductDetailPage() {
     );
   }
 
+  // 讀取錯誤
   if (error) {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-center gap-4 px-6">
@@ -269,6 +355,7 @@ export default function ProductDetailPage() {
     );
   }
 
+  // 找不到商品
   if (!product) {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-center gap-4">
@@ -294,6 +381,14 @@ export default function ProductDetailPage() {
     lineUserId ===
       (product.line_user_id || product.lineUserId);
 
+  const categoryName = getCategoryLabel(
+    product.category
+  );
+
+  const conditionName = getConditionLabel(
+    product.condition
+  );
+
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-10">
       {/* 頂部導覽 */}
@@ -318,30 +413,33 @@ export default function ProductDetailPage() {
         {/* 商品圖片 */}
         <div className="relative aspect-square w-full rounded-3xl overflow-hidden bg-white shadow-sm border border-orange-50">
           <img
-    src={getImageUrl(
-      product.image_url || product.images
-    )}
-    alt={product.name}
-    className="w-full h-full object-cover"
-    onError={(e) => {
-      const fallback = "/placeholder-logo.png";
+            src={getImageUrl(
+              product.image_url || product.images
+            )}
+            alt={product.name}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const fallback = "/placeholder-logo.png";
 
-      if (!e.currentTarget.src.endsWith(fallback)) {
-        e.currentTarget.src = fallback;
-      }
-    }}
-  />
+              if (
+                !e.currentTarget.src.endsWith(fallback)
+              ) {
+                e.currentTarget.src = fallback;
+              }
+            }}
+          />
 
-  {/* 右上角收藏愛心 */}
-  <div className="absolute top-3 right-3 z-10">
-    <FavoriteButton productId={product.id} />
-  </div>
-</div>
+          {/* 右上角收藏愛心 */}
+          <div className="absolute top-3 right-3 z-10">
+            <FavoriteButton productId={product.id} />
+          </div>
+        </div>
 
         {/* 商品名稱及價格 */}
         <div className="space-y-2">
+          {/* 中文商品分類 */}
           <span className="inline-flex items-center rounded-md bg-orange-100 px-2 py-1 text-[10px] font-bold text-[#D35400]">
-            {product.category || "一般商品"}
+            {categoryName}
           </span>
 
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -349,8 +447,29 @@ export default function ProductDetailPage() {
           </h2>
 
           <p className="text-3xl font-black text-[#D35400]">
-            NT$ {Number(product.price).toLocaleString("zh-TW")}
+            NT${" "}
+            {Number(product.price).toLocaleString(
+              "zh-TW"
+            )}
           </p>
+        </div>
+
+        {/* 新增：商品新舊程度 */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-orange-50/50">
+          <h3 className="text-xs font-bold text-slate-400 flex items-center gap-2 mb-3 tracking-wider">
+            <PackageCheck className="h-4 w-4" />
+            商品新舊程度
+          </h3>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-slate-500">
+              商品狀況
+            </span>
+
+            <span className="inline-flex items-center rounded-lg bg-orange-50 px-3 py-2 text-sm font-bold text-[#D35400]">
+              {conditionName}
+            </span>
+          </div>
         </div>
 
         {/* 商品描述 */}
@@ -365,6 +484,7 @@ export default function ProductDetailPage() {
               "賣家尚未填寫商品描述"}
           </p>
 
+          {/* 上架日期 */}
           <div className="pt-4 mt-4 border-t border-dashed flex items-center text-[10px] text-slate-400">
             <Calendar className="h-3 w-3 mr-1.5" />
 
