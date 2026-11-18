@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { verifiedIdentity } from "@/lib/contact-auth";
 
@@ -114,13 +115,14 @@ async function findSellerContact(
       .select("*")
       .eq("id", productId)
       .eq("status", "approved")
+      .eq("is_approved", true)
       .maybeSingle();
 
   if (productError) throw productError;
 
   if (!product) {
     return {
-      error: "商品不存在或尚未通過審核",
+      error: "商品不存在、已被檢舉或尚未通過審核",
       status: 404,
     };
   }
