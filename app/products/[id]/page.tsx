@@ -197,54 +197,103 @@ export default function ProductDetailPage() {
 
   const [error, setError] = useState("");
 
-  // 新增：檢舉視窗開關
+  // 檢舉視窗開關
   const [reportOpen, setReportOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // 讀取商品詳情
+  // 只顯示正常上架且通過審核的商品
   useEffect(() => {
     if (!id) {
+      setProduct(null);
       setLoading(false);
       return;
     }
 
     let cancelled = false;
+    let requestNumber = 0;
 
     async function fetchProductDetail() {
+      const currentRequest = ++requestNumber;
+
       try {
         setLoading(true);
         setError("");
 
-        const { data, error } = await supabase
+        const { data, error: queryError } = await supabase
           .from("products")
           .select("*")
           .eq("id", id)
           .eq("status", "approved")
+          .eq("is_approved", true)
           .maybeSingle();
 
-        if (error) throw error;
+        if (queryError) throw queryError;
 
-        if (!cancelled) {
-          setProduct(data);
+        if (
+          !cancelled &&
+          currentRequest === requestNumber
+        ) {
+          setProduct(data as Product | null);
         }
       } catch (err) {
         console.error("讀取商品失敗:", err);
 
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          currentRequest === requestNumber
+        ) {
+          setProduct(null);
           setError("商品載入失敗，請稍後再試");
         }
       } finally {
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          currentRequest === requestNumber
+        ) {
           setLoading(false);
         }
       }
     }
 
-    fetchProductDetail();
+    const refreshOnFocus = () => {
+      void fetchProductDetail();
+    };
+
+    const refreshOnVisible = () => {
+      if (document.visibilityState === "visible") {
+        void fetchProductDetail();
+      }
+    };
+
+    void fetchProductDetail();
+
+    window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("pageshow", refreshOnFocus);
+
+    document.addEventListener(
+      "visibilitychange",
+      refreshOnVisible
+    );
 
     return () => {
       cancelled = true;
+
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+
+      window.removeEventListener(
+        "pageshow",
+        refreshOnFocus
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        refreshOnVisible
+      );
     };
-  }, [id]);
+  }, [id, refreshKey]);
 
   // 聯絡賣家並觸發 LINE 官方帳號通知
   const handleContact = async () => {
@@ -260,7 +309,6 @@ export default function ProductDetailPage() {
         window.location.pathname +
         window.location.search;
 
-      // 記錄登入前的商品頁面
       sessionStorage.setItem(
         "login_next",
         currentPath
@@ -328,7 +376,7 @@ export default function ProductDetailPage() {
     }
   };
 
-  // 新增：開啟商品檢舉視窗
+  // 開啟商品檢舉視窗
   const handleReport = () => {
     if (!product) return;
 
@@ -404,7 +452,7 @@ export default function ProductDetailPage() {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-center gap-4">
         <p className="text-slate-500">
-          找不到商品，或商品尚未通過審核
+          找不到商品，或商品已暫時隱藏或下架
         </p>
 
         <Button
@@ -473,7 +521,7 @@ export default function ProductDetailPage() {
             }}
           />
 
-          {/* 右上角收藏愛心 */}
+          {/* 收藏愛心 */}
           <div className="absolute top-3 right-3 z-10">
             <FavoriteButton productId={product.id} />
           </div>
@@ -481,7 +529,6 @@ export default function ProductDetailPage() {
 
         {/* 商品名稱及價格 */}
         <div className="space-y-2">
-          {/* 中文商品分類 */}
           <span className="inline-flex items-center rounded-md bg-orange-100 px-2 py-1 text-[10px] font-bold text-[#D35400]">
             {categoryName}
           </span>
@@ -578,7 +625,7 @@ export default function ProductDetailPage() {
           </Button>
         )}
 
-        {/* 新增：檢舉商品按鈕 */}
+        {/* 檢舉商品按鈕 */}
         {!isOwnProduct && (
           <Button
             type="button"
@@ -597,12 +644,15 @@ export default function ProductDetailPage() {
         </p>
       </div>
 
-      {/* 新增：商品檢舉視窗 */}
+      {/* 商品檢舉視窗 */}
       <ReportProductDialog
         productId={product.id}
         productName={product.name}
         open={reportOpen}
-        onClose={() => setReportOpen(false)}
+        onClose={() => {
+          setReportOpen(false);
+          setRefreshKey((current) => current + 1);
+        }}
       />
     </main>
   );
