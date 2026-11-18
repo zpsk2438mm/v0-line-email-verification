@@ -32,6 +32,7 @@ interface ProductInitialData {
   name?: string;
   title?: string;
   category?: string;
+  condition?: string | null;
   price?: number | string;
   contact?: string;
   description?: string;
@@ -44,7 +45,7 @@ interface ListingFormProps {
   isEditing?: boolean;
 }
 
-// 與市集首頁一致的分類 ID
+// 保留原本 11 種商品分類與資料庫代碼
 const CATEGORIES = [
   { id: "electronics", label: "📱 電子產品" },
   { id: "books", label: "📚 書籍教材" },
@@ -57,6 +58,16 @@ const CATEGORIES = [
   { id: "furniture", label: "🛋️ 家具家電" },
   { id: "sports", label: "🏀 運動用品" },
   { id: "other", label: "🔍 其他" },
+];
+
+// 新增：商品新舊程度
+const CONDITIONS = [
+  { id: "new_sealed", label: "全新未拆封" },
+  { id: "new_opened", label: "全新已拆封" },
+  { id: "like_new", label: "近全新（9成新以上）" },
+  { id: "good", label: "保存良好（7～8成新）" },
+  { id: "fair", label: "有使用痕跡（5～6成新）" },
+  { id: "used", label: "明顯使用痕跡（5成新以下）" },
 ];
 
 function validLineUrl(value: string): boolean {
@@ -115,6 +126,11 @@ export default function ListingForm({
     initialData?.category || ""
   );
 
+  // 新增：新舊程度狀態
+  const [condition, setCondition] = useState(
+    initialData?.condition || ""
+  );
+
   const [price, setPrice] = useState(
     initialData?.price?.toString() || ""
   );
@@ -123,7 +139,7 @@ export default function ListingForm({
     initialData?.description || ""
   );
 
-  // 現有 products 資料表只有 image_url
+  // 保留原本的單張圖片欄位
   const [imageUrl, setImageUrl] = useState(
     initialData?.image_url ||
       initialData?.images?.[0] ||
@@ -288,6 +304,16 @@ export default function ListingForm({
       return;
     }
 
+    // 新增：檢查商品新舊程度
+    const conditionExists = CONDITIONS.some(
+      (item) => item.id === condition
+    );
+
+    if (!conditionExists) {
+      setSubmitError("請選擇商品新舊程度。");
+      return;
+    }
+
     const numericPrice = Number(price);
 
     if (
@@ -334,10 +360,12 @@ export default function ListingForm({
         );
       }
 
-      // 與現有 Supabase products 資料表一致
+      // 儲存商品：只新增 condition 欄位
+      // 其他欄位及審核流程保持原樣
       const payload = {
         name: title.trim(),
         category,
+        condition,
         price: numericPrice,
         description: description.trim(),
         contact: sellerLineUrl,
@@ -351,6 +379,7 @@ export default function ListingForm({
       console.log("準備儲存商品:", {
         name: payload.name,
         category: payload.category,
+        condition: payload.condition,
         price: payload.price,
         hasImage: Boolean(payload.image_url),
         isEditing,
@@ -539,7 +568,7 @@ export default function ListingForm({
             />
           </div>
 
-          {/* 手機原生分類選單 */}
+          {/* 商品分類 */}
           <div className="space-y-2">
             <Label htmlFor="category">
               分類 *
@@ -568,6 +597,41 @@ export default function ListingForm({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* 新增：商品新舊程度下拉選單 */}
+          <div className="space-y-2">
+            <Label htmlFor="condition">
+              商品新舊程度 *
+            </Label>
+
+            <select
+              id="condition"
+              name="condition"
+              value={condition}
+              onChange={(e) =>
+                setCondition(e.target.value)
+              }
+              required
+              className="flex h-12 w-full min-w-0 appearance-auto rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#D95300]"
+            >
+              <option value="" disabled>
+                請選擇商品新舊程度
+              </option>
+
+              {CONDITIONS.map((item) => (
+                <option
+                  key={item.id}
+                  value={item.id}
+                >
+                  {item.label}
+                </option>
+              ))}
+            </select>
+
+            <p className="text-xs text-slate-500">
+              請依照商品實際使用狀況選擇。
+            </p>
           </div>
 
           {/* 價格 */}
@@ -621,7 +685,7 @@ export default function ListingForm({
               onChange={(e) =>
                 setDescription(e.target.value)
               }
-              placeholder="說明物品新舊程度、面交地點等"
+              placeholder="說明物品瑕疵、面交地點等"
               className="rounded-xl"
             />
           </div>
