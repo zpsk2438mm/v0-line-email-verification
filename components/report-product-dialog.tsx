@@ -36,8 +36,6 @@ export default function ReportProductDialog({
   const [reason, setReason] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  // 新增：直接在視窗內顯示操作結果
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -72,6 +70,11 @@ export default function ReportProductDialog({
     setSubmitting(true);
 
     try {
+      console.log("開始送出商品檢舉", {
+        productId,
+        reason,
+      });
+
       const result = await contactRequest(
         "/api/reports",
         "POST",
@@ -82,6 +85,8 @@ export default function ReportProductDialog({
         }
       );
 
+      console.log("商品檢舉 API 回應", result);
+
       if (result.success !== true) {
         throw new Error(
           result.error || "檢舉送出失敗"
@@ -89,7 +94,7 @@ export default function ReportProductDialog({
       }
 
       setSuccessMessage(
-        "檢舉成功！管理員將審核這項商品。"
+        "檢舉成功！商品已暫時隱藏，等待管理員審核。"
       );
 
       setReason("");
@@ -123,6 +128,8 @@ export default function ReportProductDialog({
         aria-modal="true"
         aria-labelledby="report-dialog-title"
         className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -154,7 +161,6 @@ export default function ReportProductDialog({
           </span>
         </p>
 
-        {/* 成功提示 */}
         {successMessage && (
           <div
             role="status"
@@ -176,7 +182,6 @@ export default function ReportProductDialog({
           </div>
         )}
 
-        {/* 失敗提示 */}
         {errorMessage && (
           <div
             role="alert"
@@ -198,7 +203,6 @@ export default function ReportProductDialog({
           </div>
         )}
 
-        {/* 尚未成功送出時顯示表單 */}
         {!successMessage && (
           <>
             <div className="space-y-4">
@@ -264,8 +268,9 @@ export default function ReportProductDialog({
             </div>
 
             <p className="mt-4 text-xs leading-relaxed text-gray-500">
-              送出檢舉後，商品不會立即下架。
-              管理員確認違規後才會進行處理。
+              送出檢舉後，商品會暫時從市集隱藏，
+              等待管理員審核。
+              若檢舉不成立，商品將恢復上架。
               同一帳號無法重複檢舉相同商品。
             </p>
           </>
@@ -293,7 +298,11 @@ export default function ReportProductDialog({
 
               <button
                 type="button"
-                onClick={handleSubmit}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void handleSubmit();
+                }}
                 disabled={submitting || !reason}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-3 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
