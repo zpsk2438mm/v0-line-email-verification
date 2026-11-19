@@ -199,9 +199,13 @@ export default function ProductDetailPage() {
 
   // 檢舉視窗開關
   const [reportOpen, setReportOpen] = useState(false);
+
+  // 檢舉視窗關閉後重新查詢商品
   const [refreshKey, setRefreshKey] = useState(0);
 
   // 只顯示正常上架且通過審核的商品
+  // 修正：移除 focus、pageshow、visibilitychange
+  // 避免商品詳細頁反覆進入載入狀態
   useEffect(() => {
     if (!id) {
       setProduct(null);
@@ -210,88 +214,46 @@ export default function ProductDetailPage() {
     }
 
     let cancelled = false;
-    let requestNumber = 0;
 
     async function fetchProductDetail() {
-      const currentRequest = ++requestNumber;
-
       try {
         setLoading(true);
         setError("");
 
-        const { data, error: queryError } = await supabase
-          .from("products")
-          .select("*")
-          .eq("id", id)
-          .eq("status", "approved")
-          .eq("is_approved", true)
-          .maybeSingle();
+        const { data, error: queryError } =
+          await supabase
+            .from("products")
+            .select("*")
+            .eq("id", id)
+            .eq("status", "approved")
+            .eq("is_approved", true)
+            .maybeSingle();
 
-        if (queryError) throw queryError;
+        if (queryError) {
+          throw queryError;
+        }
 
-        if (
-          !cancelled &&
-          currentRequest === requestNumber
-        ) {
+        if (!cancelled) {
           setProduct(data as Product | null);
         }
       } catch (err) {
         console.error("讀取商品失敗:", err);
 
-        if (
-          !cancelled &&
-          currentRequest === requestNumber
-        ) {
+        if (!cancelled) {
           setProduct(null);
           setError("商品載入失敗，請稍後再試");
         }
       } finally {
-        if (
-          !cancelled &&
-          currentRequest === requestNumber
-        ) {
+        if (!cancelled) {
           setLoading(false);
         }
       }
     }
 
-    const refreshOnFocus = () => {
-      void fetchProductDetail();
-    };
-
-    const refreshOnVisible = () => {
-      if (document.visibilityState === "visible") {
-        void fetchProductDetail();
-      }
-    };
-
     void fetchProductDetail();
-
-    window.addEventListener("focus", refreshOnFocus);
-    window.addEventListener("pageshow", refreshOnFocus);
-
-    document.addEventListener(
-      "visibilitychange",
-      refreshOnVisible
-    );
 
     return () => {
       cancelled = true;
-
-      window.removeEventListener(
-        "focus",
-        refreshOnFocus
-      );
-
-      window.removeEventListener(
-        "pageshow",
-        refreshOnFocus
-      );
-
-      document.removeEventListener(
-        "visibilitychange",
-        refreshOnVisible
-      );
     };
   }, [id, refreshKey]);
 
