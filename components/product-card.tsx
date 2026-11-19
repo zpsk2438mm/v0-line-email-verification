@@ -160,7 +160,7 @@ export function ProductCard({
     <div className="group relative h-full">
       <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-md">
         {/* 商品內容 */}
-        <Link
+        <a
           href={productUrl}
           className="flex h-full flex-col no-underline"
         >
@@ -216,7 +216,7 @@ export function ProductCard({
               </span>
             </div>
           </div>
-        </Link>
+        </a>
 
         {/* 右上角收藏愛心 */}
         <div className="absolute right-2 top-2 z-10">
