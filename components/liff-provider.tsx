@@ -19,6 +19,80 @@ const PRODUCTION_HOME =
 
 const LOGIN_NEXT_KEY = "login_next";
 
+// 暫時診斷用，不記錄個人資料
+const DIAG_KEY = "stust_liff_diagnostic_v1";
+
+type DiagnosticData = {
+  count: number;
+  stage: string;
+  history: string[];
+};
+
+function readDiagnostic(): DiagnosticData {
+  const fallback: DiagnosticData = {
+    count: 0,
+    stage: "尚未開始",
+    history: [],
+  };
+
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const saved = sessionStorage.getItem(DIAG_KEY);
+
+    if (!saved) return fallback;
+
+    const parsed = JSON.parse(saved);
+
+    return {
+      count:
+        typeof parsed.count === "number"
+          ? parsed.count
+          : 0,
+      stage:
+        typeof parsed.stage === "string"
+          ? parsed.stage
+          : fallback.stage,
+      history: Array.isArray(parsed.history)
+        ? parsed.history.slice(-12)
+        : [],
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveDiagnostic(
+  stage: string,
+  newLoad = false
+): DiagnosticData {
+  const current = readDiagnostic();
+
+  const next: DiagnosticData = {
+    count: current.count + (newLoad ? 1 : 0),
+    stage,
+    history: [
+      ...current.history,
+      `${newLoad ? "新載入" : "階段"}：${stage}`,
+    ].slice(-12),
+  };
+
+  try {
+    sessionStorage.setItem(
+      DIAG_KEY,
+      JSON.stringify(next)
+    );
+  } catch {
+    // 儲存空間不可用時不影響正式功能
+  }
+
+  console.info("[LIFF 診斷]", stage);
+
+  return next;
+}
+
 function safeInternalPath(
   value: string | null
 ): string | null {
@@ -115,6 +189,29 @@ export function LiffProvider({
   const [liffInstance, setLiffInstance] =
     useState<any>(null);
 
+  // 診斷面板
+  const [showDiagnostic, setShowDiagnostic] =
+    useState(false);
+
+  const [diagnostic, setDiagnostic] =
+    useState<DiagnosticData>({
+      count: 0,
+      stage: "尚未開始",
+      history: [],
+    });
+
+  const updateDiagnostic = useCallback(
+    (stage: string, newLoad = false) => {
+      const next = saveDiagnostic(
+        stage,
+        newLoad
+      );
+
+      setDiagnostic(next);
+    },
+    []
+  );
+
   const extractNameFromEmail = (
     email: string | null
   ) => {
@@ -123,7 +220,7 @@ export function LiffProvider({
     return email.split("@")[0].toUpperCase();
   };
 
-  // LINE 登入
+  // LINE 登入：保留原本流程
   const login = useCallback(() => {
     if (!liffInstance) {
       console.warn(
@@ -137,7 +234,6 @@ export function LiffProvider({
     }
 
     try {
-      // 記住登入前想前往的頁面
       const params = new URLSearchParams(
         window.location.search
       );
@@ -170,8 +266,6 @@ export function LiffProvider({
       if (liffInstance.isInClient()) {
         liffInstance.login();
       } else {
-        // 使用已設定成功的正式網址
-        // 避免 LINE 400 Bad Request
         liffInstance.login({
           redirectUri: PRODUCTION_HOME,
         });
@@ -184,7 +278,7 @@ export function LiffProvider({
     }
   }, [liffInstance]);
 
-  // 同時登出學校信箱與 LINE
+  // 登出：保留原本流程
   const logout = useCallback(async () => {
     const { error } =
       await supabase.auth.signOut({
@@ -217,7 +311,6 @@ export function LiffProvider({
       }
     }
 
-    // 清除登入快取
     localStorage.removeItem(
       "stust_authenticated"
     );
@@ -230,7 +323,6 @@ export function LiffProvider({
       LOGIN_NEXT_KEY
     );
 
-    // 清除使用者資料
     setIsAuthenticated(false);
     setUserEmail(null);
     setLineUserId(null);
@@ -240,7 +332,7 @@ export function LiffProvider({
     window.location.replace("/");
   }, [liffInstance]);
 
-  // 初始化 Supabase 與 LINE
+  // 初始化 Supabase 與 LINE，加入診斷紀錄
   useEffect(() => {
     let isMounted = true;
 
@@ -250,11 +342,34 @@ export function LiffProvider({
         }
       | undefined;
 
+    const isProductPage =
+      /^\/products\/[^/]+\/?$/.test(
+        window.location.pathname
+      );
+
+    if (isProductPage) {
+      setShowDiagnostic(true);
+      updateDiagnostic(
+        "Provider 開始初始化",
+        true
+      );
+    }
+
+    const mark = (stage: string) => {
+      if (isProductPage && isMounted) {
+        updateDiagnostic(stage);
+      }
+    };
+
     async function initAuthAndLiff() {
       try {
+        mark("開始取得 Supabase Session");
+
         const {
           data: { session },
         } = await supabase.auth.getSession();
+
+        mark("Supabase Session 取得完成");
 
         if (isMounted) {
           const email =
@@ -274,7 +389,6 @@ export function LiffProvider({
           );
         }
 
-        // 監聽學校信箱登入狀態
         const authListener =
           supabase.auth.onAuthStateChange(
             (_event, session) => {
@@ -301,25 +415,38 @@ export function LiffProvider({
         subscription =
           authListener.data.subscription;
 
-        // 初始化 LINE LIFF
+        mark("Supabase 監聽器設定完成");
+
         if (
           LIFF_ID &&
           typeof window !== "undefined"
         ) {
+          mark("開始載入 LIFF SDK");
+
           const { default: liff } =
             await import("@line/liff");
+
+          mark("LIFF SDK 載入完成");
+
+          mark("即將執行 liff.init");
 
           await liff.init({
             liffId: LIFF_ID,
           });
+
+          mark("liff.init 執行完成");
 
           if (isMounted) {
             setLiffInstance(liff);
           }
 
           if (liff.isLoggedIn()) {
+            mark("LINE 已登入，開始取得 Profile");
+
             const profile =
               await liff.getProfile();
+
+            mark("LINE Profile 取得完成");
 
             if (isMounted) {
               setLineUserId(
@@ -329,11 +456,15 @@ export function LiffProvider({
               setUserProfile(profile);
             }
           } else {
+            mark("LINE 尚未登入");
+
             console.log(
               "LINE LIFF 初始化成功，等待手動登入。"
             );
           }
         } else {
+          mark("LIFF ID 未設定");
+
           console.warn(
             "尚未設定 NEXT_PUBLIC_LIFF_ID"
           );
@@ -343,8 +474,17 @@ export function LiffProvider({
           "LINE / Supabase 初始化失敗:",
           err
         );
+
+        mark(
+          "初始化發生錯誤：" +
+            (err instanceof Error
+              ? err.name
+              : "未知錯誤")
+        );
       } finally {
         if (isMounted) {
+          mark("初始化結束，準備顯示頁面");
+
           setIsLiffInit(true);
           setIsLoading(false);
         }
@@ -357,7 +497,7 @@ export function LiffProvider({
       isMounted = false;
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [updateDiagnostic]);
 
   // 發送學校信箱驗證碼
   const sendOtp = async (
@@ -443,6 +583,85 @@ export function LiffProvider({
     }
   };
 
+  // 只在商品詳細頁顯示診斷面板
+  const diagnosticPanel = showDiagnostic ? (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 12,
+        left: 12,
+        right: 12,
+        zIndex: 2147483647,
+        maxHeight: "42vh",
+        overflowY: "auto",
+        padding: 12,
+        borderRadius: 12,
+        background: "rgba(15,23,42,0.94)",
+        color: "#ffffff",
+        fontSize: 12,
+        lineHeight: 1.6,
+        boxShadow:
+          "0 4px 20px rgba(0,0,0,0.3)",
+      }}
+    >
+      <div style={{ fontWeight: "bold" }}>
+        LINE 商品頁診斷
+      </div>
+
+      <div>
+        Provider 初始化次數：
+        {diagnostic.count}
+      </div>
+
+      <div>
+        目前階段：{diagnostic.stage}
+      </div>
+
+      <div
+        style={{
+          marginTop: 6,
+          borderTop: "1px solid #64748b",
+          paddingTop: 6,
+        }}
+      >
+        {diagnostic.history.map(
+          (item, index) => (
+            <div key={index}>
+              {item}
+            </div>
+          )
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          try {
+            sessionStorage.removeItem(
+              DIAG_KEY
+            );
+          } catch {
+            // 忽略儲存空間錯誤
+          }
+
+          setDiagnostic({
+            count: 0,
+            stage: "已清除紀錄",
+            history: [],
+          });
+        }}
+        style={{
+          marginTop: 8,
+          padding: "4px 10px",
+          background: "#475569",
+          borderRadius: 6,
+        }}
+      >
+        清除紀錄
+      </button>
+    </div>
+  ) : null;
+
   return (
     <LiffContext.Provider
       value={{
@@ -470,6 +689,8 @@ export function LiffProvider({
       ) : (
         children
       )}
+
+      {diagnosticPanel}
     </LiffContext.Provider>
   );
 }
