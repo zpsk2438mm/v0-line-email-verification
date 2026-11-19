@@ -18,7 +18,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   textbooks: "書籍教材",
   books_textbooks: "書籍教材",
 
-  // 文具 / 事業工具
+  // 文具 / 專業工具
   tools_stationery: "文具/事業工具",
   tools: "文具/事業工具",
   stationery: "文具/事業工具",
@@ -131,6 +131,9 @@ interface Product {
   image_url?: string | string[] | null;
 }
 
+// LINE 內建瀏覽器商品頁面快取測試版本
+const PRODUCT_PAGE_VERSION = "20261119";
+
 export function ProductCard({
   product,
 }: {
@@ -148,12 +151,17 @@ export function ProductCard({
 
   const price = Number(product.price ?? 0);
 
+  // 加上版本參數，避免使用舊商品網址的既有快取
+  const productUrl =
+    `/products/${encodeURIComponent(product.id)}` +
+    `?v=${PRODUCT_PAGE_VERSION}`;
+
   return (
     <div className="group relative h-full">
       <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-md">
         {/* 商品內容 */}
         <Link
-          href={`/products/${product.id}`}
+          href={productUrl}
           className="flex h-full flex-col no-underline"
         >
           {/* 商品圖片 */}
