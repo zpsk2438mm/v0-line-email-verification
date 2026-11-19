@@ -70,14 +70,21 @@ function getImageUrl(raw: unknown): string {
     if (typeof value === "string") {
       try {
         const parsed = JSON.parse(value);
-        if (Array.isArray(parsed)) value = parsed[0];
+        if (Array.isArray(parsed)) {
+          value = parsed[0];
+        }
       } catch {
         // 一般圖片網址
       }
     }
 
-    if (Array.isArray(value)) value = value[0];
-    if (typeof value !== "string") return fallback;
+    if (Array.isArray(value)) {
+      value = value[0];
+    }
+
+    if (typeof value !== "string") {
+      return fallback;
+    }
 
     return (
       value
@@ -109,7 +116,7 @@ export default function AdminPage() {
 
   const [loading, setLoading] = useState(true);
   const [reportsLoading, setReportsLoading] =
-    useState(false);
+    useState(true);
 
   const [processingId, setProcessingId] =
     useState<string | null>(null);
@@ -132,15 +139,18 @@ export default function AdminPage() {
     ADMIN_IDS.includes(lineUserId || "") &&
     isAuthenticated;
 
+  // 進入後台時，同時載入商品與檢舉資料
   useEffect(() => {
     if (liffLoading) return;
 
     if (!isAdmin) {
       setLoading(false);
+      setReportsLoading(false);
       return;
     }
 
     void fetchProducts();
+    void fetchReports();
   }, [liffLoading, isAdmin]);
 
   // 讀取待審核商品
@@ -160,6 +170,7 @@ export default function AdminPage() {
         });
 
       if (error) throw error;
+
       setPendingProducts(data || []);
     } catch (error) {
       console.error("讀取商品失敗:", error);
@@ -200,16 +211,14 @@ export default function AdminPage() {
     }
   }
 
+  // 切換分頁：不需要重複查詢
   function changeTab(tab: "products" | "reports") {
     setActiveTab(tab);
     setErrorMessage("");
     setSuccessMessage("");
-
-    if (tab === "reports") {
-      void fetchReports();
-    }
   }
 
+  // 手動刷新目前分頁
   function handleRefresh() {
     setErrorMessage("");
     setSuccessMessage("");
@@ -268,7 +277,10 @@ export default function AdminPage() {
           }),
         });
       } catch (notifyError) {
-        console.error("LINE 通知失敗:", notifyError);
+        console.error(
+          "LINE 通知失敗:",
+          notifyError
+        );
       }
 
       setPendingProducts((prev) =>
@@ -330,7 +342,10 @@ export default function AdminPage() {
           }),
         });
       } catch (notifyError) {
-        console.error("LINE 通知失敗:", notifyError);
+        console.error(
+          "LINE 通知失敗:",
+          notifyError
+        );
       }
 
       setPendingProducts((prev) =>
@@ -339,7 +354,10 @@ export default function AdminPage() {
 
       setSuccessMessage("商品已退回");
     } catch (error) {
-      console.error("退回商品失敗:", error);
+      console.error(
+        "退回商品失敗:",
+        error
+      );
       setErrorMessage("商品退回失敗");
     } finally {
       setProcessingId(null);
@@ -355,10 +373,14 @@ export default function AdminPage() {
 
     const message =
       action === "remove"
-        ? `確定要將「${report.product?.name || "此商品"}」下架嗎？`
+        ? `確定要將「${
+            report.product?.name || "此商品"
+          }」下架嗎？`
         : "確定要駁回這筆檢舉嗎？";
 
-    if (!window.confirm(message)) return;
+    if (!window.confirm(message)) {
+      return;
+    }
 
     setProcessingId(report.id);
     setErrorMessage("");
@@ -377,7 +399,9 @@ export default function AdminPage() {
       );
 
       if (!result.success) {
-        throw new Error(result.error || "審核失敗");
+        throw new Error(
+          result.error || "審核失敗"
+        );
       }
 
       setSuccessMessage(
@@ -386,7 +410,10 @@ export default function AdminPage() {
 
       await fetchReports();
     } catch (error) {
-      console.error("檢舉審核失敗:", error);
+      console.error(
+        "檢舉審核失敗:",
+        error
+      );
 
       setErrorMessage(
         error instanceof Error
@@ -406,7 +433,7 @@ export default function AdminPage() {
     ? reports
     : pendingReports;
 
-  // 僅等待 LIFF 初始化，不等待商品查詢
+  // 只等待 LINE 初始化，不等待資料查詢
   if (liffLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#FDFBF7]">
@@ -415,7 +442,7 @@ export default function AdminPage() {
     );
   }
 
-  // 保留管理員權限驗證
+  // 管理員權限驗證
   if (!isAdmin) {
     return (
       <div className="h-screen flex flex-col items-center justify-center p-6 text-center">
@@ -502,7 +529,9 @@ export default function AdminPage() {
             <Flag className="h-6 w-6" />
             <span>檢舉審核</span>
             <span className="text-xs">
-              待處理 {pendingReports.length} 筆
+              {reportsLoading
+                ? "載入中..."
+                : `待處理 ${pendingReports.length} 筆`}
             </span>
           </button>
         </div>
@@ -514,6 +543,7 @@ export default function AdminPage() {
             className="rounded-xl border border-green-200 bg-green-50 p-4 flex items-start gap-2"
           >
             <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />
+
             <p className="text-sm text-green-700">
               {successMessage}
             </p>
@@ -527,6 +557,7 @@ export default function AdminPage() {
             className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-start gap-2"
           >
             <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
+
             <p className="text-sm text-red-700 break-words">
               {errorMessage}
             </p>
@@ -539,6 +570,7 @@ export default function AdminPage() {
             {loading ? (
               <div className="flex flex-col items-center justify-center gap-3 py-16">
                 <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+
                 <p className="text-sm text-gray-500">
                   正在載入待審核商品...
                 </p>
