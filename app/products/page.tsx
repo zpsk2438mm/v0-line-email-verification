@@ -51,12 +51,22 @@ const CATEGORIES = [
 export default function ExploreProductsPage() {
   const { isLoading: liffLoading } = useLiff();
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [fetching, setFetching] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] =
-    useState("all");
+  const [products, setProducts] =
+    useState<Product[]>([]);
+
+  const [fetching, setFetching] =
+    useState(true);
+
+  const [errorMessage, setErrorMessage] =
+    useState("");
+
+  const [searchQuery, setSearchQuery] =
+    useState("");
+
+  const [
+    selectedCategory,
+    setSelectedCategory,
+  ] = useState("all");
 
   // 只載入已審核通過、正常上架的商品
   const fetchProducts = useCallback(async () => {
@@ -83,53 +93,29 @@ export default function ExploreProductsPage() {
 
       setProducts((data || []) as Product[]);
     } catch (error) {
-      console.error("載入商品失敗:", error);
+      console.error(
+        "載入商品失敗:",
+        error
+      );
+
       setProducts([]);
-      setErrorMessage("商品載入失敗，請重新整理頁面。");
+
+      setErrorMessage(
+        "商品載入失敗，請重新整理頁面。"
+      );
     } finally {
       setFetching(false);
     }
   }, []);
 
-  // 初次進入市集時載入商品
+  // 測試版：
+  // 僅在初次進入市集、LIFF 初始化完成後查詢商品。
+  // 暫時不監聽 focus 或 visibilitychange，
+  // 避免 LINE WebView 切換焦點時重複查詢。
   useEffect(() => {
     if (liffLoading) return;
 
     void fetchProducts();
-  }, [liffLoading, fetchProducts]);
-
-  // 使用者返回市集或切回分頁時，重新確認商品狀態
-  useEffect(() => {
-    if (liffLoading) return;
-
-    const refreshOnVisible = () => {
-      if (document.visibilityState === "visible") {
-        void fetchProducts();
-      }
-    };
-
-    const refreshOnFocus = () => {
-      void fetchProducts();
-    };
-
-    document.addEventListener(
-      "visibilitychange",
-      refreshOnVisible
-    );
-
-    window.addEventListener("focus", refreshOnFocus);
-
-    return () => {
-      document.removeEventListener(
-        "visibilitychange",
-        refreshOnVisible
-      );
-
-      window.removeEventListener(
-        "focus",
-        refreshOnFocus
-      );
-    };
   }, [liffLoading, fetchProducts]);
 
   // 搜尋與分類篩選
@@ -143,12 +129,15 @@ export default function ExploreProductsPage() {
       );
     }
 
-    const query = searchQuery.trim().toLowerCase();
+    const query =
+      searchQuery.trim().toLowerCase();
 
     if (query) {
       result = result.filter(
         (product) =>
-          product.name.toLowerCase().includes(query) ||
+          product.name
+            .toLowerCase()
+            .includes(query) ||
           (product.description || "")
             .toLowerCase()
             .includes(query)
@@ -156,12 +145,17 @@ export default function ExploreProductsPage() {
     }
 
     return result;
-  }, [products, selectedCategory, searchQuery]);
+  }, [
+    products,
+    selectedCategory,
+    searchQuery,
+  ]);
 
   if (liffLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#FDFBF7]">
         <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+
         <p className="text-sm text-slate-500">
           正在安全同步您的 LINE 個人資料...
         </p>
@@ -244,12 +238,14 @@ export default function ExploreProductsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            {filteredProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-              />
-            ))}
+            {filteredProducts.map(
+              (product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                />
+              )
+            )}
           </div>
         )}
       </div>
