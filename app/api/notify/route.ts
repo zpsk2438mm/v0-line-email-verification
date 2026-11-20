@@ -53,6 +53,17 @@ function getNotificationContent(status: string) {
         footer: "請稍後至「我的刊登」查看最新狀態。",
       };
 
+    // 新增：管理員正式違規下架通知
+    case "removed":
+      return {
+        title: "🚫 商品違規下架通知",
+        color: "#DC2626",
+        message:
+          "您的商品經管理員審核後，已被判定不符合平台規範，目前已正式下架並停止公開展示。",
+        footer:
+          "請至「我的商品」查看最新狀態。如有疑問，請聯繫平台管理員。",
+      };
+
     default:
       return null;
   }
@@ -248,14 +259,19 @@ export async function POST(req: NextRequest) {
 
     const status = getStatus(product as Product);
 
-    if (!["pending", "approved", "rejected"].includes(status)) {
+    // 新增 removed 狀態
+    if (
+      !["pending", "approved", "rejected", "removed"].includes(
+        status
+      )
+    ) {
       return NextResponse.json({
         success: true,
         skipped: "此狀態不需要通知",
       });
     }
 
-    // 更新商品時，只有審核狀態改變才發通知
+    // 更新商品時，只有狀態改變才發通知
     if (eventType === "UPDATE") {
       const previousStatus = oldRecord?.status;
 
@@ -277,7 +293,6 @@ export async function POST(req: NextRequest) {
     }
 
     // 查詢 LINE Login 與 Messaging API 帳號對應
-    // 已依照 Supabase 實際欄位修正
     const { data: binding, error: bindingError } = await admin
       .from("line_notification_bindings")
       .select("messaging_user_id")
@@ -295,8 +310,7 @@ export async function POST(req: NextRequest) {
       return jsonError("無法確認通知收件人", 500);
     }
 
-    // 有綁定紀錄時使用 Messaging API User ID
-    // 無綁定紀錄時保留舊版 LINE ID 相容方式
+    // 保留原本已運作的 LINE ID 相容方式
     const recipientLineId =
       binding?.messaging_user_id || sellerLoginId;
 
