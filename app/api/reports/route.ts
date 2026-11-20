@@ -36,17 +36,35 @@ function fail(message: string, status = 400) {
   );
 }
 
-// 建立賣家收到的 LINE 檢舉通知卡片
+type NotificationType = "seller" | "reporter";
+
 function createReportFlexMessage(
+  type: NotificationType,
   productName: string,
   reason: string
 ) {
   const reasonLabel =
     REASON_LABELS[reason] || "其他原因";
 
+  const isSeller = type === "seller";
+
+  const title = isSeller
+    ? "⚠️ 商品收到檢舉"
+    : "✅ 檢舉提交成功";
+
+  const message = isSeller
+    ? "您的商品已收到使用者檢舉，平台已暫時隱藏該商品，並交由管理員審核。"
+    : "您的檢舉已成功送出，平台已暫時隱藏該商品，並交由管理員進一步審核。";
+
+  const footer = isSeller
+    ? "收到檢舉不代表違規成立，請等待管理員審核結果。"
+    : "檢舉已受理，但尚未判定違規是否成立。感謝您協助維護校園交易安全。";
+
   return {
     type: "flex",
-    altText: "⚠️ 您的商品收到檢舉通知",
+    altText: isSeller
+      ? "⚠️ 您的商品收到檢舉通知"
+      : "✅ 您的商品檢舉已成功提交",
     contents: {
       type: "bubble",
       size: "mega",
@@ -58,10 +76,10 @@ function createReportFlexMessage(
         contents: [
           {
             type: "text",
-            text: "⚠️ 商品收到檢舉",
+            text: title,
             weight: "bold",
             size: "lg",
-            color: "#D35400",
+            color: isSeller ? "#D35400" : "#10B981",
             wrap: true,
           },
           {
@@ -104,7 +122,7 @@ function createReportFlexMessage(
             contents: [
               {
                 type: "text",
-                text: "目前商品狀態",
+                text: "目前處理狀態",
                 size: "xs",
                 color: "#888888",
               },
@@ -121,22 +139,22 @@ function createReportFlexMessage(
           {
             type: "box",
             layout: "vertical",
-            backgroundColor: "#FFF7ED",
+            backgroundColor: isSeller
+              ? "#FFF7ED"
+              : "#ECFDF5",
             cornerRadius: "md",
             paddingAll: "md",
             contents: [
               {
                 type: "text",
-                text:
-                  "您的商品已收到使用者檢舉，平台已暫時隱藏該商品，並交由管理員審核。",
+                text: message,
                 size: "sm",
                 color: "#555555",
                 wrap: true,
               },
               {
                 type: "text",
-                text:
-                  "收到檢舉不代表違規成立，請等待管理員審核結果。",
+                text: footer,
                 size: "sm",
                 color: "#777777",
                 wrap: true,
@@ -162,17 +180,24 @@ function createReportFlexMessage(
   };
 }
 
-// 檢舉成功後，通知商品賣家
-async function notifySellerAboutReport(
+// 共用 LINE 通知函式
+// 賣家及檢舉者都使用相同的帳號綁定機制
+async function sendReportNotification(
   admin: any,
-  sellerLoginId: string | null,
+  recipientLoginId: string | null,
   productName: string,
-  reason: string
+  reason: string,
+  type: NotificationType
 ): Promise<void> {
+  const logPrefix =
+    type === "seller"
+      ? "[Report Seller Notification]"
+      : "[Report Reporter Notification]";
+
   try {
-    if (!sellerLoginId) {
+    if (!recipientLoginId) {
       console.log(
-        "[Report Notification] 商品沒有賣家 LINE ID"
+        `${logPrefix} 沒有收件人的 LINE Login ID`
       );
       return;
     }
@@ -183,40 +208,44 @@ async function notifySellerAboutReport(
 
     if (!channelAccessToken) {
       console.error(
-        "[Report Notification] 缺少 LINE Channel Access Token"
+        `${logPrefix} 缺少 LINE Channel Access Token`
       );
       return;
     }
 
-    // 使用既有 LINE Account Linking 資料表
+    // 查詢既有 LINE Account Linking 資料
     const { data: binding, error: bindingError } =
       await admin
         .from("line_notification_bindings")
         .select("messaging_user_id")
-        .eq("line_login_user_id", sellerLoginId)
+        .eq("line_login_user_id", recipientLoginId)
         .maybeSingle();
 
     if (bindingError) {
       console.error(
-        "[Report Notification] 查詢 LINE 綁定失敗:",
-        bindingError
+        `${logPrefix} 查詢 LINE 綁定失敗:`,
+        {
+          code: bindingError.code,
+          message: bindingError.message,
+          details: bindingError.details,
+        }
       );
       return;
     }
 
-    // 必須使用 LINE Messaging API 的 User ID
-    // 不直接使用 LINE Login ID，避免發送至錯誤對象
-    const recipientLineId =
+    // 僅使用已確認綁定的 Messaging API ID
+    const recipientMessagingId =
       binding?.messaging_user_id;
 
-    if (!recipientLineId) {
+    if (!recipientMessagingId) {
       console.log(
-        "[Report Notification] 賣家尚未綁定 LINE 官方帳號"
+        `${logPrefix} 使用者尚未綁定 LINE 官方帳號`
       );
       return;
     }
 
     const flexMessage = createReportFlexMessage(
+      type,
       productName,
       reason
     );
@@ -230,7 +259,7 @@ async function notifySellerAboutReport(
           Authorization: `Bearer ${channelAccessToken}`,
         },
         body: JSON.stringify({
-          to: recipientLineId,
+          to: recipientMessagingId,
           messages: [flexMessage],
         }),
         signal: AbortSignal.timeout(8000),
@@ -241,7 +270,7 @@ async function notifySellerAboutReport(
       const errorText = await response.text();
 
       console.error(
-        "[Report Notification] LINE 發送失敗:",
+        `${logPrefix} LINE 發送失敗:`,
         {
           status: response.status,
           details: errorText,
@@ -251,12 +280,12 @@ async function notifySellerAboutReport(
     }
 
     console.log(
-      "[Report Notification] 賣家檢舉通知已提交"
+      `${logPrefix} LINE 通知已提交`
     );
   } catch (error) {
-    // 通知失敗不可影響已成功建立的檢舉
+    // 通知失敗不影響檢舉結果
     console.error(
-      "[Report Notification] 發送通知發生錯誤:",
+      `${logPrefix} 發送通知發生錯誤:`,
       error
     );
   }
@@ -407,9 +436,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 8. 呼叫原本的資料庫函式
-    // 建立檢舉紀錄 + 立即隱藏商品
-    // 保留既有的交易流程
+    // 8. 建立檢舉紀錄 + 立即隱藏商品
+    // 沿用原本的 Supabase RPC
     const {
       data: reportId,
       error: rpcError,
@@ -466,14 +494,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 9. 檢舉成功後，發送 LINE 通知給賣家
-    // 等待通知嘗試完成，但不影響檢舉結果
-    await notifySellerAboutReport(
-      admin,
-      product.line_user_id,
-      product.name,
-      reason
-    );
+    // 9. 檢舉成功後，通知賣家及檢舉者
+    // 使用 Promise.allSettled 確保兩則通知互不影響
+    await Promise.allSettled([
+      sendReportNotification(
+        admin,
+        product.line_user_id,
+        product.name,
+        reason,
+        "seller"
+      ),
+      sendReportNotification(
+        admin,
+        lineUserId,
+        product.name,
+        reason,
+        "reporter"
+      ),
+    ]);
 
     // 10. 回傳檢舉成功
     return NextResponse.json(
