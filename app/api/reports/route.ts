@@ -36,168 +36,180 @@ function fail(message: string, status = 400) {
   );
 }
 
-type NotificationType = "seller" | "reporter";
+// 確保商品圖片是 LINE 可使用的 HTTPS 網址
+function getImageUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
 
+  const cleaned = value.trim();
+  if (!cleaned) return null;
+
+  try {
+    const url = new URL(cleaned);
+
+    if (url.protocol !== "https:") {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+// 建立賣家收到的 LINE 商品檢舉通知
 function createReportFlexMessage(
-  type: NotificationType,
   productName: string,
-  reason: string
+  reason: string,
+  imageUrl: string | null
 ) {
   const reasonLabel =
     REASON_LABELS[reason] || "其他原因";
 
-  const isSeller = type === "seller";
+  const bubble: any = {
+    type: "bubble",
+    size: "mega",
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "lg",
+      spacing: "md",
+      contents: [
+        {
+          type: "text",
+          text: "⚠️ 商品收到檢舉",
+          weight: "bold",
+          size: "lg",
+          color: "#D35400",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: productName || "未命名商品",
+          weight: "bold",
+          size: "xl",
+          color: "#222222",
+          wrap: true,
+        },
+        {
+          type: "separator",
+          color: "#EEEEEE",
+        },
+        {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: [
+            {
+              type: "text",
+              text: "檢舉原因",
+              size: "xs",
+              color: "#888888",
+            },
+            {
+              type: "text",
+              text: reasonLabel,
+              size: "md",
+              weight: "bold",
+              color: "#444444",
+              wrap: true,
+            },
+          ],
+        },
+        {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: [
+            {
+              type: "text",
+              text: "目前處理狀態",
+              size: "xs",
+              color: "#888888",
+            },
+            {
+              type: "text",
+              text: "已暫時隱藏，等待管理員審核",
+              size: "sm",
+              weight: "bold",
+              color: "#D35400",
+              wrap: true,
+            },
+          ],
+        },
+        {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: "#FFF7ED",
+          cornerRadius: "md",
+          paddingAll: "md",
+          contents: [
+            {
+              type: "text",
+              text:
+                "您的商品已收到使用者檢舉，平台已暫時隱藏該商品，並交由管理員審核。",
+              size: "sm",
+              color: "#555555",
+              wrap: true,
+            },
+            {
+              type: "text",
+              text:
+                "收到檢舉不代表違規成立，請等待管理員審核結果。",
+              size: "sm",
+              color: "#777777",
+              wrap: true,
+              margin: "md",
+            },
+          ],
+        },
+        {
+          type: "separator",
+          color: "#EEEEEE",
+          margin: "md",
+        },
+        {
+          type: "text",
+          text: "📍 南臺二手市集 · 自動通知系統",
+          size: "xs",
+          color: "#999999",
+          wrap: true,
+        },
+      ],
+    },
+  };
 
-  const title = isSeller
-    ? "⚠️ 商品收到檢舉"
-    : "✅ 檢舉提交成功";
+  // 新增：商品有照片時，顯示在通知卡片最上方
+  const validImageUrl = getImageUrl(imageUrl);
 
-  const message = isSeller
-    ? "您的商品已收到使用者檢舉，平台已暫時隱藏該商品，並交由管理員審核。"
-    : "您的檢舉已成功送出，平台已暫時隱藏該商品，並交由管理員進一步審核。";
-
-  const footer = isSeller
-    ? "收到檢舉不代表違規成立，請等待管理員審核結果。"
-    : "檢舉已受理，但尚未判定違規是否成立。感謝您協助維護校園交易安全。";
+  if (validImageUrl) {
+    bubble.hero = {
+      type: "image",
+      url: validImageUrl,
+      size: "full",
+      aspectRatio: "16:9",
+      aspectMode: "cover",
+    };
+  }
 
   return {
     type: "flex",
-    altText: isSeller
-      ? "⚠️ 您的商品收到檢舉通知"
-      : "✅ 您的商品檢舉已成功提交",
-    contents: {
-      type: "bubble",
-      size: "mega",
-      body: {
-        type: "box",
-        layout: "vertical",
-        paddingAll: "lg",
-        spacing: "md",
-        contents: [
-          {
-            type: "text",
-            text: title,
-            weight: "bold",
-            size: "lg",
-            color: isSeller ? "#D35400" : "#10B981",
-            wrap: true,
-          },
-          {
-            type: "text",
-            text: productName || "未命名商品",
-            weight: "bold",
-            size: "xl",
-            color: "#222222",
-            wrap: true,
-          },
-          {
-            type: "separator",
-            color: "#EEEEEE",
-          },
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "sm",
-            contents: [
-              {
-                type: "text",
-                text: "檢舉原因",
-                size: "xs",
-                color: "#888888",
-              },
-              {
-                type: "text",
-                text: reasonLabel,
-                size: "md",
-                weight: "bold",
-                color: "#444444",
-                wrap: true,
-              },
-            ],
-          },
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "sm",
-            contents: [
-              {
-                type: "text",
-                text: "目前處理狀態",
-                size: "xs",
-                color: "#888888",
-              },
-              {
-                type: "text",
-                text: "已暫時隱藏，等待管理員審核",
-                size: "sm",
-                weight: "bold",
-                color: "#D35400",
-                wrap: true,
-              },
-            ],
-          },
-          {
-            type: "box",
-            layout: "vertical",
-            backgroundColor: isSeller
-              ? "#FFF7ED"
-              : "#ECFDF5",
-            cornerRadius: "md",
-            paddingAll: "md",
-            contents: [
-              {
-                type: "text",
-                text: message,
-                size: "sm",
-                color: "#555555",
-                wrap: true,
-              },
-              {
-                type: "text",
-                text: footer,
-                size: "sm",
-                color: "#777777",
-                wrap: true,
-                margin: "md",
-              },
-            ],
-          },
-          {
-            type: "separator",
-            color: "#EEEEEE",
-            margin: "md",
-          },
-          {
-            type: "text",
-            text: "📍 南臺二手市集 · 自動通知系統",
-            size: "xs",
-            color: "#999999",
-            wrap: true,
-          },
-        ],
-      },
-    },
+    altText: "⚠️ 您的商品收到檢舉通知",
+    contents: bubble,
   };
 }
 
-// 共用 LINE 通知函式
-// 賣家及檢舉者都使用相同的帳號綁定機制
-async function sendReportNotification(
+// 檢舉成功後，發送 LINE 通知給商品賣家
+async function notifySellerAboutReport(
   admin: any,
-  recipientLoginId: string | null,
+  sellerLoginId: string | null,
   productName: string,
   reason: string,
-  type: NotificationType
+  imageUrl: string | null
 ): Promise<void> {
-  const logPrefix =
-    type === "seller"
-      ? "[Report Seller Notification]"
-      : "[Report Reporter Notification]";
-
   try {
-    if (!recipientLoginId) {
+    if (!sellerLoginId) {
       console.log(
-        `${logPrefix} 沒有收件人的 LINE Login ID`
+        "[Report Notification] 商品沒有賣家 LINE ID"
       );
       return;
     }
@@ -208,48 +220,51 @@ async function sendReportNotification(
 
     if (!channelAccessToken) {
       console.error(
-        `${logPrefix} 缺少 LINE Channel Access Token`
+        "[Report Notification] 缺少 LINE Channel Access Token"
       );
       return;
     }
 
-    // 查詢既有 LINE Account Linking 資料
+    // 使用既有 LINE Account Linking 資料表
     const { data: binding, error: bindingError } =
       await admin
         .from("line_notification_bindings")
         .select("messaging_user_id")
-        .eq("line_login_user_id", recipientLoginId)
+        .eq("line_login_user_id", sellerLoginId)
         .maybeSingle();
 
     if (bindingError) {
       console.error(
-        `${logPrefix} 查詢 LINE 綁定失敗:`,
+        "[Report Notification] 查詢 LINE 綁定失敗:",
         {
           code: bindingError.code,
           message: bindingError.message,
           details: bindingError.details,
+          hint: bindingError.hint,
         }
       );
       return;
     }
 
-    // 僅使用已確認綁定的 Messaging API ID
+    // 使用已綁定的 Messaging API User ID
     const recipientMessagingId =
       binding?.messaging_user_id;
 
     if (!recipientMessagingId) {
       console.log(
-        `${logPrefix} 使用者尚未綁定 LINE 官方帳號`
+        "[Report Notification] 賣家尚未綁定 LINE 官方帳號"
       );
       return;
     }
 
+    // 建立含商品照片的 Flex Message
     const flexMessage = createReportFlexMessage(
-      type,
       productName,
-      reason
+      reason,
+      imageUrl
     );
 
+    // 發送 LINE 官方帳號通知
     const response = await fetch(
       "https://api.line.me/v2/bot/message/push",
       {
@@ -270,7 +285,7 @@ async function sendReportNotification(
       const errorText = await response.text();
 
       console.error(
-        `${logPrefix} LINE 發送失敗:`,
+        "[Report Notification] LINE 發送失敗:",
         {
           status: response.status,
           details: errorText,
@@ -280,12 +295,15 @@ async function sendReportNotification(
     }
 
     console.log(
-      `${logPrefix} LINE 通知已提交`
+      "[Report Notification] 賣家檢舉通知已提交",
+      {
+        hasImage: Boolean(getImageUrl(imageUrl)),
+      }
     );
   } catch (error) {
-    // 通知失敗不影響檢舉結果
+    // 通知失敗不可影響已成功建立的檢舉
     console.error(
-      `${logPrefix} 發送通知發生錯誤:`,
+      "[Report Notification] 發送通知發生錯誤:",
       error
     );
   }
@@ -380,7 +398,7 @@ export async function POST(req: NextRequest) {
     } = await admin
       .from("products")
       .select(
-        "id, name, line_user_id, status, is_approved"
+        "id, name, image_url, line_user_id, status, is_approved"
       )
       .eq("id", productId)
       .maybeSingle();
@@ -436,8 +454,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 8. 建立檢舉紀錄 + 立即隱藏商品
-    // 沿用原本的 Supabase RPC
+    // 8. 呼叫原本的資料庫函式
+    // 建立檢舉紀錄 + 立即隱藏商品
     const {
       data: reportId,
       error: rpcError,
@@ -494,24 +512,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 9. 檢舉成功後，通知賣家及檢舉者
-    // 使用 Promise.allSettled 確保兩則通知互不影響
-    await Promise.allSettled([
-      sendReportNotification(
-        admin,
-        product.line_user_id,
-        product.name,
-        reason,
-        "seller"
-      ),
-      sendReportNotification(
-        admin,
-        lineUserId,
-        product.name,
-        reason,
-        "reporter"
-      ),
-    ]);
+    // 9. 檢舉成功後，通知賣家
+    // 保留檢舉流程，不通知檢舉者
+    await notifySellerAboutReport(
+      admin,
+      product.line_user_id,
+      product.name,
+      reason,
+      product.image_url
+    );
 
     // 10. 回傳檢舉成功
     return NextResponse.json(
@@ -549,4 +558,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
- 
