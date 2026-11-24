@@ -679,9 +679,11 @@ export default function KeywordAlertsPage() {
             </li>
           </ul>
 
-          <p className="mt-4 border-t border-orange-200 pt-3 text-xs text-gray-500">
-            目前為關鍵字管理測試階段，自動媒合推播功能尚未啟用。
-          </p>
+          <div className="mt-4 flex items-center gap-2 border-t border-orange-200 pt-3 text-xs font-medium text-green-600">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            智慧媒合服務已啟用，符合條件的新上架商品將透過 LINE 自動通知。
+          </div>
+
         </section>
       </div>
     </main>
