@@ -26,16 +26,69 @@ function safeInternalPath(
     !value ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
-    value.startsWith("/\\")
+    /[\r\n\\]/.test(value)
   ) {
     return null;
   }
 
-  if (/[\r\n\\]/.test(value)) {
-    return null;
+  return value;
+}
+
+function extractNameFromEmail(email: string | null) {
+  return email
+    ? email.split("@")[0].toUpperCase()
+    : null;
+}
+
+function getLoginTarget() {
+  const params = new URLSearchParams(
+    window.location.search
+  );
+
+  const requested = safeInternalPath(
+    params.get("next")
+  );
+
+  if (requested) return requested;
+
+  if (window.location.pathname !== "/") {
+    return (
+      safeInternalPath(
+        window.location.pathname +
+          window.location.search +
+          window.location.hash
+      ) || "/"
+    );
   }
 
-  return value;
+  return (
+    safeInternalPath(
+      sessionStorage.getItem(LOGIN_NEXT_KEY)
+    ) || "/"
+  );
+}
+
+function isTokenExpired(token: string | null) {
+  if (!token) return true;
+
+  try {
+    const payload = token.split(".")[1];
+
+    const normalized = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const decoded = JSON.parse(
+      window.atob(normalized)
+    );
+
+    return (
+      typeof decoded.exp !== "number" ||
+      decoded.exp * 1000 <= Date.now()
+    );
+  } catch {
+    return true;
+  }
 }
 
 interface LiffContextType {
@@ -89,10 +142,8 @@ export function LiffProvider({
 }: {
   children: ReactNode;
 }) {
-  const [
-    isAuthenticated,
-    setIsAuthenticated,
-  ] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] =
+    useState(false);
 
   const [userEmail, setUserEmail] =
     useState<string | null>(null);
@@ -115,75 +166,116 @@ export function LiffProvider({
   const [liffInstance, setLiffInstance] =
     useState<any>(null);
 
-  const extractNameFromEmail = (
-    email: string | null
-  ) => {
-    if (!email) return null;
+  const [lineExpired, setLineExpired] =
+    useState(false);
 
-    return email.split("@")[0].toUpperCase();
-  };
+  // 清除 LINE 顯示狀態
+  // 不清除 Supabase 學校信箱工作階段
+  const clearLineState = useCallback(() => {
+    setLineUserId(null);
+    setUserProfile(null);
+  }, []);
+
+  // 同步學校信箱登入狀態
+  const syncSchoolSession = useCallback(
+    (email: string | null) => {
+      setUserEmail(email);
+
+      setUserName(
+        extractNameFromEmail(email)
+      );
+
+      setIsAuthenticated(
+        email
+          ?.toLowerCase()
+          .endsWith("@stust.edu.tw") ?? false
+      );
+    },
+    []
+  );
 
   // LINE 登入
   const login = useCallback(() => {
     if (!liffInstance) {
-      console.warn(
-        "LIFF 尚未初始化，無法登入"
+      alert(
+        "LINE 登入服務尚未初始化，請重新整理後再試。"
       );
-      return;
-    }
-
-    if (liffInstance.isLoggedIn()) {
       return;
     }
 
     try {
-      // 記住登入前想前往的頁面
-      const params = new URLSearchParams(
-        window.location.search
+      const target = getLoginTarget();
+
+      sessionStorage.setItem(
+        LOGIN_NEXT_KEY,
+        target
       );
 
-      const requested = safeInternalPath(
-        params.get("next")
-      );
+      const loginPage =
+        target === "/"
+          ? "/"
+          : `/?next=${encodeURIComponent(target)}`;
 
-      if (requested) {
-        sessionStorage.setItem(
-          LOGIN_NEXT_KEY,
-          requested
-        );
-      } else if (
-        window.location.pathname !== "/"
-      ) {
-        const current = safeInternalPath(
-          window.location.pathname +
-            window.location.search
+      const hasValidLineToken =
+        liffInstance.isLoggedIn() &&
+        !lineExpired &&
+        !isTokenExpired(
+          liffInstance.getIDToken()
         );
 
-        if (current) {
-          sessionStorage.setItem(
-            LOGIN_NEXT_KEY,
-            current
-          );
+      // LINE 已登入
+      if (hasValidLineToken) {
+        // 尚未完成學校信箱驗證
+        if (!isAuthenticated) {
+          window.location.assign(loginPage);
+          return;
         }
+
+        // LINE 與學校信箱都已完成
+        window.location.assign(target);
+        return;
       }
+
+      // 憑證過期時重新登入 LINE
+      if (liffInstance.isLoggedIn()) {
+        if (liffInstance.isInClient()) {
+          alert(
+            "LINE 登入憑證已過期，請關閉目前頁面，" +
+            "再從 LINE 官方帳號重新開啟市集。"
+          );
+          return;
+        }
+
+        liffInstance.logout();
+      }
+
+      clearLineState();
 
       if (liffInstance.isInClient()) {
         liffInstance.login();
       } else {
-        // 保留正式網站登入網址
         liffInstance.login({
           redirectUri: PRODUCTION_HOME,
         });
       }
-    } catch (err) {
+    } catch (error) {
       console.error(
         "LINE 登入啟動失敗:",
-        err
+        error
+      );
+
+      alert(
+        "LINE 登入失敗，請重新整理後再試。"
       );
     }
-  }, [liffInstance]);
+  }, [
+    liffInstance,
+    isAuthenticated,
+    lineExpired,
+    clearLineState,
+  ]);
 
-  // 同時登出學校信箱與 LINE
+  // 完整登出
   const logout = useCallback(async () => {
     const { error } =
       await supabase.auth.signOut({
@@ -201,13 +293,18 @@ export function LiffProvider({
       );
     }
 
-    if (liffInstance?.isLoggedIn()) {
+    syncSchoolSession(null);
+
+    if (
+      liffInstance?.isLoggedIn() &&
+      !liffInstance.isInClient()
+    ) {
       try {
         liffInstance.logout();
-      } catch (err) {
+      } catch (error) {
         console.error(
-          "LINE LIFF 登出失敗:",
-          err
+          "LINE 登出失敗:",
+          error
         );
 
         throw new Error(
@@ -216,7 +313,6 @@ export function LiffProvider({
       }
     }
 
-    // 清除登入快取
     localStorage.removeItem(
       "stust_authenticated"
     );
@@ -229,17 +325,18 @@ export function LiffProvider({
       LOGIN_NEXT_KEY
     );
 
-    // 清除使用者資料
-    setIsAuthenticated(false);
-    setUserEmail(null);
-    setLineUserId(null);
-    setUserProfile(null);
-    setUserName(null);
+    clearLineState();
 
-    window.location.replace("/");
-  }, [liffInstance]);
+    setLineExpired(false);
 
-  // 初始化 Supabase 與 LINE
+    window.location.replace("/products");
+  }, [
+    liffInstance,
+    clearLineState,
+    syncSchoolSession,
+  ]);
+
+  // 初始化 LINE 與 Supabase
   useEffect(() => {
     let isMounted = true;
 
@@ -251,48 +348,14 @@ export function LiffProvider({
 
     async function initAuthAndLiff() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (isMounted) {
-          const email =
-            session?.user.email ?? null;
-
-          setUserEmail(email);
-
-          setUserName(
-            extractNameFromEmail(email)
-          );
-
-          setIsAuthenticated(
-            email
-              ?.toLowerCase()
-              .endsWith("@stust.edu.tw") ??
-              false
-          );
-        }
-
-        // 監聽學校信箱登入狀態
+        // 監聽學校信箱工作階段
         const authListener =
           supabase.auth.onAuthStateChange(
             (_event, session) => {
               if (!isMounted) return;
 
-              const email =
-                session?.user.email ?? null;
-
-              setUserEmail(email);
-
-              setUserName(
-                extractNameFromEmail(email)
-              );
-
-              setIsAuthenticated(
-                email
-                  ?.toLowerCase()
-                  .endsWith("@stust.edu.tw") ??
-                  false
+              syncSchoolSession(
+                session?.user.email ?? null
               );
             }
           );
@@ -300,51 +363,93 @@ export function LiffProvider({
         subscription =
           authListener.data.subscription;
 
-        // 初始化 LINE LIFF
-        if (
-          LIFF_ID &&
-          typeof window !== "undefined"
-        ) {
-          const { default: liff } =
-            await import("@line/liff");
+        // 讀取既有工作階段
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-          await liff.init({
-            liffId: LIFF_ID,
-          });
+        if (sessionError) {
+          console.warn(
+            "讀取學校信箱工作階段失敗:",
+            sessionError.message
+          );
+        }
 
-          if (isMounted) {
-            setLiffInstance(liff);
+        if (isMounted && !sessionError) {
+          syncSchoolSession(
+            session?.user.email ?? null
+          );
+        }
+
+        if (!LIFF_ID) {
+          throw new Error(
+            "尚未設定 NEXT_PUBLIC_LIFF_ID"
+          );
+        }
+
+        const { default: liff } =
+          await import("@line/liff");
+
+        await liff.init({
+          liffId: LIFF_ID,
+        });
+
+        if (!isMounted) return;
+
+        setLiffInstance(liff);
+        setIsLiffInit(true);
+
+        if (liff.isLoggedIn()) {
+          const idToken = liff.getIDToken();
+
+          if (isTokenExpired(idToken)) {
+            setLineExpired(true);
+            clearLineState();
+            return;
           }
 
-          if (liff.isLoggedIn()) {
+          // 優先取得 ID Token 中的使用者資料
+          const decoded =
+            liff.getDecodedIDToken();
+
+          if (decoded?.sub) {
+            setLineUserId(decoded.sub);
+
+            setUserProfile({
+              userId: decoded.sub,
+              displayName: decoded.name,
+              pictureUrl: decoded.picture,
+            });
+          }
+
+          // 補充完整 LINE 個人資料
+          try {
             const profile =
               await liff.getProfile();
 
             if (isMounted) {
-              setLineUserId(
-                profile.userId
-              );
-
+              setLineUserId(profile.userId);
               setUserProfile(profile);
+              setLineExpired(false);
             }
-          } else {
-            console.log(
-              "LINE LIFF 初始化成功，等待手動登入。"
+          } catch (profileError) {
+            // 暫時網路錯誤不直接清除登入狀態
+            console.warn(
+              "LINE 個人資料讀取失敗:",
+              profileError
             );
           }
         } else {
-          console.warn(
-            "尚未設定 NEXT_PUBLIC_LIFF_ID"
-          );
+          clearLineState();
         }
-      } catch (err) {
+      } catch (error) {
         console.error(
           "LINE / Supabase 初始化失敗:",
-          err
+          error
         );
       } finally {
         if (isMounted) {
-          setIsLiffInit(true);
           setIsLoading(false);
         }
       }
@@ -356,30 +461,121 @@ export function LiffProvider({
       isMounted = false;
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [
+    syncSchoolSession,
+    clearLineState,
+  ]);
+
+  // 定期確認 LINE 憑證是否仍有效
+  useEffect(() => {
+    if (!liffInstance) return;
+
+    function checkLineSession() {
+      try {
+        if (
+          !liffInstance.isLoggedIn() ||
+          isTokenExpired(
+            liffInstance.getIDToken()
+          )
+        ) {
+          setLineExpired(true);
+          clearLineState();
+        }
+      } catch (error) {
+        console.warn(
+          "LINE 登入狀態檢查失敗:",
+          error
+        );
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (
+        document.visibilityState === "visible"
+      ) {
+        checkLineSession();
+      }
+    }
+
+    function handleExpiredEvent() {
+      setLineExpired(true);
+      clearLineState();
+    }
+
+    const timer = window.setInterval(
+      checkLineSession,
+      60000
+    );
+
+    window.addEventListener(
+      "focus",
+      checkLineSession
+    );
+
+    window.addEventListener(
+      "stust:line-expired",
+      handleExpiredEvent
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      window.clearInterval(timer);
+
+      window.removeEventListener(
+        "focus",
+        checkLineSession
+      );
+
+      window.removeEventListener(
+        "stust:line-expired",
+        handleExpiredEvent
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, [
+    liffInstance,
+    clearLineState,
+  ]);
 
   // 發送學校信箱驗證碼
-  const sendOtp = async (
-    email: string
-  ) => {
+  const sendOtp = async (email: string) => {
     try {
+      const normalizedEmail =
+        email.trim().toLowerCase();
+
+      if (
+        !normalizedEmail.endsWith(
+          "@stust.edu.tw"
+        )
+      ) {
+        throw new Error(
+          "請使用南臺科技大學學校信箱。"
+        );
+      }
+
       const { error } =
         await supabase.auth.signInWithOtp({
-          email,
+          email: normalizedEmail,
         });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       return {
         success: true,
       };
-    } catch (err: any) {
+    } catch (error: any) {
       return {
         success: false,
         error:
-          err?.message ||
+          error?.message ||
           "驗證碼發送失敗",
       };
     }
@@ -391,36 +587,33 @@ export function LiffProvider({
     token: string
   ) => {
     try {
+      const normalizedEmail =
+        email.trim().toLowerCase();
+
+      if (
+        !normalizedEmail.endsWith(
+          "@stust.edu.tw"
+        )
+      ) {
+        throw new Error(
+          "請使用南臺科技大學學校信箱。"
+        );
+      }
+
       const { data, error } =
         await supabase.auth.verifyOtp({
-          email,
-          token,
+          email: normalizedEmail,
+          token: token.trim(),
           type: "email",
         });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (data.session) {
         const verifiedEmail =
-          data.session.user.email ??
-          null;
+          data.session.user.email ?? null;
 
-        setUserEmail(verifiedEmail);
-
-        setUserName(
-          extractNameFromEmail(
-            verifiedEmail
-          )
-        );
-
-        setIsAuthenticated(
-          verifiedEmail
-            ?.toLowerCase()
-            .endsWith("@stust.edu.tw") ??
-            false
-        );
+        syncSchoolSession(verifiedEmail);
 
         return {
           success: true,
@@ -432,11 +625,11 @@ export function LiffProvider({
         error:
           "驗證成功，但未能建立安全工作階段",
       };
-    } catch (err: any) {
+    } catch (error: any) {
       return {
         success: false,
         error:
-          err?.message ||
+          error?.message ||
           "驗證碼錯誤，請重新輸入",
       };
     }
