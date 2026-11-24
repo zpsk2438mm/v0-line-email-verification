@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifiedIdentity } from "@/lib/contact-auth";
 import { randomUUID, createHash } from "node:crypto";
+import {
+  createProductImageToken,
+} from "@/lib/product-image-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +44,6 @@ function fail(
 
 // ==========================================
 // 驗證圖片格式
-// 不單純相信前端傳入的 MIME Type
 // ==========================================
 
 function detectImageType(
@@ -50,7 +52,6 @@ function detectImageType(
   mimeType: string;
   extension: string;
 } | null {
-
   // JPEG
   if (
     buffer.length >= 3 &&
@@ -102,11 +103,9 @@ function detectImageType(
 export async function POST(
   req: NextRequest
 ) {
-  // ========================================
-  // 1. 驗證 LINE 與學校信箱
-  // ========================================
-
   let identity;
+
+  // 1. 驗證 LINE 與學校信箱
 
   try {
     identity = await verifiedIdentity(req);
@@ -126,9 +125,7 @@ export async function POST(
   } = identity;
 
   try {
-    // ======================================
     // 2. 檢查請求大小
-    // ======================================
 
     const contentLength = Number(
       req.headers.get("content-length") || 0
@@ -143,9 +140,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 3. 讀取請求內容
-    // ======================================
 
     if (!req.body) {
       return fail("缺少圖片資料");
@@ -187,9 +182,7 @@ export async function POST(
     const raw = Buffer.concat(chunks)
       .toString("utf8");
 
-    // ======================================
     // 4. 解析 JSON
-    // ======================================
 
     let body: unknown;
 
@@ -227,18 +220,14 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 5. 移除 Data URL 前綴
-    // ======================================
 
     imageBase64 = imageBase64.replace(
       /^data:image\/(?:jpeg|png|webp);base64,/i,
       ""
     );
 
-    // ======================================
     // 6. 驗證 Base64 格式
-    // ======================================
 
     if (
       imageBase64.length % 4 !== 0 ||
@@ -251,9 +240,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 7. 轉換圖片資料
-    // ======================================
 
     const buffer = Buffer.from(
       imageBase64,
@@ -284,9 +271,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 8. 驗證圖片檔頭
-    // ======================================
 
     const imageType =
       detectImageType(buffer);
@@ -298,10 +283,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 9. 建立使用者識別雜湊
-    // 不直接公開 LINE ID 或學校信箱
-    // ======================================
 
     const ownerHash = createHash("sha256")
       .update(
@@ -310,10 +292,7 @@ export async function POST(
       .digest("hex")
       .slice(0, 32);
 
-    // ======================================
     // 10. 建立唯一圖片路徑
-    // 不接受前端指定檔名
-    // ======================================
 
     const fileName =
       `${ownerHash}_${randomUUID()}.${imageType.extension}`;
@@ -321,10 +300,35 @@ export async function POST(
     const filePath =
       `products/${fileName}`;
 
-    // ======================================
-    // 11. 使用後端權限上傳圖片
-    // 禁止覆蓋既有檔案
-    // ======================================
+    // 11. 預先取得圖片網址
+
+    const { data: publicData } =
+      admin.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(filePath);
+
+    const imageUrl =
+      publicData.publicUrl;
+
+    if (!imageUrl) {
+      return fail(
+        "無法取得商品照片網址",
+        500
+      );
+    }
+
+    // 12. 建立圖片所有權憑證
+    // 若密鑰設定錯誤，直接停止上傳
+
+    const imageToken =
+      createProductImageToken(
+        imageUrl,
+        lineUserId,
+        email
+      );
+
+    // 13. 使用後端權限上傳圖片
+    // 禁止覆蓋既有圖片
 
     const {
       data: uploaded,
@@ -356,34 +360,16 @@ export async function POST(
       );
     }
 
-    // ======================================
-    // 12. 取得公開圖片網址
-    // ======================================
-
-    const { data: publicData } =
-      admin.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(filePath);
-
-    const imageUrl =
-      publicData.publicUrl;
-
-    if (!imageUrl) {
-      return fail(
-        "無法取得商品照片網址",
-        500
-      );
-    }
-
-    // ======================================
-    // 13. 回傳上傳結果
-    // ======================================
+    // 14. 回傳圖片網址及所有權憑證
+    // 只有成功上傳後才回傳憑證
 
     return NextResponse.json(
       {
         success: true,
 
         imageUrl,
+
+        imageToken,
 
         path: filePath,
 
