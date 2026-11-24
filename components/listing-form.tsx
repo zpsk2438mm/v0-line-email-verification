@@ -71,41 +71,11 @@ const CONDITIONS = [
   { id: "used", label: "明顯使用痕跡（5成新以下）" },
 ];
 
-function validLineUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-
-    return (
-      url.protocol === "https:" &&
-      url.hostname === "line.me" &&
-      url.pathname.startsWith("/ti/p/") &&
-      url.pathname.length > "/ti/p/".length &&
-      !url.username &&
-      !url.password
-    );
-  } catch {
-    return false;
-  }
-}
-
-function formatDatabaseError(error: {
-  message: string;
-  code?: string;
-  details?: string | null;
-  hint?: string | null;
-}) {
-  return [
-    `資料庫錯誤：${error.message}`,
-    error.code ? `錯誤代碼：${error.code}` : "",
-    error.details ? `詳細資訊：${error.details}` : "",
-    error.hint ? `建議：${error.hint}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
+// ==========================================
 // AI 專用圖片壓縮
 // 不影響原本上傳至 Supabase 的商品照片
+// ==========================================
+
 async function compressImageForAI(
   blob: Blob
 ): Promise<string> {
@@ -174,7 +144,6 @@ async function compressImageForAI(
       quality
     );
 
-    // 控制 Base64 大小，保留 API 請求空間
     const maxLength = 1900000;
 
     while (
@@ -203,6 +172,10 @@ async function compressImageForAI(
     URL.revokeObjectURL(objectUrl);
   }
 }
+
+// ==========================================
+// 商品刊登表單
+// ==========================================
 
 export default function ListingForm({
   initialData,
@@ -239,7 +212,6 @@ export default function ListingForm({
     initialData?.description || ""
   );
 
-  // 保留原本單張圖片欄位
   const [imageUrl, setImageUrl] = useState(
     initialData?.image_url ||
       initialData?.images?.[0] ||
@@ -269,7 +241,10 @@ export default function ListingForm({
   const [selectedImageFile, setSelectedImageFile] =
     useState<File | null>(null);
 
+  // ==========================================
   // AI 智慧商品辨識
+  // ==========================================
+
   const handleAIRecognition = async () => {
     if (
       aiLoading ||
@@ -315,7 +290,6 @@ export default function ListingForm({
       let imageBlob: Blob;
 
       // 優先使用使用者原始圖片
-      // 避免重複下載 Supabase 圖片
       if (selectedImageFile) {
         imageBlob = selectedImageFile;
       } else {
@@ -437,7 +411,10 @@ export default function ListingForm({
     }
   };
 
+  // ==========================================
   // 上傳單張商品圖片
+  // ==========================================
+
   const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -550,7 +527,10 @@ export default function ListingForm({
     }
   };
 
+  // ==========================================
   // 移除商品照片
+  // ==========================================
+
   const handleRemoveImage = () => {
     if (
       aiLoading ||
@@ -566,7 +546,11 @@ export default function ListingForm({
     setAiSuccess("");
   };
 
-  // 送出商品
+  // ==========================================
+  // 安全商品刊登與編輯
+  // 改用 /api/product-submit
+  // ==========================================
+
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
@@ -582,6 +566,7 @@ export default function ListingForm({
 
     setSubmitError("");
 
+    // 1. 確認 LINE 登入
     if (!lineUserId) {
       setSubmitError(
         "無法取得 LINE 身分，請重新登入。"
@@ -589,6 +574,7 @@ export default function ListingForm({
       return;
     }
 
+    // 2. 確認學校信箱驗證
     if (
       !isAuthenticated ||
       !userEmail
@@ -601,6 +587,7 @@ export default function ListingForm({
       return;
     }
 
+    // 3. 驗證商品基本資料
     if (
       !title.trim() ||
       !category ||
@@ -612,30 +599,51 @@ export default function ListingForm({
       return;
     }
 
+    if (title.trim().length > 100) {
+      setSubmitError(
+        "商品名稱不得超過 100 字。"
+      );
+      return;
+    }
+
+    if (description.trim().length > 2000) {
+      setSubmitError(
+        "商品詳情不得超過 2000 字。"
+      );
+      return;
+    }
+
+    // 4. 驗證商品分類
     const categoryExists = CATEGORIES.some(
       (item) => item.id === category
     );
 
     if (!categoryExists) {
-      setSubmitError("請重新選擇商品分類。");
+      setSubmitError(
+        "請重新選擇商品分類。"
+      );
       return;
     }
 
-    // 檢查商品新舊程度
+    // 5. 驗證商品新舊程度
     const conditionExists = CONDITIONS.some(
       (item) => item.id === condition
     );
 
     if (!conditionExists) {
-      setSubmitError("請選擇商品新舊程度。");
+      setSubmitError(
+        "請選擇商品新舊程度。"
+      );
       return;
     }
 
+    // 6. 驗證商品價格
     const numericPrice = Number(price);
 
     if (
       !Number.isSafeInteger(numericPrice) ||
-      numericPrice < 0
+      numericPrice < 0 ||
+      numericPrice > 2147483647
     ) {
       setSubmitError(
         "請輸入有效的整數商品價格。"
@@ -643,6 +651,7 @@ export default function ListingForm({
       return;
     }
 
+    // 7. 確認商品照片
     if (!imageUrl) {
       setSubmitError(
         "請先上傳商品照片。"
@@ -650,6 +659,7 @@ export default function ListingForm({
       return;
     }
 
+    // 8. 確認編輯商品 ID
     if (isEditing && !initialData?.id) {
       setSubmitError(
         "找不到要編輯的商品 ID。"
@@ -660,130 +670,84 @@ export default function ListingForm({
     setIsSubmitting(true);
 
     try {
-      // 每次刊登前確認賣家私人 LINE 連結
-      const contactData = await contactRequest(
-        "/api/seller-contact"
-      );
-
-      const sellerLineUrl =
-        typeof contactData?.lineFriendUrl === "string"
-          ? contactData.lineFriendUrl.trim()
-          : "";
-
-      if (!validLineUrl(sellerLineUrl)) {
-        throw new Error(
-          "尚未設定有效的私人 LINE 加好友連結，" +
-            "請先前往個人中心設定。"
-        );
-      }
-
-      // 保留原本資料庫欄位及審核流程
+      // 9. 建立商品提交資料
+      // 不由前端指定賣家身分或審核結果
       const payload = {
+        ...(isEditing
+          ? {
+              productId: initialData?.id,
+            }
+          : {}),
+
         name: title.trim(),
         category,
         condition,
         price: numericPrice,
         description: description.trim(),
-        contact: sellerLineUrl,
         image_url: imageUrl,
-        line_user_id: lineUserId,
-        verified_email: userEmail,
-        status: "pending",
-        is_approved: false,
       };
 
-      console.log("準備儲存商品:", {
-        name: payload.name,
-        category: payload.category,
-        condition: payload.condition,
-        price: payload.price,
-        hasImage: Boolean(payload.image_url),
-        isEditing,
-      });
-
-      let savedProductId: string | undefined;
-
-      if (isEditing && initialData?.id) {
-        // 編輯時只更新自己的商品
-        const { data, error } = await supabase
-          .from("products")
-          .update(payload)
-          .eq("id", initialData.id)
-          .eq("line_user_id", lineUserId)
-          .select("id")
-          .single();
-
-        if (error) {
-          console.error("商品更新失敗:", error);
-
-          throw new Error(
-            formatDatabaseError(error)
-          );
+      console.log(
+        "[Product Submit] 準備提交商品",
+        {
+          category,
+          condition,
+          price: numericPrice,
+          hasImage: Boolean(imageUrl),
+          isEditing,
         }
+      );
 
-        savedProductId = data.id;
-      } else {
-        // 新增商品使用 insert
-        const { data, error } = await supabase
-          .from("products")
-          .insert(payload)
-          .select("id")
-          .single();
+      // 10. 呼叫安全商品刊登 API
+      const result = await contactRequest(
+        "/api/product-submit",
+        isEditing ? "PUT" : "POST",
+        payload
+      );
 
-        if (error) {
-          console.error("商品新增失敗:", error);
-
-          throw new Error(
-            formatDatabaseError(error)
-          );
-        }
-
-        savedProductId = data.id;
-      }
-
-      // 保留原本的通知 API 呼叫
-      // 通知失敗不影響商品刊登
-      try {
-        const response = await fetch("/api/notify", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            type: isEditing
-              ? "product_updated"
-              : "product_created",
-            productId: savedProductId,
-            title: payload.name,
-            sellerLineId: lineUserId,
-          }),
-        });
-
-        if (!response.ok) {
-          console.warn(
-            "通知 API 回傳錯誤:",
-            response.status
-          );
-        }
-      } catch (notifyErr) {
-        console.warn(
-          "通知發送失敗，不影響商品儲存:",
-          notifyErr
+      if (
+        result?.success !== true ||
+        typeof result?.productId !== "string" ||
+        !result.productId
+      ) {
+        throw new Error(
+          result?.error ||
+            "無法確認商品儲存結果，請先至我的商品確認。"
         );
       }
 
+      console.log(
+        "[Product Submit] 商品儲存成功",
+        {
+          productId: result.productId,
+          status: result.status,
+          aiReviewStatus:
+            result.aiReviewStatus,
+        }
+      );
+
+      // LINE 通知交由 Supabase
+      // product_line_notification 觸發器處理
+      // 不再由前端重複呼叫 /api/notify
+
+      // 11. 顯示成功提示
       toast({
         title: isEditing
           ? "更新成功"
           : "刊登成功",
+
         description:
           "商品已送出審核，審核通過後將公開於市集！",
       });
 
+      // 12. 返回我的商品
       router.push("/my-listings");
       router.refresh();
     } catch (err: unknown) {
-      console.error("商品刊登失敗:", err);
+      console.error(
+        "[Product Submit] 商品儲存失敗:",
+        err
+      );
 
       const msg =
         err instanceof Error
@@ -802,6 +766,10 @@ export default function ListingForm({
     }
   };
 
+  // ==========================================
+  // LINE 登入載入畫面
+  // ==========================================
+
   if (isLiffLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-12 space-y-4">
@@ -813,6 +781,10 @@ export default function ListingForm({
       </div>
     );
   }
+
+  // ==========================================
+  // 商品刊登介面
+  // ==========================================
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-sm">
@@ -1063,6 +1035,7 @@ export default function ListingForm({
               }
               placeholder="例：大一英文課本"
               disabled={aiLoading || isSubmitting}
+              maxLength={100}
               required
             />
           </div>
@@ -1145,6 +1118,7 @@ export default function ListingForm({
               id="price"
               type="number"
               min="0"
+              max="2147483647"
               step="1"
               inputMode="numeric"
               placeholder="請輸入金額"
@@ -1189,11 +1163,12 @@ export default function ListingForm({
               }
               placeholder="說明物品瑕疵、面交地點等"
               disabled={aiLoading || isSubmitting}
+              maxLength={2000}
               className="rounded-xl"
             />
           </div>
 
-          {/* 資料庫錯誤訊息 */}
+          {/* 商品儲存錯誤訊息 */}
           {submitError && (
             <div
               role="alert"
