@@ -10,7 +10,7 @@ export const maxDuration = 60;
 // Gemini AI 模型設定
 // ==========================================
 
-const GEMINI_MODEL = "gemini-2.5-flash-lite";
+const GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 
