@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { verifiedIdentity } from "@/lib/contact-auth";
+import {
+  verifyProductImageToken,
+} from "@/lib/product-image-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +47,10 @@ const MAX_REQUEST_SIZE = 20000;
 // 統一錯誤回應
 // ==========================================
 
-function fail(message: string, status = 400) {
+function fail(
+  message: string,
+  status = 400
+) {
   return NextResponse.json(
     {
       success: false,
@@ -63,7 +69,9 @@ function fail(message: string, status = 400) {
 // 驗證 UUID
 // ==========================================
 
-function validUUID(value: string): boolean {
+function validUUID(
+  value: string
+): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value
   );
@@ -73,7 +81,9 @@ function validUUID(value: string): boolean {
 // 驗證私人 LINE 加好友連結
 // ==========================================
 
-function validLineUrl(value: string): boolean {
+function validLineUrl(
+  value: string
+): boolean {
   try {
     const url = new URL(value);
 
@@ -95,9 +105,12 @@ function validLineUrl(value: string): boolean {
 // 驗證 Supabase 商品照片網址
 // ==========================================
 
-function validImageUrl(value: string): boolean {
+function validImageUrl(
+  value: string
+): boolean {
   try {
-    const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const base =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
 
     if (!base || value.length > 2000) {
       return false;
@@ -120,7 +133,9 @@ function validImageUrl(value: string): boolean {
     const allowedPath =
       /^\/storage\/v1\/object\/public\/(product-images|products)\/products\/[a-zA-Z0-9_.-]+$/;
 
-    return allowedPath.test(url.pathname);
+    return allowedPath.test(
+      url.pathname
+    );
   } catch {
     return false;
   }
@@ -130,7 +145,9 @@ function validImageUrl(value: string): boolean {
 // 清理文字
 // ==========================================
 
-function cleanText(value: unknown): string {
+function cleanText(
+  value: unknown
+): string {
   return typeof value === "string"
     ? value.trim()
     : "";
@@ -145,9 +162,7 @@ async function submitProduct(
   isEditing: boolean
 ) {
   try {
-    // ======================================
     // 1. 驗證 LINE 與學校信箱
-    // ======================================
 
     let identity: Awaited<
       ReturnType<typeof verifiedIdentity>
@@ -164,74 +179,110 @@ async function submitProduct(
       );
     }
 
-    const { admin, email, lineUserId } = identity;
+    const {
+      admin,
+      email,
+      lineUserId,
+    } = identity;
 
-    // ======================================
     // 2. 驗證請求大小
-    // ======================================
 
     const contentLength = Number(
       req.headers.get("content-length") || 0
     );
 
-    if (contentLength > MAX_REQUEST_SIZE) {
-      return fail("商品資料過大", 413);
+    if (
+      contentLength > MAX_REQUEST_SIZE
+    ) {
+      return fail(
+        "商品資料過大",
+        413
+      );
     }
 
     const requestText = await req.text();
 
     if (
-      Buffer.byteLength(requestText, "utf8") >
-      MAX_REQUEST_SIZE
+      Buffer.byteLength(
+        requestText,
+        "utf8"
+      ) > MAX_REQUEST_SIZE
     ) {
-      return fail("商品資料過大", 413);
+      return fail(
+        "商品資料過大",
+        413
+      );
     }
 
-    // ======================================
     // 3. 解析商品資料
-    // ======================================
 
     let body: Record<string, unknown>;
 
     try {
-      const parsed = JSON.parse(requestText);
+      const parsed = JSON.parse(
+        requestText
+      );
 
       if (
         !parsed ||
         typeof parsed !== "object" ||
         Array.isArray(parsed)
       ) {
-        return fail("商品資料格式不正確");
+        return fail(
+          "商品資料格式不正確"
+        );
       }
 
       body = parsed;
     } catch {
-      return fail("商品資料格式不正確");
+      return fail(
+        "商品資料格式不正確"
+      );
     }
 
-    const productId = cleanText(body.productId);
-    const name = cleanText(body.name);
-    const category = cleanText(body.category);
-    const condition = cleanText(body.condition);
-    const description = cleanText(body.description);
-    const imageUrl = cleanText(body.image_url);
+    const productId =
+      cleanText(body.productId);
+
+    const name =
+      cleanText(body.name);
+
+    const category =
+      cleanText(body.category);
+
+    const condition =
+      cleanText(body.condition);
+
+    const description =
+      cleanText(body.description);
+
+    const imageUrl =
+      cleanText(body.image_url);
+
+    // 新增圖片所有權憑證
+
+    const imageToken =
+      cleanText(body.imageToken);
 
     const price = body.price;
 
-    // ======================================
     // 4. 驗證商品欄位
-    // ======================================
 
     if (!name || name.length > 100) {
-      return fail("商品名稱須為 1 至 100 字");
+      return fail(
+        "商品名稱須為 1 至 100 字"
+      );
     }
 
     if (!CATEGORIES.includes(category)) {
-      return fail("請選擇有效的商品分類");
+      return fail(
+        "請選擇有效的商品分類"
+      );
     }
 
     if (!CONDITIONS.includes(condition)) {
-      return fail("請選擇商品新舊程度");
+      return fail(
+        "請選擇商品新舊程度"
+      );
     }
 
     if (
@@ -240,35 +291,138 @@ async function submitProduct(
       price < 0 ||
       price > 2147483647
     ) {
-      return fail("請輸入有效的整數商品價格");
+      return fail(
+        "請輸入有效的整數商品價格"
+      );
     }
 
     if (description.length > 2000) {
-      return fail("商品詳情不得超過 2000 字");
+      return fail(
+        "商品詳情不得超過 2000 字"
+      );
     }
 
-    if (!imageUrl || !validImageUrl(imageUrl)) {
+    if (
+      !imageUrl ||
+      !validImageUrl(imageUrl)
+    ) {
       return fail(
         "商品照片網址不正確，請重新上傳照片"
       );
     }
 
-    if (isEditing && !validUUID(productId)) {
-      return fail("商品 ID 格式不正確");
+    if (
+      isEditing &&
+      !validUUID(productId)
+    ) {
+      return fail(
+        "商品 ID 格式不正確"
+      );
     }
 
     // ======================================
-    // 5. 從資料庫取得賣家私人 LINE 連結
-    // 不接受前端自行指定聯絡方式
+    // 5. 查詢既有商品
+    // 驗證商品所有權及原始圖片
     // ======================================
 
-    const { data: sellerContact, error: contactError } =
-      await admin
-        .from("seller_contacts")
-        .select("line_friend_url")
+    let existing: {
+      id: string;
+      status: string;
+      ai_review_version: string;
+      image_url: string | null;
+    } | null = null;
+
+    if (isEditing) {
+      const {
+        data,
+        error: lookupError,
+      } = await admin
+        .from("products")
+        .select(
+          "id, status, ai_review_version, image_url"
+        )
+        .eq("id", productId)
         .eq("line_user_id", lineUserId)
         .eq("verified_email", email)
         .maybeSingle();
+
+      if (lookupError) {
+        console.error(
+          "[Product Submit] 商品查詢失敗",
+          lookupError.code
+        );
+
+        return fail(
+          "無法讀取商品資料",
+          500
+        );
+      }
+
+      if (!data) {
+        return fail(
+          "商品不存在或你沒有編輯權限",
+          404
+        );
+      }
+
+      if (
+        data.status !== "pending" &&
+        data.status !== "approved"
+      ) {
+        return fail(
+          "目前商品狀態不允許編輯，請聯絡管理員",
+          409
+        );
+      }
+
+      existing = data;
+    }
+
+    // ======================================
+    // 6. 驗證圖片所有權
+    // ======================================
+
+    // 編輯商品且照片未更換
+    // 允許沿用原本的商品照片
+
+    const keepingOriginalImage =
+      isEditing &&
+      existing !== null &&
+      existing.image_url === imageUrl;
+
+    // 新增商品或更換照片
+    // 必須提供有效的圖片上傳憑證
+
+    if (!keepingOriginalImage) {
+      if (
+        !imageToken ||
+        !verifyProductImageToken(
+          imageToken,
+          imageUrl,
+          lineUserId,
+          email
+        )
+      ) {
+        return fail(
+          "商品照片驗證失敗或憑證已過期，請移除照片後重新上傳",
+          403
+        );
+      }
+    }
+
+    // ======================================
+    // 7. 取得賣家私人 LINE 連結
+    // ======================================
+
+    const {
+      data: sellerContact,
+      error: contactError,
+    } = await admin
+      .from("seller_contacts")
+      .select("line_friend_url")
+      .eq("line_user_id", lineUserId)
+      .eq("verified_email", email)
+      .maybeSingle();
 
     if (contactError) {
       console.error(
@@ -276,7 +430,10 @@ async function submitProduct(
         contactError.code
       );
 
-      return fail("無法讀取賣家聯絡資料", 500);
+      return fail(
+        "無法讀取賣家聯絡資料",
+        500
+      );
     }
 
     const sellerLineUrl = cleanText(
@@ -294,7 +451,7 @@ async function submitProduct(
     }
 
     // ======================================
-    // 6. 由後端建立商品資料
+    // 8. 由後端建立商品資料
     // ======================================
 
     const payload = {
@@ -305,76 +462,57 @@ async function submitProduct(
       description,
 
       image_url: imageUrl,
+
       contact: sellerLineUrl,
 
       // 使用官方驗證後的身分
+
       line_user_id: lineUserId,
+
       verified_email: email,
 
       // 商品一律重新進入待審核
+
       status: "pending",
+
       is_approved: false,
+
       approved_at: null,
 
       // 初始化 AI 審核狀態
+
       ai_review_status: "pending",
+
       ai_review_reason: null,
+
       ai_risk_level: null,
+
       ai_review_flags: [],
+
       ai_reviewed_at: null,
+
       ai_review_model: null,
 
-      // 每次刊登或編輯建立新的審核版本
+      // 建立新的 AI 審核版本
+
       ai_review_version: randomUUID(),
     };
 
     let savedProductId: string;
 
     // ======================================
-    // 7. 編輯既有商品
+    // 9. 編輯既有商品
     // ======================================
 
     if (isEditing) {
-      const { data: existing, error: lookupError } =
-        await admin
-          .from("products")
-          .select(
-            "id, status, ai_review_version"
-          )
-          .eq("id", productId)
-          .eq("line_user_id", lineUserId)
-          .eq("verified_email", email)
-          .maybeSingle();
-
-      if (lookupError) {
-        console.error(
-          "[Product Submit] 商品查詢失敗",
-          lookupError.code
-        );
-
-        return fail("無法讀取商品資料", 500);
-      }
-
       if (!existing) {
         return fail(
-          "商品不存在或你沒有編輯權限",
+          "找不到要編輯的商品",
           404
         );
       }
 
-      // 只允許正常待審核或已核准商品重新編輯
-      // 避免檢舉、下架商品自行恢復
-      if (
-        existing.status !== "pending" &&
-        existing.status !== "approved"
-      ) {
-        return fail(
-          "目前商品狀態不允許編輯，請聯絡管理員",
-          409
-        );
-      }
-
-      const { data, error } = await admin
+      let updateQuery = admin
         .from("products")
         .update(payload)
         .eq("id", productId)
@@ -384,7 +522,26 @@ async function submitProduct(
         .eq(
           "ai_review_version",
           existing.ai_review_version
-        )
+        );
+
+      // 確認原始圖片未被其他操作修改
+
+      if (existing.image_url === null) {
+        updateQuery = updateQuery.is(
+          "image_url",
+          null
+        );
+      } else {
+        updateQuery = updateQuery.eq(
+          "image_url",
+          existing.image_url
+        );
+      }
+
+      const {
+        data,
+        error,
+      } = await updateQuery
         .select("id")
         .maybeSingle();
 
@@ -394,7 +551,10 @@ async function submitProduct(
           error.code
         );
 
-        return fail("商品更新失敗", 500);
+        return fail(
+          "商品更新失敗",
+          500
+        );
       }
 
       if (!data) {
@@ -407,10 +567,13 @@ async function submitProduct(
       savedProductId = data.id;
     } else {
       // ====================================
-      // 8. 新增商品
+      // 10. 新增商品
       // ====================================
 
-      const { data, error } = await admin
+      const {
+        data,
+        error,
+      } = await admin
         .from("products")
         .insert(payload)
         .select("id")
@@ -422,37 +585,48 @@ async function submitProduct(
           error?.code
         );
 
-        return fail("商品新增失敗", 500);
+        return fail(
+          "商品新增失敗",
+          500
+        );
       }
 
       savedProductId = data.id;
     }
 
     // ======================================
-    // 9. 商品儲存完成
+    // 11. 商品儲存完成
     // ======================================
 
-    console.log("[Product Submit] 商品儲存成功", {
-      productId: savedProductId,
-      isEditing,
-      aiReviewStatus: "pending",
-    });
+    console.log(
+      "[Product Submit] 商品儲存成功",
+      {
+        productId: savedProductId,
+        isEditing,
+        aiReviewStatus: "pending",
+      }
+    );
 
-    // 目前保留資料庫原有通知觸發器
-    // 下一階段才串接 Gemini AI 審核
+    // 保留原本 Supabase LINE 通知觸發器
+    // 暫時不啟用 Gemini AI 自動核准
 
     return NextResponse.json(
       {
         success: true,
+
         productId: savedProductId,
+
         status: "pending",
+
         aiReviewStatus: "pending",
+
         message: isEditing
           ? "商品修改成功，已重新送出審核"
           : "商品刊登成功，已送出審核",
       },
       {
         status: isEditing ? 200 : 201,
+
         headers: {
           "Cache-Control": "no-store",
         },
@@ -474,7 +648,9 @@ async function submitProduct(
 // POST：新增商品
 // ==========================================
 
-export async function POST(req: NextRequest) {
+export async function POST(
+  req: NextRequest
+) {
   return submitProduct(req, false);
 }
 
@@ -482,6 +658,8 @@ export async function POST(req: NextRequest) {
 // PUT：編輯商品
 // ==========================================
 
-export async function PUT(req: NextRequest) {
+export async function PUT(
+  req: NextRequest
+) {
   return submitProduct(req, true);
 }
