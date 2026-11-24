@@ -4,7 +4,6 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLiff } from "@/components/liff-provider";
-import { supabase } from "@/lib/supabase";
 import { contactRequest } from "@/lib/contact-client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -46,7 +45,10 @@ interface ListingFormProps {
   isEditing?: boolean;
 }
 
-// 保留原本 11 種商品分類
+// ==========================================
+// 商品分類
+// ==========================================
+
 const CATEGORIES = [
   { id: "electronics", label: "📱 電子產品" },
   { id: "books", label: "📚 書籍教材" },
@@ -61,7 +63,10 @@ const CATEGORIES = [
   { id: "other", label: "🔍 其他" },
 ];
 
+// ==========================================
 // 商品新舊程度
+// ==========================================
+
 const CONDITIONS = [
   { id: "new_sealed", label: "全新未拆封" },
   { id: "new_opened", label: "全新已拆封" },
@@ -72,8 +77,8 @@ const CONDITIONS = [
 ];
 
 // ==========================================
-// AI 專用圖片壓縮
-// 不影響原本上傳至 Supabase 的商品照片
+// 商品圖片自動壓縮
+// 同時供安全圖片上傳及 AI 辨識使用
 // ==========================================
 
 async function compressImageForAI(
@@ -228,6 +233,7 @@ export default function ListingForm({
     useState("");
 
   // AI 智慧上架狀態
+
   const [aiLoading, setAiLoading] =
     useState(false);
 
@@ -237,7 +243,8 @@ export default function ListingForm({
   const [aiSuccess, setAiSuccess] =
     useState("");
 
-  // 保存使用者選擇的原始圖片
+  // 保存實際上傳的壓縮圖片
+
   const [selectedImageFile, setSelectedImageFile] =
     useState<File | null>(null);
 
@@ -289,7 +296,8 @@ export default function ListingForm({
     try {
       let imageBlob: Blob;
 
-      // 優先使用使用者原始圖片
+      // 優先使用已上傳的壓縮圖片
+
       if (selectedImageFile) {
         imageBlob = selectedImageFile;
       } else {
@@ -309,7 +317,8 @@ export default function ListingForm({
       const compressedImage =
         await compressImageForAI(imageBlob);
 
-      // 呼叫後端 AI 辨識 API
+      // 呼叫 AI 智慧上架 API
+
       const result = await contactRequest(
         "/api/ai-listing",
         "POST",
@@ -330,6 +339,7 @@ export default function ListingForm({
       let filledFields = 0;
 
       // 自動填入商品名稱
+
       if (
         typeof data.name === "string" &&
         data.name.trim()
@@ -339,6 +349,7 @@ export default function ListingForm({
       }
 
       // 自動填入商品分類
+
       if (
         typeof data.category === "string" &&
         CATEGORIES.some(
@@ -350,12 +361,14 @@ export default function ListingForm({
       }
 
       // 自動產生商品詳情
+
       let aiDescription =
         typeof data.description === "string"
           ? data.description.trim()
           : "";
 
       // 書籍 ISBN 辨識
+
       if (
         data.isBook === true &&
         typeof data.isbn === "string" &&
@@ -412,7 +425,9 @@ export default function ListingForm({
   };
 
   // ==========================================
-  // 上傳單張商品圖片
+  // 安全圖片上傳及自動壓縮
+  // 改用 /api/product-image
+  // 不再直接操作 Supabase Storage
   // ==========================================
 
   const handleImageUpload = async (
@@ -426,9 +441,30 @@ export default function ListingForm({
       return;
     }
 
-    const file = e.target.files?.[0];
+    const input = e.currentTarget;
+
+    const file = input.files?.[0];
 
     if (!file) return;
+
+    // 1. 驗證使用者身分
+
+    if (
+      !lineUserId ||
+      !isAuthenticated ||
+      !userEmail
+        ?.toLowerCase()
+        .endsWith("@stust.edu.tw")
+    ) {
+      setSubmitError(
+        "請先完成 LINE 登入及學校信箱驗證。"
+      );
+
+      input.value = "";
+      return;
+    }
+
+    // 2. 驗證圖片格式
 
     if (!file.type.startsWith("image/")) {
       toast({
@@ -437,18 +473,20 @@ export default function ListingForm({
         variant: "destructive",
       });
 
-      e.target.value = "";
+      input.value = "";
       return;
     }
+
+    // 3. 驗證原始圖片大小
 
     if (file.size > 10 * 1024 * 1024) {
       toast({
         title: "圖片太大",
-        description: "請上傳小於 10MB 的圖片。",
+        description: "請選擇 10MB 以內的圖片。",
         variant: "destructive",
       });
 
-      e.target.value = "";
+      input.value = "";
       return;
     }
 
@@ -458,72 +496,90 @@ export default function ListingForm({
     setAiSuccess("");
 
     try {
-      const fileExt =
-        file.name.split(".").pop()?.toLowerCase() ||
-        "jpg";
+      // 4. 自動壓縮圖片
 
-      const fileName =
-        `${Date.now()}_` +
-        `${Math.random().toString(36).slice(2)}.` +
-        fileExt;
+      const compressedImage =
+        await compressImageForAI(file);
 
-      const filePath = `products/${fileName}`;
+      // 5. 建立壓縮後的圖片檔案
 
-      // 優先使用原本的 product-images bucket
-      const { error: uploadError } =
-        await supabase.storage
-          .from("product-images")
-          .upload(filePath, file);
+      const binary = atob(compressedImage);
 
-      let uploadedBucket = "product-images";
+      const bytes = new Uint8Array(
+        binary.length
+      );
 
-      if (uploadError) {
-        // 保留原本備用 bucket
-        const { error: fallbackError } =
-          await supabase.storage
-            .from("products")
-            .upload(filePath, file);
-
-        if (fallbackError) {
-          throw new Error(
-            `圖片上傳失敗：${uploadError.message}；` +
-              `備用空間：${fallbackError.message}`
-          );
-        }
-
-        uploadedBucket = "products";
+      for (
+        let i = 0;
+        i < binary.length;
+        i++
+      ) {
+        bytes[i] = binary.charCodeAt(i);
       }
 
-      const { data: publicUrlData } =
-        supabase.storage
-          .from(uploadedBucket)
-          .getPublicUrl(filePath);
+      const compressedFile = new File(
+        [bytes],
+        "product-image.jpg",
+        {
+          type: "image/jpeg",
+        }
+      );
 
-      setImageUrl(publicUrlData.publicUrl);
+      // 6. 呼叫安全圖片上傳 API
 
-      // 保存原始圖片供 AI 辨識使用
-      setSelectedImageFile(file);
+      const result = await contactRequest(
+        "/api/product-image",
+        "POST",
+        {
+          image: compressedImage,
+          mimeType: "image/jpeg",
+        }
+      );
+
+      // 7. 驗證後端回傳結果
+
+      if (
+        !result?.success ||
+        typeof result.imageUrl !== "string" ||
+        !result.imageUrl.trim()
+      ) {
+        throw new Error(
+          result?.error ||
+            "無法取得商品照片網址。"
+        );
+      }
+
+      // 8. 保存商品照片
+
+      setImageUrl(result.imageUrl);
+
+      // 保存實際上傳的圖片供 AI 辨識
+
+      setSelectedImageFile(compressedFile);
+
+      // 9. 顯示成功訊息
 
       toast({
         title: "圖片上傳成功",
-        description: "商品照片已準備完成。",
+        description:
+          "商品照片已自動壓縮並安全上傳。",
       });
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
           : "圖片上傳失敗，請稍後再試。";
 
-      setSubmitError(msg);
+      setSubmitError(message);
 
       toast({
         title: "圖片上傳失敗",
-        description: msg,
+        description: message,
         variant: "destructive",
       });
     } finally {
       setUploadingImage(false);
-      e.target.value = "";
+      input.value = "";
     }
   };
 
@@ -567,6 +623,7 @@ export default function ListingForm({
     setSubmitError("");
 
     // 1. 確認 LINE 登入
+
     if (!lineUserId) {
       setSubmitError(
         "無法取得 LINE 身分，請重新登入。"
@@ -575,6 +632,7 @@ export default function ListingForm({
     }
 
     // 2. 確認學校信箱驗證
+
     if (
       !isAuthenticated ||
       !userEmail
@@ -588,6 +646,7 @@ export default function ListingForm({
     }
 
     // 3. 驗證商品基本資料
+
     if (
       !title.trim() ||
       !category ||
@@ -614,6 +673,7 @@ export default function ListingForm({
     }
 
     // 4. 驗證商品分類
+
     const categoryExists = CATEGORIES.some(
       (item) => item.id === category
     );
@@ -626,6 +686,7 @@ export default function ListingForm({
     }
 
     // 5. 驗證商品新舊程度
+
     const conditionExists = CONDITIONS.some(
       (item) => item.id === condition
     );
@@ -638,6 +699,7 @@ export default function ListingForm({
     }
 
     // 6. 驗證商品價格
+
     const numericPrice = Number(price);
 
     if (
@@ -652,6 +714,7 @@ export default function ListingForm({
     }
 
     // 7. 確認商品照片
+
     if (!imageUrl) {
       setSubmitError(
         "請先上傳商品照片。"
@@ -660,6 +723,7 @@ export default function ListingForm({
     }
 
     // 8. 確認編輯商品 ID
+
     if (isEditing && !initialData?.id) {
       setSubmitError(
         "找不到要編輯的商品 ID。"
@@ -672,6 +736,7 @@ export default function ListingForm({
     try {
       // 9. 建立商品提交資料
       // 不由前端指定賣家身分或審核結果
+
       const payload = {
         ...(isEditing
           ? {
@@ -699,6 +764,7 @@ export default function ListingForm({
       );
 
       // 10. 呼叫安全商品刊登 API
+
       const result = await contactRequest(
         "/api/product-submit",
         isEditing ? "PUT" : "POST",
@@ -731,6 +797,7 @@ export default function ListingForm({
       // 不再由前端重複呼叫 /api/notify
 
       // 11. 顯示成功提示
+
       toast({
         title: isEditing
           ? "更新成功"
@@ -741,6 +808,7 @@ export default function ListingForm({
       });
 
       // 12. 返回我的商品
+
       router.push("/my-listings");
       router.refresh();
     } catch (err: unknown) {
@@ -802,6 +870,7 @@ export default function ListingForm({
           className="space-y-6"
         >
           {/* 商品照片 */}
+
           <div className="space-y-2">
             <Label>
               商品照片（1 張）*
@@ -856,9 +925,14 @@ export default function ListingForm({
                 />
               </label>
             )}
+
+            <p className="text-xs text-slate-500">
+              支援 10MB 以內的照片，系統將自動壓縮後上傳。
+            </p>
           </div>
 
           {/* AI 智慧上架 */}
+
           {!isEditing && (
             <div className="space-y-4 rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 to-violet-50 p-4">
               <div className="flex items-center gap-3">
@@ -884,6 +958,7 @@ export default function ListingForm({
               </div>
 
               {/* AI 功能介紹 */}
+
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1.5 rounded-lg bg-white/80 p-2 text-xs text-purple-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
@@ -907,6 +982,7 @@ export default function ListingForm({
               </div>
 
               {/* AI 辨識按鈕 */}
+
               <Button
                 type="button"
                 onClick={handleAIRecognition}
@@ -935,6 +1011,7 @@ export default function ListingForm({
               </Button>
 
               {/* 尚未上傳照片 */}
+
               {!imageUrl && (
                 <p className="text-center text-xs text-purple-500">
                   請先上傳商品照片，即可使用 AI 智慧辨識。
@@ -942,6 +1019,7 @@ export default function ListingForm({
               )}
 
               {/* AI 辨識中 */}
+
               {aiLoading && (
                 <div
                   role="status"
@@ -966,6 +1044,7 @@ export default function ListingForm({
               )}
 
               {/* AI 辨識成功 */}
+
               {aiSuccess && (
                 <div
                   role="status"
@@ -986,6 +1065,7 @@ export default function ListingForm({
               )}
 
               {/* AI 辨識失敗 */}
+
               {aiError && (
                 <div
                   role="alert"
@@ -1010,6 +1090,7 @@ export default function ListingForm({
               )}
 
               {/* AI 使用提醒 */}
+
               <div className="border-t border-purple-200 pt-3">
                 <p className="text-xs leading-relaxed text-purple-600">
                   AI 辨識結果僅供參考，可自行修改。
@@ -1022,6 +1103,7 @@ export default function ListingForm({
           )}
 
           {/* 商品名稱 */}
+
           <div className="space-y-2">
             <Label htmlFor="title">
               商品名稱 *
@@ -1041,6 +1123,7 @@ export default function ListingForm({
           </div>
 
           {/* 商品分類 */}
+
           <div className="space-y-2">
             <Label htmlFor="category">
               分類 *
@@ -1073,6 +1156,7 @@ export default function ListingForm({
           </div>
 
           {/* 商品新舊程度 */}
+
           <div className="space-y-2">
             <Label htmlFor="condition">
               商品新舊程度 *
@@ -1109,6 +1193,7 @@ export default function ListingForm({
           </div>
 
           {/* 價格 */}
+
           <div className="space-y-2">
             <Label htmlFor="price">
               預售價格 (NT$) *
@@ -1133,6 +1218,7 @@ export default function ListingForm({
           </div>
 
           {/* LINE 聯絡方式 */}
+
           <div className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
 
@@ -1149,6 +1235,7 @@ export default function ListingForm({
           </div>
 
           {/* 商品詳情 */}
+
           <div className="space-y-2">
             <Label htmlFor="description">
               商品詳情
@@ -1169,6 +1256,7 @@ export default function ListingForm({
           </div>
 
           {/* 商品儲存錯誤訊息 */}
+
           {submitError && (
             <div
               role="alert"
@@ -1183,6 +1271,7 @@ export default function ListingForm({
           )}
 
           {/* 送出審核 */}
+
           <Button
             type="submit"
             className="w-full h-12 rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white font-bold text-base"
