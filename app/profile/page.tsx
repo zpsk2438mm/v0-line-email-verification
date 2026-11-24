@@ -21,6 +21,8 @@ import {
   AlertCircle,
   Clock3,
   MessageCircle,
+  BellRing,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -244,6 +246,7 @@ export default function ProfilePage() {
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
+
         {/* 個人資料 */}
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-8 px-6">
@@ -314,6 +317,43 @@ export default function ProfilePage() {
             </Button>
           </Link>
         </div>
+
+        {/* ==========================================
+            新增：智慧媒合提醒入口
+        ========================================== */}
+
+        <Link
+          href="/keyword-alerts"
+          className="block rounded-[24px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D35400]"
+        >
+          <Card className="group border-none shadow-sm rounded-[24px] bg-white p-4 transition-all hover:bg-orange-50/50 hover:shadow-md">
+            <div className="flex items-center gap-4">
+
+              {/* 功能圖示 */}
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-orange-50">
+                <BellRing className="h-7 w-7 text-[#D35400]" />
+              </div>
+
+              {/* 功能名稱及說明 */}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-black text-base text-slate-800">
+                  智慧媒合提醒
+                </h3>
+
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  設定想追蹤的商品關鍵字
+                </p>
+
+                <p className="mt-1 text-[11px] font-medium text-[#D35400]">
+                  商品上架後透過 LINE 自動通知
+                </p>
+              </div>
+
+              {/* 進入頁面箭頭 */}
+              <ChevronRight className="h-5 w-5 shrink-0 text-[#D35400] transition-transform group-hover:translate-x-1" />
+            </div>
+          </Card>
+        </Link>
 
         {/* LINE 加好友連結設定 */}
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-5 space-y-4">
