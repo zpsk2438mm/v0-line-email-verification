@@ -2,9 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { verifiedIdentity } from "@/lib/contact-auth";
-import {
-  verifyProductImageToken,
-} from "@/lib/product-image-token";
+import { verifyProductImageToken } from "@/lib/product-image-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,10 +45,7 @@ const MAX_REQUEST_SIZE = 20000;
 // 統一錯誤回應
 // ==========================================
 
-function fail(
-  message: string,
-  status = 400
-) {
+function fail(message: string, status = 400) {
   return NextResponse.json(
     {
       success: false,
@@ -69,9 +64,7 @@ function fail(
 // 驗證 UUID
 // ==========================================
 
-function validUUID(
-  value: string
-): boolean {
+function validUUID(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value
   );
@@ -81,9 +74,7 @@ function validUUID(
 // 驗證私人 LINE 加好友連結
 // ==========================================
 
-function validLineUrl(
-  value: string
-): boolean {
+function validLineUrl(value: string): boolean {
   try {
     const url = new URL(value);
 
@@ -102,12 +93,10 @@ function validLineUrl(
 }
 
 // ==========================================
-// 驗證 Supabase 商品照片網址
+// 驗證新上傳的 Supabase 商品照片網址
 // ==========================================
 
-function validImageUrl(
-  value: string
-): boolean {
+function validImageUrl(value: string): boolean {
   try {
     const base =
       process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -133,9 +122,7 @@ function validImageUrl(
     const allowedPath =
       /^\/storage\/v1\/object\/public\/(product-images|products)\/products\/[a-zA-Z0-9_.-]+$/;
 
-    return allowedPath.test(
-      url.pathname
-    );
+    return allowedPath.test(url.pathname);
   } catch {
     return false;
   }
@@ -145,9 +132,7 @@ function validImageUrl(
 // 清理文字
 // ==========================================
 
-function cleanText(
-  value: unknown
-): string {
+function cleanText(value: unknown): string {
   return typeof value === "string"
     ? value.trim()
     : "";
@@ -191,13 +176,8 @@ async function submitProduct(
       req.headers.get("content-length") || 0
     );
 
-    if (
-      contentLength > MAX_REQUEST_SIZE
-    ) {
-      return fail(
-        "商品資料過大",
-        413
-      );
+    if (contentLength > MAX_REQUEST_SIZE) {
+      return fail("商品資料過大", 413);
     }
 
     const requestText = await req.text();
@@ -208,10 +188,7 @@ async function submitProduct(
         "utf8"
       ) > MAX_REQUEST_SIZE
     ) {
-      return fail(
-        "商品資料過大",
-        413
-      );
+      return fail("商品資料過大", 413);
     }
 
     // 3. 解析商品資料
@@ -219,70 +196,51 @@ async function submitProduct(
     let body: Record<string, unknown>;
 
     try {
-      const parsed = JSON.parse(
-        requestText
-      );
+      const parsed = JSON.parse(requestText);
 
       if (
         !parsed ||
         typeof parsed !== "object" ||
         Array.isArray(parsed)
       ) {
-        return fail(
-          "商品資料格式不正確"
-        );
+        return fail("商品資料格式不正確");
       }
 
       body = parsed;
     } catch {
-      return fail(
-        "商品資料格式不正確"
-      );
+      return fail("商品資料格式不正確");
     }
 
-    const productId =
-      cleanText(body.productId);
+    const productId = cleanText(body.productId);
 
-    const name =
-      cleanText(body.name);
+    const name = cleanText(body.name);
 
-    const category =
-      cleanText(body.category);
+    const category = cleanText(body.category);
 
-    const condition =
-      cleanText(body.condition);
+    const condition = cleanText(body.condition);
 
-    const description =
-      cleanText(body.description);
+    const description = cleanText(body.description);
 
-    const imageUrl =
-      cleanText(body.image_url);
+    const imageUrl = cleanText(body.image_url);
 
-    // 新增圖片所有權憑證
-
-    const imageToken =
-      cleanText(body.imageToken);
+    const imageToken = cleanText(body.imageToken);
 
     const price = body.price;
 
-    // 4. 驗證商品欄位
+    // ======================================
+    // 4. 驗證商品基本欄位
+    // ======================================
 
     if (!name || name.length > 100) {
-      return fail(
-        "商品名稱須為 1 至 100 字"
-      );
+      return fail("商品名稱須為 1 至 100 字");
     }
 
     if (!CATEGORIES.includes(category)) {
-      return fail(
-        "請選擇有效的商品分類"
-      );
+      return fail("請選擇有效的商品分類");
     }
 
     if (!CONDITIONS.includes(condition)) {
-      return fail(
-        "請選擇商品新舊程度"
-      );
+      return fail("請選擇商品新舊程度");
     }
 
     if (
@@ -291,38 +249,30 @@ async function submitProduct(
       price < 0 ||
       price > 2147483647
     ) {
-      return fail(
-        "請輸入有效的整數商品價格"
-      );
+      return fail("請輸入有效的整數商品價格");
     }
 
     if (description.length > 2000) {
-      return fail(
-        "商品詳情不得超過 2000 字"
-      );
+      return fail("商品詳情不得超過 2000 字");
     }
 
-    if (
-      !imageUrl ||
-      !validImageUrl(imageUrl)
-    ) {
-      return fail(
-        "商品照片網址不正確，請重新上傳照片"
-      );
+    // 此處只確認照片不為空
+    // 不提前驗證舊商品圖片網址格式
+
+    if (!imageUrl) {
+      return fail("請先上傳商品照片");
     }
 
     if (
       isEditing &&
       !validUUID(productId)
     ) {
-      return fail(
-        "商品 ID 格式不正確"
-      );
+      return fail("商品 ID 格式不正確");
     }
 
     // ======================================
     // 5. 查詢既有商品
-    // 驗證商品所有權及原始圖片
+    // 優先驗證商品所有權
     // ======================================
 
     let existing: {
@@ -379,21 +329,51 @@ async function submitProduct(
     }
 
     // ======================================
-    // 6. 驗證圖片所有權
+    // 6. 判斷是否保留原始商品照片
     // ======================================
-
-    // 編輯商品且照片未更換
-    // 允許沿用原本的商品照片
 
     const keepingOriginalImage =
       isEditing &&
       existing !== null &&
-      existing.image_url === imageUrl;
+      typeof existing.image_url === "string" &&
+      existing.image_url.trim() !== "" &&
+      existing.image_url.trim() === imageUrl;
 
-    // 新增商品或更換照片
-    // 必須提供有效的圖片上傳憑證
+    // 預設使用前端提交的新照片
 
-    if (!keepingOriginalImage) {
+    let finalImageUrl = imageUrl;
+
+    // ======================================
+    // 7. 驗證圖片所有權
+    // ======================================
+
+    if (keepingOriginalImage && existing) {
+      // 編輯商品且未更換照片
+      // 使用資料庫內原始照片網址
+      // 不要求舊照片具備新版圖片憑證
+      // 不套用新上傳照片的網址格式限制
+
+      finalImageUrl = existing.image_url!;
+
+      console.log(
+        "[Product Submit] 保留原始商品照片",
+        {
+          productId,
+          isEditing,
+        }
+      );
+    } else {
+      // 新增商品或更換照片
+      // 必須通過完整網址驗證
+
+      if (!validImageUrl(imageUrl)) {
+        return fail(
+          "商品照片網址不正確，請重新上傳照片"
+        );
+      }
+
+      // 必須具有有效的圖片所有權憑證
+
       if (
         !imageToken ||
         !verifyProductImageToken(
@@ -408,10 +388,17 @@ async function submitProduct(
           403
         );
       }
+
+      console.log(
+        "[Product Submit] 新照片憑證驗證成功",
+        {
+          isEditing,
+        }
+      );
     }
 
     // ======================================
-    // 7. 取得賣家私人 LINE 連結
+    // 8. 取得賣家私人 LINE 連結
     // ======================================
 
     const {
@@ -451,17 +438,23 @@ async function submitProduct(
     }
 
     // ======================================
-    // 8. 由後端建立商品資料
+    // 9. 由後端建立商品資料
     // ======================================
 
     const payload = {
       name,
+
       category,
+
       condition,
+
       price,
+
       description,
 
-      image_url: imageUrl,
+      // 使用後端確認的商品照片
+
+      image_url: finalImageUrl,
 
       contact: sellerLineUrl,
 
@@ -501,7 +494,7 @@ async function submitProduct(
     let savedProductId: string;
 
     // ======================================
-    // 9. 編輯既有商品
+    // 10. 編輯既有商品
     // ======================================
 
     if (isEditing) {
@@ -567,7 +560,7 @@ async function submitProduct(
       savedProductId = data.id;
     } else {
       // ====================================
-      // 10. 新增商品
+      // 11. 新增商品
       // ====================================
 
       const {
@@ -595,7 +588,7 @@ async function submitProduct(
     }
 
     // ======================================
-    // 11. 商品儲存完成
+    // 12. 商品儲存完成
     // ======================================
 
     console.log(
@@ -603,6 +596,7 @@ async function submitProduct(
       {
         productId: savedProductId,
         isEditing,
+        keepingOriginalImage,
         aiReviewStatus: "pending",
       }
     );
