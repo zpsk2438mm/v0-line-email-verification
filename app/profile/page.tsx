@@ -1,9 +1,12 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  useRef,
+} from "react";
 import { useLiff } from "@/components/liff-provider";
-import { supabase } from "@/lib/supabase";
 import { contactRequest } from "@/lib/contact-client";
 import { Navigation } from "@/components/navigation";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -23,8 +26,13 @@ import {
   MessageCircle,
   BellRing,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
+
+// ==========================================
+// 商品資料格式
+// ==========================================
 
 interface MyProduct {
   id: string;
@@ -36,6 +44,55 @@ interface MyProduct {
   display_image?: string;
 }
 
+// ==========================================
+// 商品照片處理
+// ==========================================
+
+function getDisplayImage(
+  imageUrl?: string | string[] | null
+): string {
+  const fallback = "/placeholder-logo.png";
+
+  if (!imageUrl) {
+    return fallback;
+  }
+
+  try {
+    let image: unknown = imageUrl;
+
+    if (Array.isArray(image)) {
+      image = image[0];
+    } else if (
+      typeof image === "string" &&
+      image.trim().startsWith("[")
+    ) {
+      const parsed = JSON.parse(image);
+
+      image = Array.isArray(parsed)
+        ? parsed[0]
+        : image;
+    }
+
+    if (typeof image !== "string") {
+      return fallback;
+    }
+
+    const clean = image.trim();
+
+    if (!/^https?:\/\//i.test(clean)) {
+      return fallback;
+    }
+
+    return clean;
+  } catch {
+    return fallback;
+  }
+}
+
+// ==========================================
+// 個人中心
+// ==========================================
+
 export default function ProfilePage() {
   const {
     lineUserId,
@@ -46,112 +103,232 @@ export default function ProfilePage() {
     isLoading: liffLoading,
   } = useLiff();
 
-  const [myProducts, setMyProducts] = useState<MyProduct[]>([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [myProducts, setMyProducts] =
+    useState<MyProduct[]>([]);
 
-  const [lineFriendUrl, setLineFriendUrl] = useState("");
-  const [loadingContact, setLoadingContact] = useState(true);
-  const [savingContact, setSavingContact] = useState(false);
-  const [contactMessage, setContactMessage] = useState("");
-  const [contactError, setContactError] = useState("");
+  const [isLoadingProducts, setIsLoadingProducts] =
+    useState(true);
 
-  // 讀取我的商品
-  const fetchMyProducts = useCallback(async () => {
-    if (!isAuthenticated || !lineUserId) {
+  const [productsError, setProductsError] =
+    useState("");
+
+  const [refreshVersion, setRefreshVersion] =
+    useState(0);
+
+  const [loadedProductsIdentity, setLoadedProductsIdentity] =
+    useState("");
+
+  const [lineFriendUrl, setLineFriendUrl] =
+    useState("");
+
+  const [loadingContact, setLoadingContact] =
+    useState(true);
+
+  const [savingContact, setSavingContact] =
+    useState(false);
+
+  const [contactMessage, setContactMessage] =
+    useState("");
+
+  const [contactError, setContactError] =
+    useState("");
+
+  const [loadedContactIdentity, setLoadedContactIdentity] =
+    useState("");
+
+  const [contactRefreshVersion, setContactRefreshVersion] =
+    useState(0);
+
+  const savingContactRef = useRef(false);
+
+  // ==========================================
+  // 目前登入者身分
+  // ==========================================
+
+  const identityKey =
+    lineUserId &&
+    userEmail &&
+    isAuthenticated
+      ? `${lineUserId}:${userEmail.toLowerCase()}`
+      : "";
+
+  const identityRef = useRef(identityKey);
+
+  useEffect(() => {
+    identityRef.current = identityKey;
+  }, [identityKey]);
+
+  // ==========================================
+  // 1. 透過安全 API 讀取最近四項商品
+  // ==========================================
+
+  useEffect(() => {
+    if (liffLoading) return;
+
+    if (!identityKey) {
+      setMyProducts([]);
+      setProductsError("");
+      setLoadedProductsIdentity("");
       setIsLoadingProducts(false);
       return;
     }
 
-    try {
-      setIsLoadingProducts(true);
+    let cancelled = false;
 
-      // 直接讀取 Supabase 最新狀態，不使用舊快取
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, price, status, created_at, image_url")
-        .eq("line_user_id", lineUserId)
-        .order("created_at", { ascending: false });
+    async function fetchMyProducts() {
+      try {
+        setIsLoadingProducts(true);
+        setProductsError("");
 
-      if (error) throw error;
+        const result = await contactRequest(
+          "/api/my-products?page=1&limit=4",
+          "GET"
+        );
 
-      const formattedData: MyProduct[] = (data || []).map((item) => {
-        let displayImg = "/placeholder-logo.png";
+        if (cancelled) return;
 
-        if (item.image_url) {
-          if (Array.isArray(item.image_url)) {
-            displayImg = item.image_url[0] || displayImg;
-          } else if (typeof item.image_url === "string") {
-            if (item.image_url.startsWith("[")) {
-              try {
-                const images = JSON.parse(item.image_url);
-                if (Array.isArray(images) && images.length > 0) {
-                  displayImg = images[0];
-                }
-              } catch {
-                displayImg = item.image_url;
-              }
-            } else {
-              displayImg = item.image_url;
-            }
-          }
+        if (
+          !result?.success ||
+          !Array.isArray(result.products)
+        ) {
+          throw new Error(
+            result?.error ||
+              "商品資料回傳格式不正確"
+          );
         }
 
-        return {
-          ...item,
-          display_image: displayImg,
-        };
-      });
+        const formattedData: MyProduct[] =
+          result.products
+            .slice(0, 4)
+            .map((item: MyProduct) => ({
+              ...item,
+              display_image: getDisplayImage(
+                item.image_url
+              ),
+            }));
 
-      setMyProducts(formattedData);
+        setMyProducts(formattedData);
 
-      // 清除之前的商品快取
-      localStorage.removeItem(`products_${lineUserId}`);
-    } catch (err) {
-      console.error("個人商品讀取失敗:", err);
-    } finally {
-      setIsLoadingProducts(false);
+        setLoadedProductsIdentity(identityKey);
+
+        // 清除舊版商品快取
+        try {
+          if (lineUserId) {
+            localStorage.removeItem(
+              `products_${lineUserId}`
+            );
+          }
+        } catch {
+          // 不影響商品正常顯示
+        }
+      } catch (err) {
+        if (cancelled) return;
+
+        console.error(
+          "個人商品讀取失敗:",
+          err
+        );
+
+        setMyProducts([]);
+
+        setLoadedProductsIdentity(identityKey);
+
+        setProductsError(
+          err instanceof Error
+            ? err.message
+            : "商品資料讀取失敗，請稍後再試"
+        );
+      } finally {
+        if (!cancelled) {
+          setIsLoadingProducts(false);
+        }
+      }
     }
-  }, [isAuthenticated, lineUserId]);
 
-  useEffect(() => {
     void fetchMyProducts();
-  }, [fetchMyProducts]);
 
-  // 返回個人中心時重新同步商品狀態
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    identityKey,
+    lineUserId,
+    liffLoading,
+    refreshVersion,
+  ]);
+
+  // ==========================================
+  // 2. 返回個人中心時同步最新商品狀態
+  // ==========================================
+
   useEffect(() => {
-    if (!isAuthenticated || !lineUserId) return;
+    if (!identityKey || liffLoading) {
+      return;
+    }
 
     const handleVisible = () => {
-      if (document.visibilityState === "visible") {
-        void fetchMyProducts();
+      if (
+        document.visibilityState === "visible"
+      ) {
+        setRefreshVersion(
+          (prev) => prev + 1
+        );
       }
     };
 
-    document.addEventListener("visibilitychange", handleVisible);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisible
+    );
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisible);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisible
+      );
     };
-  }, [isAuthenticated, lineUserId, fetchMyProducts]);
+  }, [identityKey, liffLoading]);
 
-  // 讀取賣家 LINE 加好友連結
+  // ==========================================
+  // 3. 讀取賣家 LINE 加好友連結
+  // ==========================================
+
   useEffect(() => {
-    if (!isAuthenticated || !lineUserId) {
+    if (liffLoading) return;
+
+    if (!identityKey) {
+      setLineFriendUrl("");
+      setContactMessage("");
+      setContactError("");
+      setLoadedContactIdentity("");
       setLoadingContact(false);
       return;
     }
 
     let cancelled = false;
 
+    setLineFriendUrl("");
+    setContactMessage("");
+    setContactError("");
+    setLoadedContactIdentity("");
+
     async function loadContact() {
       try {
         setLoadingContact(true);
-        setContactError("");
 
-        const data = await contactRequest("/api/seller-contact");
+        const data = await contactRequest(
+          "/api/seller-contact",
+          "GET"
+        );
 
         if (!cancelled) {
-          setLineFriendUrl(data.lineFriendUrl || "");
+          setLineFriendUrl(
+            typeof data?.lineFriendUrl === "string"
+              ? data.lineFriendUrl
+              : ""
+          );
+
+          setLoadedContactIdentity(identityKey);
         }
       } catch (err) {
         if (!cancelled) {
@@ -173,10 +350,26 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, lineUserId]);
+  }, [
+    identityKey,
+    liffLoading,
+    contactRefreshVersion,
+  ]);
 
-  // 儲存 LINE 加好友連結
+  // ==========================================
+  // 4. 儲存 LINE 加好友連結
+  // ==========================================
+
   const saveContact = async () => {
+    if (
+      savingContactRef.current ||
+      loadingContact ||
+      !identityKey ||
+      loadedContactIdentity !== identityKey
+    ) {
+      return;
+    }
+
     setContactMessage("");
     setContactError("");
 
@@ -188,45 +381,90 @@ export default function ProfilePage() {
 
         if (
           parsed.protocol !== "https:" ||
+          parsed.username ||
+          parsed.password ||
+          parsed.port ||
           !(
-            (parsed.hostname === "line.me" &&
-              parsed.pathname.startsWith("/ti/p/")) ||
+            (
+              parsed.hostname === "line.me" &&
+              parsed.pathname.startsWith("/ti/p/")
+            ) ||
             parsed.hostname === "lin.ee"
           )
         ) {
-          setContactError("請輸入有效的 LINE 加好友連結");
+          setContactError(
+            "請輸入有效的 LINE 加好友連結"
+          );
+
           return;
         }
       } catch {
-        setContactError("連結格式錯誤，請檢查後再試");
+        setContactError(
+          "連結格式錯誤，請檢查後再試"
+        );
+
         return;
       }
     }
 
+    const requestIdentity = identityKey;
+
     try {
+      savingContactRef.current = true;
+
       setSavingContact(true);
 
-      await contactRequest("/api/seller-contact", "PUT", {
-        lineFriendUrl: cleanUrl,
-      });
+      await contactRequest(
+        "/api/seller-contact",
+        "PUT",
+        {
+          lineFriendUrl: cleanUrl,
+        }
+      );
+
+      if (
+        identityRef.current !== requestIdentity
+      ) {
+        return;
+      }
 
       setLineFriendUrl(cleanUrl);
-      setContactMessage("LINE 加好友連結已成功儲存！");
+
+      setContactMessage(
+        "LINE 加好友連結已成功儲存！"
+      );
     } catch (err) {
+      if (
+        identityRef.current !== requestIdentity
+      ) {
+        return;
+      }
+
       setContactError(
         err instanceof Error
           ? err.message
           : "儲存失敗，請稍後再試"
       );
     } finally {
+      savingContactRef.current = false;
       setSavingContact(false);
     }
   };
 
-  if (liffLoading || !isAuthenticated || !lineUserId) {
+  // ==========================================
+  // 5. 登入資料同步畫面
+  // ==========================================
+
+  if (
+    liffLoading ||
+    !isAuthenticated ||
+    !lineUserId ||
+    !userEmail
+  ) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7]">
         <Loader2 className="w-10 h-10 animate-spin text-[#D95300] mb-4" />
+
         <p className="text-gray-500 font-bold">
           正在同步您的 LINE 個人資料...
         </p>
@@ -234,24 +472,51 @@ export default function ProfilePage() {
     );
   }
 
-  const previewProducts = myProducts.slice(0, 4);
+  // 防止切換帳號時顯示前一位使用者的商品
+  const previewProducts =
+    loadedProductsIdentity === identityKey
+      ? myProducts.slice(0, 4)
+      : [];
+
+  const contactReady =
+    loadedContactIdentity === identityKey;
+
+  const productsReady =
+    loadedProductsIdentity === identityKey;
+
+  // ==========================================
+  // 6. 原本個人中心 UI
+  // ==========================================
 
   return (
     <main className="min-h-screen bg-[#FDFBF7] pb-20">
+
+      {/* 頂部導覽列 */}
+
       <header className="sticky top-0 z-50 flex items-center gap-3 border-b bg-white px-4 py-4 shadow-sm">
+
         <Navigation />
+
         <h1 className="text-lg font-bold text-slate-800">
           個人中心
         </h1>
+
       </header>
 
       <div className="p-4 space-y-4 max-w-md mx-auto">
 
-        {/* 個人資料 */}
+        {/* ==================================
+            個人資料
+        ================================== */}
+
         <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
+
           <CardHeader className="bg-gradient-to-br from-[#D35400] to-[#A04000] text-white py-8 px-6">
+
             <div className="flex items-center gap-5">
+
               <div className="h-20 w-20 rounded-full border-[3px] border-white/30 overflow-hidden bg-white/20 shrink-0">
+
                 {userProfile?.pictureUrl ? (
                   <img
                     src={userProfile.pictureUrl}
@@ -260,185 +525,384 @@ export default function ProfilePage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-white/10 text-white">
+
                     <User className="h-10 w-10" />
+
                   </div>
                 )}
+
               </div>
 
               <div className="min-w-0">
+
                 <h2 className="font-black text-2xl truncate">
+
                   {userProfile?.displayName ||
                     userName ||
                     "南臺同學"}
+
                 </h2>
 
                 <div className="flex flex-col gap-1 mt-1 opacity-80">
+
                   <p className="text-[11px] font-bold uppercase flex items-center gap-1 truncate">
+
                     <Mail className="h-3 w-3" />
-                    {userEmail || "已驗證南臺信箱"}
+
+                    {userEmail ||
+                      "已驗證南臺信箱"}
+
                   </p>
 
                   <p className="text-[10px] font-bold opacity-70">
+
                     LINE 帳號已連結
+
                   </p>
+
                 </div>
+
               </div>
+
             </div>
+
           </CardHeader>
+
         </Card>
 
-        {/* 功能選單 */}
+        {/* ==================================
+            功能選單
+        ================================== */}
+
         <div className="grid grid-cols-2 gap-4">
-          <Link href="/my-listings" className="block">
+
+          {/* 我的商品 */}
+
+          <Link
+            href="/my-listings"
+            className="block"
+          >
+
             <Button
               variant="outline"
               className="w-full h-24 flex flex-col items-center justify-center gap-2 rounded-[24px] border-none bg-white shadow-sm hover:bg-orange-50/50 transition-all text-slate-800"
             >
+
               <div className="p-3 bg-orange-50 rounded-xl">
+
                 <Package className="h-6 w-6 text-[#D35400]" />
+
               </div>
+
               <span className="font-black text-base">
+
                 我的商品
+
               </span>
+
             </Button>
+
           </Link>
 
-          <Link href="/" className="block">
+          {/* 我要刊登 */}
+
+          <Link
+            href="/"
+            className="block"
+          >
+
             <Button
               variant="outline"
               className="w-full h-24 flex flex-col items-center justify-center gap-2 rounded-[24px] border-none bg-white shadow-sm hover:bg-orange-50/50 transition-all text-slate-800"
             >
+
               <div className="p-3 bg-orange-50 rounded-xl">
+
                 <Plus className="h-6 w-6 text-[#D35400]" />
+
               </div>
+
               <span className="font-black text-base">
+
                 我要刊登
+
               </span>
+
             </Button>
+
           </Link>
+
         </div>
 
-        {/* ==========================================
-            新增：智慧媒合提醒入口
-        ========================================== */}
+        {/* ==================================
+            智慧媒合提醒入口
+        ================================== */}
 
         <Link
           href="/keyword-alerts"
           className="block rounded-[24px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D35400]"
         >
+
           <Card className="group border-none shadow-sm rounded-[24px] bg-white p-4 transition-all hover:bg-orange-50/50 hover:shadow-md">
+
             <div className="flex items-center gap-4">
 
               {/* 功能圖示 */}
+
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-orange-50">
+
                 <BellRing className="h-7 w-7 text-[#D35400]" />
+
               </div>
 
               {/* 功能名稱及說明 */}
+
               <div className="flex-1 min-w-0">
+
                 <h3 className="font-black text-base text-slate-800">
+
                   智慧媒合提醒
+
                 </h3>
 
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
+
                   設定想追蹤的商品關鍵字
+
                 </p>
 
                 <p className="mt-1 text-[11px] font-medium text-[#D35400]">
+
                   商品上架後透過 LINE 自動通知
+
                 </p>
+
               </div>
 
               {/* 進入頁面箭頭 */}
+
               <ChevronRight className="h-5 w-5 shrink-0 text-[#D35400] transition-transform group-hover:translate-x-1" />
+
             </div>
+
           </Card>
+
         </Link>
 
-        {/* LINE 加好友連結設定 */}
+        {/* ==================================
+            LINE 加好友連結設定
+        ================================== */}
+
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-5 space-y-4">
+
           <h3 className="font-black text-base text-slate-700 flex items-center gap-2">
+
             <MessageCircle className="h-5 w-5 text-[#D35400]" />
+
             我的 LINE 加好友連結
+
           </h3>
 
           <p className="text-xs text-slate-500 leading-relaxed">
+
             請從 LINE 的「加入好友 → 我的行動條碼」
             取得個人加好友連結。
             買家完成 LINE 與南臺信箱驗證後，
             就可以透過這個連結聯絡你。
+
           </p>
 
           <Input
             type="url"
             placeholder="https://line.me/ti/p/..."
-            value={lineFriendUrl}
+            value={
+              contactReady
+                ? lineFriendUrl
+                : ""
+            }
             onChange={(e) => {
               setLineFriendUrl(e.target.value);
               setContactMessage("");
               setContactError("");
             }}
-            disabled={loadingContact || savingContact}
+            disabled={
+              loadingContact ||
+              savingContact ||
+              !contactReady
+            }
             className="rounded-xl"
           />
 
           <Button
             type="button"
             onClick={saveContact}
-            disabled={loadingContact || savingContact}
+            disabled={
+              loadingContact ||
+              savingContact ||
+              !contactReady
+            }
             className="w-full h-11 bg-[#D35400] hover:bg-[#A04000] text-white font-bold rounded-xl"
           >
+
             {loadingContact
               ? "正在讀取..."
               : savingContact
                 ? "儲存中..."
                 : "儲存 LINE 聯絡方式"}
+
           </Button>
 
-          {contactMessage && (
+          {/* LINE 儲存成功訊息 */}
+
+          {contactReady && contactMessage && (
             <p
               role="status"
               className="text-sm text-emerald-600 font-medium"
             >
+
               {contactMessage}
+
             </p>
           )}
 
-          {contactError && (
+          {/* LINE 錯誤訊息 */}
+
+          {contactError && !loadingContact && (
             <p
               role="alert"
               className="text-sm text-red-600 font-medium"
             >
+
               {contactError}
+
             </p>
           )}
+
+          {/* LINE 聯絡方式讀取失敗重試 */}
+
+          {!contactReady &&
+            !loadingContact &&
+            contactError && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setContactRefreshVersion(
+                    (prev) => prev + 1
+                  );
+                }}
+                className="w-full rounded-xl border-orange-100 text-[#D35400] font-bold gap-2"
+              >
+
+                <RefreshCw className="h-4 w-4" />
+
+                重新讀取 LINE 聯絡方式
+
+              </Button>
+            )}
+
         </Card>
 
-        {/* 最近發布商品 */}
+        {/* ==================================
+            最近發布商品
+        ================================== */}
+
         <Card className="border-none shadow-sm rounded-[32px] bg-white p-5">
+
           <div className="flex items-center justify-between mb-4 border-b border-orange-50/60 pb-3">
+
             <h3 className="font-black text-base text-slate-700">
+
               最近發布商品
+
             </h3>
+
           </div>
 
-          {isLoadingProducts && myProducts.length === 0 ? (
+          {/* 商品載入畫面 */}
+
+          {(!productsReady ||
+            isLoadingProducts) ? (
+
             <div className="space-y-3">
+
               <Skeleton className="h-20 w-full rounded-2xl" />
+
               <Skeleton className="h-20 w-full rounded-2xl" />
+
             </div>
-          ) : myProducts.length === 0 ? (
+
+          ) : productsError ? (
+
+            /* 商品讀取失敗 */
+
+            <div className="text-center py-6 space-y-3">
+
+              <AlertCircle className="h-9 w-9 text-rose-400 mx-auto" />
+
+              <p className="text-sm font-bold text-slate-600">
+
+                商品資料讀取失敗
+
+              </p>
+
+              <p
+                role="alert"
+                className="text-xs text-slate-400 break-words"
+              >
+
+                {productsError}
+
+              </p>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsLoadingProducts(true);
+
+                  setRefreshVersion(
+                    (prev) => prev + 1
+                  );
+                }}
+                className="rounded-xl border-orange-100 text-[#D35400] font-bold gap-2"
+              >
+
+                <RefreshCw className="h-4 w-4" />
+
+                重新讀取
+
+              </Button>
+
+            </div>
+
+          ) : previewProducts.length === 0 ? (
+
+            /* 尚未發布商品 */
+
             <div className="text-center py-10 text-slate-400 text-sm font-medium">
+
               目前還沒有上架過商品喔！
+
             </div>
+
           ) : (
+
+            /* 最近四項商品 */
+
             <div className="grid gap-3">
+
               {previewProducts.map((p) => (
+
                 <div
                   key={p.id}
                   className="flex items-center gap-3 p-3 border border-orange-50/60 rounded-[22px] bg-[#FFFDFB]/50"
                 >
+
+                  {/* 商品照片 */}
+
                   <div className="h-14 w-14 bg-slate-100 rounded-xl overflow-hidden shrink-0">
+
                     <img
                       src={
                         p.display_image ||
@@ -446,46 +910,113 @@ export default function ProfilePage() {
                       }
                       className="w-full h-full object-cover"
                       alt={p.name}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        if (
+                          !e.currentTarget.src.endsWith(
+                            "/placeholder-logo.png"
+                          )
+                        ) {
+                          e.currentTarget.src =
+                            "/placeholder-logo.png";
+                        }
+                      }}
                     />
+
                   </div>
 
+                  {/* 商品名稱及價格 */}
+
                   <div className="flex-1 min-w-0">
+
                     <h4 className="font-bold text-sm text-slate-800 truncate">
+
                       {p.name}
+
                     </h4>
 
                     <p className="text-[#D35400] font-black text-sm">
+
                       NT$ {p.price}
+
                     </p>
+
                   </div>
 
+                  {/* 已上架 */}
+
                   {p.status === "approved" ? (
-                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1">
+
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-600 border-none shadow-none flex items-center gap-1 shrink-0">
+
                       <CheckCircle2 className="h-3 w-3" />
+
                       已上架
+
                     </Badge>
+
                   ) : p.status === "rejected" ? (
-                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-600 border-none shadow-none flex items-center gap-1">
+
+                    /* 已退回 */
+
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-600 border-none shadow-none flex items-center gap-1 shrink-0">
+
                       <AlertCircle className="h-3 w-3" />
+
                       已退回
+
                     </Badge>
+
                   ) : p.status === "removed" ? (
-                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-red-50 text-red-700 border-none shadow-none flex items-center gap-1">
+
+                    /* 違規下架 */
+
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-red-50 text-red-700 border-none shadow-none flex items-center gap-1 shrink-0">
+
                       <AlertCircle className="h-3 w-3" />
+
                       違規下架
+
                     </Badge>
+
+                  ) : p.status === "reported" ? (
+
+                    /* 檢舉審核中 */
+
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border-none shadow-none flex items-center gap-1 shrink-0">
+
+                      <AlertCircle className="h-3 w-3" />
+
+                      檢舉審核中
+
+                    </Badge>
+
                   ) : (
-                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1">
+
+                    /* 一般待審核 */
+
+                    <Badge className="rounded-xl px-2 py-0.5 text-[10px] font-bold bg-orange-50 text-[#D35400] border-none shadow-none flex items-center gap-1 shrink-0">
+
                       <Clock3 className="h-3 w-3" />
+
                       審核中
+
                     </Badge>
+
                   )}
+
                 </div>
+
               ))}
+
             </div>
+
           )}
+
         </Card>
+
       </div>
+
     </main>
   );
 }
