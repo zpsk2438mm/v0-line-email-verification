@@ -14,6 +14,11 @@ export const dynamic = "force-dynamic";
 const SITE_URL =
   "https://v0-supabase-form-integration-two.vercel.app";
 
+const LINE_USER_ID_REGEX =
+  /^U[0-9a-fA-F]{32}$/;
+
+const LINE_REQUEST_TIMEOUT_MS = 10000;
+
 interface LineEvent {
   type: string;
   source?: {
@@ -35,15 +40,16 @@ interface LineWebhookBody {
   events?: LineEvent[];
 }
 
+// SHA-256 雜湊
 function hashValue(value: string): string {
   return createHash("sha256")
     .update(value, "utf8")
     .digest("hex");
 }
 
-// 確認請求真的來自 LINE
+// 驗證 LINE 官方簽章
 function verifySignature(
-  rawBody: string,
+  rawBody: Buffer,
   signature: string,
   channelSecret: string
 ): boolean {
@@ -51,7 +57,7 @@ function verifySignature(
     "sha256",
     channelSecret
   )
-    .update(rawBody, "utf8")
+    .update(rawBody)
     .digest();
 
   const received = Buffer.from(
@@ -65,38 +71,69 @@ function verifySignature(
   );
 }
 
+// 共用 LINE API 請求
+async function requestLine(
+  endpoint: "reply" | "push",
+  payload: Record<string, unknown>,
+  accessToken: string
+): Promise<void> {
+  const controller = new AbortController();
+
+  const timer = setTimeout(
+    () => controller.abort(),
+    LINE_REQUEST_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(
+      `https://api.line.me/v2/bot/message/${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+        redirect: "error",
+        signal: controller.signal,
+      }
+    );
+
+    if (!response.ok) {
+      console.error(
+        `LINE ${endpoint} 失敗：HTTP`,
+        response.status
+      );
+    }
+  } catch {
+    console.error(
+      `LINE ${endpoint} 請求失敗或逾時`
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 回覆官方帳號訊息
 async function replyLine(
   replyToken: string,
   message: string,
   accessToken: string
 ): Promise<void> {
-  const response = await fetch(
-    "https://api.line.me/v2/bot/message/reply",
+  await requestLine(
+    "reply",
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        replyToken,
-        messages: [
-          {
-            type: "text",
-            text: message,
-          },
-        ],
-      }),
-      cache: "no-store",
-    }
+      replyToken,
+      messages: [
+        {
+          type: "text",
+          text: message,
+        },
+      ],
+    },
+    accessToken
   );
-
-  if (!response.ok) {
-    throw new Error(
-      `LINE 回覆失敗：HTTP ${response.status}`
-    );
-  }
 }
 
 // 主動發送 LINE 訊息
@@ -105,68 +142,22 @@ async function pushLine(
   message: string,
   accessToken: string
 ): Promise<void> {
-  const response = await fetch(
-    "https://api.line.me/v2/bot/message/push",
+  await requestLine(
+    "push",
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        to: messagingUserId,
-        messages: [
-          {
-            type: "text",
-            text: message,
-          },
-        ],
-      }),
-      cache: "no-store",
-    }
+      to: messagingUserId,
+      messages: [
+        {
+          type: "text",
+          text: message,
+        },
+      ],
+    },
+    accessToken
   );
-
-  if (!response.ok) {
-    console.error(
-      "LINE Push 失敗：",
-      response.status
-    );
-  }
 }
 
-// 舊版六位數綁定回覆
-function oldBindingMessage(
-  result: string
-): string {
-  switch (result) {
-    case "success":
-      return (
-        "🎉 LINE 商品通知綁定成功！\n\n" +
-        "之後有買家聯絡你的商品，" +
-        "就可以收到官方帳號通知。"
-      );
-
-    case "already_bound":
-      return (
-        "⚠️ 這個 LINE 或網站帳號已經綁定，" +
-        "不需要重複操作。"
-      );
-
-    case "rate_limited":
-      return (
-        "⚠️ 嘗試次數過多，" +
-        "請稍後再試。"
-      );
-
-    default:
-      return (
-        "❌ 綁定碼無效或已過期，" +
-        "請回網站重新產生。"
-      );
-  }
-}
-
-// 新版帳號連結結果
+// 新版帳號配對結果
 function accountLinkMessage(
   result: string
 ): string {
@@ -182,18 +173,21 @@ function accountLinkMessage(
 
     case "already_bound":
       return (
-        "⚠️ 此 LINE 或網站帳號已經完成綁定。"
+        "⚠️ 此 LINE 或網站帳號" +
+        "已經完成綁定。"
       );
 
     default:
       return (
-        "⚠️ 配對連結無效或已過期，" +
+        "⚠️ 配對連結無效、已使用或已過期，" +
         "請重新傳送「啟用通知」。"
       );
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(
+  req: NextRequest
+) {
   const channelSecret =
     process.env.LINE_MESSAGING_CHANNEL_SECRET;
 
@@ -205,6 +199,10 @@ export async function POST(req: NextRequest) {
 
   const serviceKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // ==================================
+  // 1. 檢查環境變數
+  // ==================================
 
   if (
     !channelSecret ||
@@ -222,7 +220,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 驗證 LINE 簽章
+  // ==================================
+  // 2. 驗證 LINE 官方簽章
+  // ==================================
+
   const signature =
     req.headers.get("x-line-signature");
 
@@ -233,7 +234,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const rawBody = await req.text();
+  let rawBody: Buffer;
+
+  try {
+    rawBody = Buffer.from(
+      await req.arrayBuffer()
+    );
+  } catch {
+    return NextResponse.json(
+      { error: "無法讀取請求內容" },
+      { status: 400 }
+    );
+  }
 
   if (
     !verifySignature(
@@ -248,10 +260,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ==================================
+  // 3. 解析 Webhook 事件
+  // ==================================
+
   let body: LineWebhookBody;
 
   try {
-    body = JSON.parse(rawBody);
+    body = JSON.parse(
+      rawBody.toString("utf8")
+    );
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      !Array.isArray(body.events)
+    ) {
+      throw new Error("Invalid body");
+    }
   } catch {
     return NextResponse.json(
       { error: "JSON 格式錯誤" },
@@ -266,40 +292,53 @@ export async function POST(req: NextRequest) {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
+        detectSessionInUrl: false,
       },
     }
   );
 
-  const events = Array.isArray(body.events)
-    ? body.events
-    : [];
+  let processingFailed = false;
 
-  for (const event of events) {
+  for (const event of body.events ?? []) {
+    if (
+      !event ||
+      typeof event !== "object"
+    ) {
+      continue;
+    }
+
     const messagingUserId =
       event.source?.userId;
 
     if (
       event.source?.type !== "user" ||
-      !messagingUserId
+      typeof messagingUserId !== "string" ||
+      !LINE_USER_ID_REGEX.test(
+        messagingUserId
+      )
     ) {
       continue;
     }
 
     try {
       // ==================================
-      // 1. 新版 LINE Account Linking
+      // 4. 新版 LINE Account Linking
       // ==================================
+
       if (event.type === "accountLink") {
+        const nonce = event.link?.nonce;
+
         if (
           event.link?.result !== "ok" ||
-          !event.link.nonce
+          typeof nonce !== "string" ||
+          nonce.length === 0 ||
+          nonce.length > 255
         ) {
           continue;
         }
 
-        const nonceHash = hashValue(
-          event.link.nonce
-        );
+        const nonceHash =
+          hashValue(nonce);
 
         const { data, error } =
           await admin.rpc(
@@ -313,16 +352,17 @@ export async function POST(req: NextRequest) {
 
         if (error) {
           console.error(
-            "Account Linking 資料庫錯誤：",
-            error.message
+            "Account Linking RPC 錯誤：",
+            error.code
           );
 
           throw error;
         }
 
-        const result = String(
-          data || "invalid"
-        );
+        const result =
+          typeof data === "string"
+            ? data
+            : "invalid";
 
         await pushLine(
           messagingUserId,
@@ -334,34 +374,40 @@ export async function POST(req: NextRequest) {
       }
 
       // ==================================
-      // 2. 處理 LINE 文字訊息
+      // 5. 處理 LINE 文字訊息
       // ==================================
+
       if (
         event.type !== "message" ||
         event.message?.type !== "text" ||
+        typeof event.message.text !==
+          "string" ||
+        typeof event.replyToken !==
+          "string" ||
         !event.replyToken
       ) {
         continue;
       }
 
-      const message = (
-        event.message.text || ""
-      ).trim();
+      const message =
+        event.message.text.trim();
 
       // ==================================
-      // 3. 新增：啟用通知
+      // 6. 啟用 LINE 商品通知
       // ==================================
+
       if (message === "啟用通知") {
-        // 已經完成綁定就不用再綁
-        const { data: existing, error: lookupError } =
-          await admin
-            .from("line_notification_bindings")
-            .select("line_login_user_id")
-            .eq(
-              "messaging_user_id",
-              messagingUserId
-            )
-            .maybeSingle();
+        const {
+          data: existing,
+          error: lookupError,
+        } = await admin
+          .from("line_notification_bindings")
+          .select("line_login_user_id")
+          .eq(
+            "messaging_user_id",
+            messagingUserId
+          )
+          .maybeSingle();
 
         if (lookupError) {
           throw lookupError;
@@ -377,7 +423,8 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // 建立高強度隨機配對邀請
+        // 建立一次性隨機配對票券
+
         const ticket = randomBytes(32)
           .toString("hex");
 
@@ -388,7 +435,6 @@ export async function POST(req: NextRequest) {
           Date.now() + 10 * 60 * 1000
         ).toISOString();
 
-        // 只儲存雜湊值，不儲存原始 ticket
         const { error: insertError } =
           await admin
             .from("line_link_tickets")
@@ -402,7 +448,7 @@ export async function POST(req: NextRequest) {
         if (insertError) {
           console.error(
             "建立配對邀請失敗：",
-            insertError.message
+            insertError.code
           );
 
           throw insertError;
@@ -419,7 +465,7 @@ export async function POST(req: NextRequest) {
             link +
             "\n\n⏰ 連結有效時間為 10 分鐘。\n" +
             "🔒 請勿將此連結分享給其他人。\n\n" +
-            "完成配對後，就不用再輸入六位數綁定碼！",
+            "完成配對後，就可以收到商品通知！",
           accessToken
         );
 
@@ -427,60 +473,38 @@ export async function POST(req: NextRequest) {
       }
 
       // ==================================
-      // 4. 保留舊版六位數綁定
+      // 7. 舊版六位數綁定已停止
+      // 不再呼叫舊版綁定 RPC
       // ==================================
+
       if (/^[0-9]{6}$/.test(message)) {
-        const codeHash =
-          hashValue(message);
-
-        const { data, error } =
-          await admin.rpc(
-            "complete_line_binding",
-            {
-              p_code_hash: codeHash,
-              p_messaging_user_id:
-                messagingUserId,
-            }
-          );
-
-        if (error) {
-          console.error(
-            "六位數綁定失敗：",
-            error.message
-          );
-
-          await replyLine(
-            event.replyToken,
-            "⚠️ 綁定暫時失敗，請稍後再試。",
-            accessToken
-          );
-
-          continue;
-        }
-
         await replyLine(
           event.replyToken,
-          oldBindingMessage(
-            String(data || "invalid")
-          ),
+          "⚠️ 舊版六位數綁定功能已停止使用。\n\n" +
+            "請直接傳送「啟用通知」，" +
+            "取得新版專屬配對連結。🧡",
           accessToken
         );
+
+        continue;
       }
-    } catch (error) {
+    } catch {
       console.error(
-        "LINE Webhook 處理失敗：",
-        error instanceof Error
-          ? error.message
-          : "未知錯誤"
+        "LINE Webhook 事件處理失敗"
       );
 
-      // 資料庫處理失敗時，
-      // 讓 LINE 有機會重新傳送事件
-      return NextResponse.json(
-        { error: "Webhook 處理失敗" },
-        { status: 500 }
-      );
+      processingFailed = true;
     }
+  }
+
+  // 資料庫事件處理失敗時，
+  // 回傳 500，讓 LINE 有機會重送。
+
+  if (processingFailed) {
+    return NextResponse.json(
+      { error: "Webhook 處理失敗" },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({
