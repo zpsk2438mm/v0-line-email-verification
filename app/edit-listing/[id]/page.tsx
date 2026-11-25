@@ -162,12 +162,15 @@ export default function EditListingPage() {
 
     // ========================================
     // 4. 讀取私人商品資料
+    //
+    // 修正 HTTP 404：
+    // 使用 /api/my-products?id=商品ID
     // ========================================
 
     async function fetchProductData() {
       try {
         const result = await contactRequest(
-          `/api/my-products/${encodeURIComponent(id)}`,
+          `/api/my-products?id=${encodeURIComponent(id)}`,
           "GET"
         );
 
