@@ -1,23 +1,14 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { verifiedIdentity } from "@/lib/contact-auth";
+import {
+  verifiedAdmin,
+  AdminAuthError,
+} from "@/lib/admin-auth";
 import { randomUUID } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-// ==========================================
-// 管理員 LINE ID
-// 與現有管理員後台及檢舉 API 保持一致
-// ==========================================
-
-const ADMIN_IDS = [
-  "Ued7dfd77b63273d497cebc62f1a7b1df",
-  "Uf7c4668bc96315297b02b0a67fff88ea",
-  "U6d1c1541184ea9202c0d0acc07e92a4e",
-  "Uaea09099f0f6301955360eb64d238243",
-];
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,24 +54,25 @@ function success(
 }
 
 // ==========================================
-// 驗證管理員身分
+// 管理員授權錯誤處理
 // ==========================================
 
-async function verifyAdmin(
-  req: NextRequest
-) {
-  const identity =
-    await verifiedIdentity(req);
-
-  if (
-    !ADMIN_IDS.includes(
-      identity.lineUserId
-    )
-  ) {
-    return null;
+function authFailure(error: unknown) {
+  if (error instanceof AdminAuthError) {
+    return fail(
+      error.message,
+      error.status
+    );
   }
 
-  return identity;
+  console.error(
+    "[Admin Products] 管理員授權發生異常"
+  );
+
+  return fail(
+    "管理員授權服務暫時無法使用",
+    503
+  );
 }
 
 // ==========================================
@@ -93,29 +85,15 @@ export async function GET(
   let identity;
 
   try {
-    identity = await verifyAdmin(req);
-  } catch (error: unknown) {
-    return fail(
-      error instanceof Error
-        ? error.message
-        : "請重新登入並完成身分驗證",
-      401
-    );
-  }
+    identity = await verifiedAdmin(req);
 
-  if (!identity) {
-    return fail(
-      "你沒有管理員權限",
-      403
-    );
+  } catch (error: unknown) {
+    return authFailure(error);
   }
 
   const { admin } = identity;
 
   try {
-    // 只讀取待審核商品
-    // 不回傳賣家信箱及私人聯絡連結
-
     const { data, error } = await admin
       .from("products")
       .select(`
@@ -147,8 +125,7 @@ export async function GET(
     if (error) {
       console.error(
         "[Admin Products] 讀取商品失敗:",
-        error.code,
-        error.message
+        error.code
       );
 
       return fail(
@@ -160,6 +137,7 @@ export async function GET(
     const products = data || [];
 
     // AI 審核統計
+
     const stats = {
       total: products.length,
 
@@ -203,6 +181,7 @@ export async function GET(
       products,
       stats,
     });
+
   } catch {
     console.error(
       "[Admin Products] 讀取商品發生異常"
@@ -225,29 +204,16 @@ export async function POST(
   let identity;
 
   try {
-    identity = await verifyAdmin(req);
-  } catch (error: unknown) {
-    return fail(
-      error instanceof Error
-        ? error.message
-        : "請重新登入並完成身分驗證",
-      401
-    );
-  }
+    identity = await verifiedAdmin(req);
 
-  if (!identity) {
-    return fail(
-      "你沒有管理員權限",
-      403
-    );
+  } catch (error: unknown) {
+    return authFailure(error);
   }
 
   const { admin } = identity;
 
   try {
-    // ======================================
     // 1. 驗證請求大小
-    // ======================================
 
     const contentLength = Number(
       req.headers.get("content-length") || 0
@@ -268,14 +234,13 @@ export async function POST(
       return fail("資料過大", 413);
     }
 
-    // ======================================
     // 2. 解析 JSON
-    // ======================================
 
     let body: unknown;
 
     try {
       body = JSON.parse(raw);
+
     } catch {
       return fail(
         "資料格式不正確"
@@ -312,9 +277,7 @@ export async function POST(
         ? input.reviewVersion.trim()
         : "";
 
-    // ======================================
     // 3. 驗證商品 ID
-    // ======================================
 
     if (
       !UUID_PATTERN.test(productId)
@@ -324,9 +287,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 4. 驗證審核版本
-    // ======================================
 
     if (
       !UUID_PATTERN.test(reviewVersion)
@@ -337,9 +298,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 5. 驗證管理員操作
-    // ======================================
 
     if (
       action !== "approve" &&
@@ -350,9 +309,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 6. 確認商品目前狀態
-    // ======================================
 
     const {
       data: product,
@@ -373,8 +330,7 @@ export async function POST(
     if (productError) {
       console.error(
         "[Admin Products] 查詢商品失敗:",
-        productError.code,
-        productError.message
+        productError.code
       );
 
       return fail(
@@ -390,9 +346,6 @@ export async function POST(
       );
     }
 
-    // 已核准、退回或下架的商品
-    // 不允許透過此 API 重複審核
-
     if (
       product.status !== "pending"
     ) {
@@ -401,9 +354,6 @@ export async function POST(
         409
       );
     }
-
-    // 確認管理員看到的商品
-    // 與目前資料庫版本一致
 
     if (
       product.ai_review_version !==
@@ -415,9 +365,7 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 7. 建立人工審核結果
-    // ======================================
 
     const now =
       new Date().toISOString();
@@ -439,15 +387,12 @@ export async function POST(
         ? now
         : null,
 
-      // 更新版本，避免尚未完成的 AI
-      // 使用舊版本覆蓋管理員審核結果
+      // 避免舊 AI 審核結果覆蓋人工決定
 
       ai_review_version: randomUUID(),
     };
 
-    // 如果 AI 尚未完成審核，
-    // 管理員可以直接接管。
-    // 不將人工審核偽裝成 AI 通過。
+    // AI 尚未完成時，允許管理員接管
 
     if (
       product.ai_review_status === "pending" ||
@@ -467,12 +412,10 @@ export async function POST(
       payload.ai_review_model = null;
     }
 
-    // 已完成的 AI 審核結果保留，
-    // 商品最終狀態仍以管理員決定為準。
+    // 已完成的 AI 審核結果保留。
+    // 最終商品狀態以人工決定為準。
 
-    // ======================================
     // 8. 安全更新商品
-    // ======================================
 
     const {
       data: updatedProduct,
@@ -504,8 +447,7 @@ export async function POST(
     if (updateError) {
       console.error(
         "[Admin Products] 商品審核失敗:",
-        updateError.code,
-        updateError.message
+        updateError.code
       );
 
       return fail(
@@ -514,9 +456,6 @@ export async function POST(
       );
     }
 
-    // 若更新期間商品已被其他管理員、
-    // 賣家或 AI 修改，停止本次操作。
-
     if (!updatedProduct) {
       return fail(
         "商品狀態已變更，請重新整理後再試",
@@ -524,21 +463,10 @@ export async function POST(
       );
     }
 
-    // ======================================
     // 9. LINE 通知及智慧媒合
-    // ======================================
-
-    // 不在這裡重複呼叫 /api/notify。
     //
-    // 沿用 Supabase 原有的
-    // product_line_notification 觸發器。
-    //
-    // 商品狀態變更為 approved 時：
-    // 1. 通知賣家商品審核通過
-    // 2. 執行智慧媒合通知
-    //
-    // 商品狀態變更為 rejected 時：
-    // 通知賣家商品未通過審核
+    // 保留原有 product_line_notification
+    // Trigger，不重複呼叫 /api/notify。
 
     console.log(
       "[Admin Products] 人工審核完成",
@@ -549,9 +477,7 @@ export async function POST(
       }
     );
 
-    // ======================================
     // 10. 回傳審核結果
-    // ======================================
 
     return success({
       product: updatedProduct,
@@ -560,6 +486,7 @@ export async function POST(
         ? "商品已准許上架"
         : "商品已退回",
     });
+
   } catch {
     console.error(
       "[Admin Products] 商品審核發生異常"
