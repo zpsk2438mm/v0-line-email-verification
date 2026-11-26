@@ -16,9 +16,17 @@ export const maxDuration = 60;
 
 const BUCKET_NAME = "product-images";
 
-const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+// 後端強制限制圖片實際容量為 300 KiB
 
-const MAX_REQUEST_SIZE = 3 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 300 * 1024;
+
+// 預留 Base64 編碼及 JSON 格式所需容量
+
+const MAX_REQUEST_SIZE = 512 * 1024;
+
+// 圖片快取期限：30 天
+
+const IMAGE_CACHE_SECONDS = 30 * 24 * 60 * 60;
 
 // ==========================================
 // 統一錯誤回應
@@ -53,6 +61,7 @@ function detectImageType(
   extension: string;
 } | null {
   // JPEG
+
   if (
     buffer.length >= 3 &&
     buffer[0] === 0xff &&
@@ -66,6 +75,7 @@ function detectImageType(
   }
 
   // PNG
+
   if (
     buffer.length >= 8 &&
     buffer.subarray(0, 8).equals(
@@ -82,6 +92,7 @@ function detectImageType(
   }
 
   // WebP
+
   if (
     buffer.length >= 12 &&
     buffer.toString("ascii", 0, 4) === "RIFF" &&
@@ -134,8 +145,16 @@ export async function POST(
     if (
       contentLength > MAX_REQUEST_SIZE
     ) {
+      console.warn(
+        "[Product Image] 請求容量超標",
+        {
+          requestBytes: contentLength,
+          maxRequestBytes: MAX_REQUEST_SIZE,
+        }
+      );
+
       return fail(
-        "圖片上傳資料過大",
+        "圖片上傳資料過大，請重新選擇照片",
         413
       );
     }
@@ -166,8 +185,16 @@ export async function POST(
         if (
           totalSize > MAX_REQUEST_SIZE
         ) {
+          console.warn(
+            "[Product Image] 實際請求容量超標",
+            {
+              requestBytes: totalSize,
+              maxRequestBytes: MAX_REQUEST_SIZE,
+            }
+          );
+
           return fail(
-            "圖片上傳資料過大",
+            "圖片上傳資料過大，請重新選擇照片",
             413
           );
         }
@@ -262,11 +289,27 @@ export async function POST(
       );
     }
 
+    // ======================================
+    // 後端強制驗證實際圖片容量
+    // 超過 300 KiB 一律拒絕上傳
+    // ======================================
+
     if (
       buffer.length > MAX_IMAGE_SIZE
     ) {
+      console.warn(
+        "[Product Image] 圖片容量超標",
+        {
+          imageBytes: buffer.length,
+          imageKiB: Number(
+            (buffer.length / 1024).toFixed(2)
+          ),
+          maxImageBytes: MAX_IMAGE_SIZE,
+        }
+      );
+
       return fail(
-        "商品照片不可超過 2MB",
+        "商品照片壓縮後不可超過 300 KiB，請重新選擇照片",
         413
       );
     }
@@ -279,6 +322,18 @@ export async function POST(
     if (!imageType) {
       return fail(
         "僅支援 JPEG、PNG 及 WebP 圖片",
+        415
+      );
+    }
+
+    // 確認前端宣告格式與實際檔頭一致
+
+    if (
+      input.mimeType !== undefined &&
+      input.mimeType !== imageType.mimeType
+    ) {
+      return fail(
+        "圖片內容與檔案格式不符",
         415
       );
     }
@@ -327,8 +382,11 @@ export async function POST(
         email
       );
 
+    // ======================================
     // 13. 使用後端權限上傳圖片
+    // 圖片快取設定為 30 天
     // 禁止覆蓋既有圖片
+    // ======================================
 
     const {
       data: uploaded,
@@ -342,7 +400,8 @@ export async function POST(
           contentType:
             imageType.mimeType,
 
-          cacheControl: "3600",
+          cacheControl:
+            String(IMAGE_CACHE_SECONDS),
 
           upsert: false,
         }
@@ -360,8 +419,36 @@ export async function POST(
       );
     }
 
-    // 14. 回傳圖片網址及所有權憑證
+    // ======================================
+    // 14. 記錄圖片上傳及容量驗證結果
+    // 不記錄照片內容、身分或圖片憑證
+    // ======================================
+
+    console.log(
+      "[Product Image] 圖片上傳成功",
+      {
+        imageBytes: buffer.length,
+
+        imageKiB: Number(
+          (buffer.length / 1024).toFixed(2)
+        ),
+
+        maxImageBytes: MAX_IMAGE_SIZE,
+
+        mimeType: imageType.mimeType,
+
+        cacheSeconds: IMAGE_CACHE_SECONDS,
+
+        cacheDays: 30,
+
+        compressionResult: "PASS",
+      }
+    );
+
+    // ======================================
+    // 15. 回傳圖片網址及所有權憑證
     // 只有成功上傳後才回傳憑證
+    // ======================================
 
     return NextResponse.json(
       {
