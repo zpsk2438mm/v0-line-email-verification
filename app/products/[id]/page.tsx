@@ -948,6 +948,9 @@ export default function ProductDetailPage() {
               product.images
             )}
             alt={product.name}
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
             onError={(e) => {
