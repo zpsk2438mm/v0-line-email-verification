@@ -7,14 +7,25 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // ==========================================
-// Gemini AI 模型設定
+// Gemini AI 模型及容錯設定
 // ==========================================
 
 const GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
-
 const MAX_REQUEST_SIZE = 3 * 1024 * 1024;
+
+const MAX_ATTEMPTS = 3;
+const TOTAL_AI_TIMEOUT = 35000;
+const SINGLE_REQUEST_TIMEOUT = 18000;
+const RETRY_DELAYS = [2000, 4000];
+
+const RETRYABLE_STATUS = new Set([
+  500,
+  502,
+  503,
+  504,
+]);
 
 // ==========================================
 // 現有商品分類
@@ -63,6 +74,16 @@ function jsonError(
 }
 
 // ==========================================
+// 等待函式
+// ==========================================
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+// ==========================================
 // 清理 AI 回傳文字
 // ==========================================
 
@@ -96,7 +117,8 @@ function normalizeISBN(value: unknown): string {
     let sum = 0;
 
     for (let i = 0; i < 13; i++) {
-      sum += Number(isbn[i]) * (i % 2 === 0 ? 1 : 3);
+      sum += Number(isbn[i]) *
+        (i % 2 === 0 ? 1 : 3);
     }
 
     return sum % 10 === 0 ? isbn : "";
@@ -217,6 +239,400 @@ const RESPONSE_SCHEMA = {
 };
 
 // ==========================================
+// Gemini 呼叫結果
+// ==========================================
+
+type GeminiCallResult =
+  | {
+      success: true;
+      data: any;
+      model: string;
+    }
+  | {
+      success: false;
+      status: number;
+    };
+
+// ==========================================
+// Gemini 自動重試及選用備援模型
+// ==========================================
+
+async function callGemini(
+  apiKey: string,
+  imageBase64: string,
+  mimeType: string
+): Promise<GeminiCallResult> {
+  const startedAt = Date.now();
+  const deadline = startedAt + TOTAL_AI_TIMEOUT;
+
+  const configuredFallback =
+    process.env.GEMINI_FALLBACK_MODEL?.trim() || "";
+
+  const fallbackModel =
+    /^gemini-[a-zA-Z0-9.-]+$/.test(
+      configuredFallback
+    ) &&
+    configuredFallback !== GEMINI_MODEL
+      ? configuredFallback
+      : "";
+
+  const requestBody = JSON.stringify({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: AI_PROMPT,
+          },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: imageBase64,
+            },
+          },
+        ],
+      },
+    ],
+
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 2048,
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
+    },
+  });
+
+  let lastStatus = 503;
+  let useFallback = false;
+
+  for (
+    let attempt = 0;
+    attempt < MAX_ATTEMPTS;
+    attempt++
+  ) {
+    const remainingTime =
+      deadline - Date.now();
+
+    if (remainingTime < 1000) {
+      return {
+        success: false,
+        status: 504,
+      };
+    }
+
+    const model =
+      useFallback && fallbackModel
+        ? fallbackModel
+        : GEMINI_MODEL;
+
+    const geminiUrl =
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+    const requestTimeout = Math.min(
+      SINGLE_REQUEST_TIMEOUT,
+      remainingTime
+    );
+
+    console.log(
+      "[AI Listing] Gemini 呼叫開始",
+      {
+        model,
+        attempt: attempt + 1,
+        maxAttempts: MAX_ATTEMPTS,
+      }
+    );
+
+    try {
+      const response = await fetch(geminiUrl, {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+
+        body: requestBody,
+        cache: "no-store",
+        redirect: "error",
+
+        signal: AbortSignal.timeout(
+          requestTimeout
+        ),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        console.log(
+          "[AI Listing] Gemini 呼叫成功",
+          {
+            model,
+            attempt: attempt + 1,
+            elapsedMs: Date.now() - startedAt,
+          }
+        );
+
+        return {
+          success: true,
+          data,
+          model,
+        };
+      }
+
+      lastStatus = response.status;
+
+      // 只記錄狀態及模型，不記錄 API Key、
+      // 使用者資料、照片或完整上游回應。
+
+      console.error(
+        "[AI Listing] Gemini API 錯誤",
+        {
+          model,
+          attempt: attempt + 1,
+          status: response.status,
+        }
+      );
+
+      if (response.body) {
+        try {
+          await response.body.cancel();
+        } catch {
+          // 不影響後續錯誤處理
+        }
+      }
+
+      // 額度、權限或請求格式錯誤不重試。
+
+      if (
+        response.status === 429 ||
+        response.status === 400 ||
+        response.status === 401 ||
+        response.status === 403
+      ) {
+        return {
+          success: false,
+          status: response.status,
+        };
+      }
+
+      // 模型不存在時，只有已設定備援模型
+      // 才允許切換。
+
+      if (response.status === 404) {
+        if (
+          fallbackModel &&
+          !useFallback &&
+          attempt < MAX_ATTEMPTS - 1
+        ) {
+          useFallback = true;
+
+          console.warn(
+            "[AI Listing] 切換備援模型",
+            {
+              model: fallbackModel,
+            }
+          );
+
+          continue;
+        }
+
+        return {
+          success: false,
+          status: 404,
+        };
+      }
+
+      if (
+        !RETRYABLE_STATUS.has(response.status)
+      ) {
+        return {
+          success: false,
+          status: response.status,
+        };
+      }
+    } catch (error) {
+      const errorName =
+        error instanceof Error
+          ? error.name
+          : "UnknownError";
+
+      lastStatus =
+        errorName === "TimeoutError" ||
+        errorName === "AbortError"
+          ? 504
+          : 502;
+
+      console.warn(
+        "[AI Listing] Gemini 連線失敗",
+        {
+          model,
+          attempt: attempt + 1,
+          errorName,
+          status: lastStatus,
+        }
+      );
+    }
+
+    // 已達最大呼叫次數。
+
+    if (attempt >= MAX_ATTEMPTS - 1) {
+      break;
+    }
+
+    // 主模型連續兩次失敗後，
+    // 若有設定備援模型，最後一次改用備援。
+
+    if (
+      attempt >= 1 &&
+      fallbackModel &&
+      !useFallback
+    ) {
+      useFallback = true;
+
+      console.warn(
+        "[AI Listing] 切換備援模型",
+        {
+          model: fallbackModel,
+        }
+      );
+    }
+
+    const delay =
+      RETRY_DELAYS[attempt] || 4000;
+
+    if (
+      Date.now() + delay + 1000 >= deadline
+    ) {
+      return {
+        success: false,
+        status: 504,
+      };
+    }
+
+    console.warn(
+      "[AI Listing] 等待後自動重試",
+      {
+        delayMs: delay,
+        nextAttempt: attempt + 2,
+      }
+    );
+
+    await sleep(delay);
+  }
+
+  return {
+    success: false,
+    status: lastStatus,
+  };
+}
+
+// ==========================================
+// Gemini 錯誤訊息轉換
+// ==========================================
+
+function geminiError(status: number) {
+  if (status === 429) {
+    return jsonError(
+      "AI 使用額度或請求頻率已達上限，請稍後再試，或使用手動刊登",
+      429
+    );
+  }
+
+  if (status === 401 || status === 403) {
+    return jsonError(
+      "AI 服務授權設定異常，請聯絡管理員",
+      503
+    );
+  }
+
+  if (status === 404) {
+    return jsonError(
+      "目前 AI 模型無法使用，請聯絡管理員",
+      503
+    );
+  }
+
+  if (status === 400) {
+    return jsonError(
+      "AI 服務請求設定異常，請使用手動刊登或聯絡管理員",
+      502
+    );
+  }
+
+  if (status === 503) {
+    return jsonError(
+      "Google Gemini 服務暫時忙碌，自動重試後仍無法辨識，請稍後再試或使用手動刊登",
+      503
+    );
+  }
+
+  if (status === 504) {
+    return jsonError(
+      "AI 辨識連線逾時，請稍後再試或使用手動刊登",
+      504
+    );
+  }
+
+  return jsonError(
+    "AI 辨識服務暫時無法使用，請稍後再試或手動填寫商品資訊",
+    502
+  );
+}
+
+// ==========================================
+// 限制請求大小
+// ==========================================
+
+async function readRequestText(
+  req: NextRequest
+): Promise<string | null> {
+  if (!req.body) {
+    return "";
+  }
+
+  const reader = req.body.getReader();
+
+  const chunks: Uint8Array[] = [];
+  let totalSize = 0;
+
+  try {
+    while (true) {
+      const { done, value } =
+        await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      if (!value) {
+        continue;
+      }
+
+      totalSize += value.byteLength;
+
+      if (totalSize > MAX_REQUEST_SIZE) {
+        try {
+          await reader.cancel();
+        } catch {
+          // 已超過大小限制
+        }
+
+        return null;
+      }
+
+      chunks.push(value);
+    }
+
+    return Buffer.concat(
+      chunks.map((chunk) => Buffer.from(chunk)),
+      totalSize
+    ).toString("utf8");
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// ==========================================
 // AI 智慧上架 API
 // ==========================================
 
@@ -229,7 +645,9 @@ export async function POST(req: NextRequest) {
     try {
       await verifiedIdentity(req);
     } catch (error) {
-      console.error("[AI Listing] 身分驗證失敗");
+      console.error(
+        "[AI Listing] 身分驗證失敗"
+      );
 
       const message =
         error instanceof Error
@@ -272,12 +690,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const requestText = await req.text();
+    const requestText =
+      await readRequestText(req);
 
-    if (
-      Buffer.byteLength(requestText, "utf8") >
-      MAX_REQUEST_SIZE
-    ) {
+    if (requestText === null) {
       return jsonError(
         "圖片資料過大，請重新選擇照片",
         413
@@ -334,7 +750,9 @@ export async function POST(req: NextRequest) {
       .trim();
 
     if (
-      !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64) ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(
+        imageBase64
+      ) ||
       imageBase64.length % 4 !== 0
     ) {
       return jsonError(
@@ -355,6 +773,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (
+      imageBuffer.toString("base64") !==
+      imageBase64
+    ) {
+      return jsonError(
+        "圖片編碼格式不正確",
+        400
+      );
+    }
+
     if (imageBuffer.length > MAX_IMAGE_SIZE) {
       return jsonError(
         "AI 辨識圖片不得超過 2MB",
@@ -362,13 +790,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 檢查圖片檔案標頭
+    // 檢查 JPEG 檔案標頭
 
     const isJpeg =
       imageBuffer.length >= 3 &&
       imageBuffer[0] === 0xff &&
       imageBuffer[1] === 0xd8 &&
       imageBuffer[2] === 0xff;
+
+    // 檢查 PNG 檔案標頭
 
     const isPng =
       imageBuffer.length >= 8 &&
@@ -380,6 +810,8 @@ export async function POST(req: NextRequest) {
             13, 10, 26, 10,
           ])
         );
+
+    // 檢查 WebP 檔案標頭
 
     const isWebp =
       imageBuffer.length >= 12 &&
@@ -404,102 +836,34 @@ export async function POST(req: NextRequest) {
     // 6. 呼叫 Gemini AI
     // ======================================
 
-    const geminiUrl =
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
     console.log(
-      "[AI Listing] 開始商品圖片辨識"
+      "[AI Listing] 開始商品圖片辨識",
+      {
+        imageSize: imageBuffer.length,
+        mimeType,
+      }
     );
 
-    let response: Response;
-
-    try {
-      response = await fetch(geminiUrl, {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: AI_PROMPT,
-                },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: imageBase64,
-                  },
-                },
-              ],
-            },
-          ],
-
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 2048,
-            responseMimeType: "application/json",
-            responseSchema: RESPONSE_SCHEMA,
-          },
-        }),
-
-        cache: "no-store",
-
-        signal: AbortSignal.timeout(30000),
-      });
-    } catch (error) {
-      console.error(
-        "[AI Listing] Gemini 連線失敗"
-      );
-
-      return jsonError(
-        "AI 辨識連線失敗或逾時，請稍後再試",
-        504
-      );
-    }
+    const geminiCall = await callGemini(
+      apiKey,
+      imageBase64,
+      mimeType
+    );
 
     // ======================================
     // 7. 處理 Gemini API 錯誤
     // ======================================
 
-    if (!response.ok) {
+    if (geminiCall.success === false) {
       console.error(
-        "[AI Listing] Gemini API 錯誤:",
-        response.status
+        "[AI Listing] Gemini 最終呼叫失敗",
+        {
+          status: geminiCall.status,
+        }
       );
 
-      if (response.status === 429) {
-        return jsonError(
-          "AI 使用額度已達上限，請稍後再試，或使用手動刊登",
-          429
-        );
-      }
-
-      if (
-        response.status === 401 ||
-        response.status === 403
-      ) {
-        return jsonError(
-          "AI 服務授權設定異常，請聯絡管理員",
-          503
-        );
-      }
-
-      if (response.status === 404) {
-        return jsonError(
-          "目前 AI 模型無法使用，請聯絡管理員",
-          503
-        );
-      }
-
-      return jsonError(
-        "AI 辨識服務暫時無法使用，請手動填寫商品資訊",
-        502
+      return geminiError(
+        geminiCall.status
       );
     }
 
@@ -507,7 +871,7 @@ export async function POST(req: NextRequest) {
     // 8. 讀取 AI 辨識結果
     // ======================================
 
-    const geminiResult = await response.json();
+    const geminiResult = geminiCall.data;
 
     const candidate =
       geminiResult?.candidates?.[0];
@@ -522,11 +886,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const parts =
+      candidate.content?.parts;
+
     const resultText = (
-      candidate.content?.parts || []
+      Array.isArray(parts) ? parts : []
     )
       .filter(
         (part: any) =>
+          part &&
           typeof part.text === "string" &&
           !part.thought
       )
@@ -607,8 +975,9 @@ export async function POST(req: NextRequest) {
     // ======================================
 
     console.log(
-      "[AI Listing] 商品圖片辨識完成:",
+      "[AI Listing] 商品圖片辨識完成",
       {
+        model: geminiCall.model,
         category,
         isBook,
         hasISBN: Boolean(isbn),
@@ -638,7 +1007,13 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error(
-      "[AI Listing] 系統處理失敗"
+      "[AI Listing] 系統處理失敗",
+      {
+        errorName:
+          error instanceof Error
+            ? error.name
+            : "UnknownError",
+      }
     );
 
     return jsonError(
