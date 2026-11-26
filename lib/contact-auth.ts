@@ -8,27 +8,15 @@ import { NextRequest } from "next/server";
 // 統一身分驗證安全設定
 // ==========================================
 
-// 目前為安全遷移相容模式。
-//
-// false：
-// 允許尚未建立統一身分綁定的使用者
-// 繼續使用既有功能。
-//
-// true：
-// 強制要求所有使用者完成統一身分綁定。
-//
-// 注意：
-// 既有帳號尚未完成安全遷移前，
-// 不可以修改為 true。
+// 正式身分綁定尚未全面啟用。
+// 目前保留安全遷移相容模式。
 
 const REQUIRE_IDENTITY_BINDING = false;
-
-// LINE 官方驗證逾時時間
 
 const LINE_VERIFY_TIMEOUT_MS = 10000;
 
 // ==========================================
-// 驗證校園信箱格式
+// 格式驗證
 // ==========================================
 
 function isValidSchoolEmail(
@@ -39,10 +27,6 @@ function isValidSchoolEmail(
   );
 }
 
-// ==========================================
-// 驗證 LINE User ID 格式
-// ==========================================
-
 function isValidLineUserId(
   lineUserId: string
 ): boolean {
@@ -50,10 +34,6 @@ function isValidLineUserId(
     lineUserId
   );
 }
-
-// ==========================================
-// 統一身分綁定 RPC 回傳格式
-// ==========================================
 
 interface IdentityBindingResult {
   success: boolean;
@@ -67,9 +47,7 @@ interface IdentityBindingResult {
 export async function verifiedIdentity(
   req: NextRequest
 ) {
-  // ========================================
-  // 1. 取得 Supabase 與 LINE 登入憑證
-  // ========================================
+  // 1. 取得登入憑證
 
   const authorization =
     req.headers.get("authorization");
@@ -85,9 +63,7 @@ export async function verifiedIdentity(
     .get("x-line-id-token")
     ?.trim();
 
-  // ========================================
-  // 2. 取得伺服器環境變數
-  // ========================================
+  // 2. 取得環境變數
 
   const url =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -116,9 +92,7 @@ export async function verifiedIdentity(
     );
   }
 
-  // ========================================
-  // 3. 檢查登入憑證是否存在
-  // ========================================
+  // 3. 驗證登入憑證
 
   if (!bearer) {
     throw new Error(
@@ -132,8 +106,6 @@ export async function verifiedIdentity(
     );
   }
 
-  // 避免異常過大的登入憑證
-
   if (bearer.length > 16384) {
     throw new Error(
       "學校信箱登入憑證格式不正確"
@@ -146,9 +118,7 @@ export async function verifiedIdentity(
     );
   }
 
-  // ========================================
-  // 4. 建立 Supabase Auth 驗證連線
-  // ========================================
+  // 4. 建立 Supabase Auth 連線
 
   const auth = createClient(
     url,
@@ -162,9 +132,7 @@ export async function verifiedIdentity(
     }
   );
 
-  // ========================================
-  // 5. 向 Supabase 驗證使用者
-  // ========================================
+  // 5. 驗證 Supabase 使用者
 
   const {
     data: { user },
@@ -182,15 +150,11 @@ export async function verifiedIdentity(
     );
   }
 
-  // 統一信箱格式
-
   const email = user.email
     .trim()
     .toLowerCase();
 
-  // ========================================
-  // 6. 驗證校園信箱網域
-  // ========================================
+  // 6. 驗證校園信箱
 
   if (!isValidSchoolEmail(email)) {
     throw new Error(
@@ -198,22 +162,15 @@ export async function verifiedIdentity(
     );
   }
 
-  // ========================================
-  // 7. 確認校園信箱已正式驗證
-  // ========================================
-
   if (!user.email_confirmed_at) {
     throw new Error(
       "請先完成學校信箱驗證"
     );
   }
 
-  // ========================================
-  // 8. 向 LINE 官方驗證 ID Token
-  // ========================================
+  // 7. 向 LINE 官方驗證 ID Token
 
   let response: Response;
-
   let line: any = null;
 
   const controller =
@@ -261,14 +218,9 @@ export async function verifiedIdentity(
     clearTimeout(timeout);
   }
 
-  // ========================================
-  // 9. 處理 LINE 官方驗證錯誤
-  // ========================================
+  // 8. 處理 LINE 官方驗證錯誤
 
   if (!response.ok) {
-    // 不記錄 Token、信箱、LINE ID
-    // 或完整的 LINE 官方回應。
-
     console.error(
       "LINE ID Token 驗證失敗",
       {
@@ -304,9 +256,7 @@ export async function verifiedIdentity(
     );
   }
 
-  // ========================================
-  // 10. 驗證 LINE 官方回傳資料
-  // ========================================
+  // 9. 驗證 LINE 官方回傳資料
 
   if (
     typeof line?.sub !== "string" ||
@@ -322,10 +272,6 @@ export async function verifiedIdentity(
     );
   }
 
-  // ========================================
-  // 11. 驗證 LINE Channel ID
-  // ========================================
-
   if (String(line.aud) !== channel) {
     console.error(
       "LINE Channel ID 不一致"
@@ -335,10 +281,6 @@ export async function verifiedIdentity(
       "LINE Channel ID 與登入憑證不符"
     );
   }
-
-  // ========================================
-  // 12. 驗證 LINE User ID 格式
-  // ========================================
 
   const lineUserId = line.sub;
 
@@ -352,9 +294,7 @@ export async function verifiedIdentity(
     );
   }
 
-  // ========================================
-  // 13. 建立 Supabase 後端管理連線
-  // ========================================
+  // 10. 建立 Supabase 後端管理連線
 
   const admin = createClient(
     url,
@@ -368,9 +308,7 @@ export async function verifiedIdentity(
     }
   );
 
-  // ========================================
-  // 14. 執行原子身分綁定 RPC
-  // ========================================
+  // 11. 執行統一身分綁定 RPC
 
   const {
     data: bindingData,
@@ -379,16 +317,10 @@ export async function verifiedIdentity(
     "bind_verified_identity",
     {
       p_auth_user_id: user.id,
-
       p_line_user_id: lineUserId,
-
       p_verified_email: email,
     }
   );
-
-  // ========================================
-  // 15. 處理 RPC 執行錯誤
-  // ========================================
 
   if (bindingError) {
     console.error(
@@ -403,9 +335,7 @@ export async function verifiedIdentity(
     );
   }
 
-  // ========================================
-  // 16. 驗證 RPC 回傳格式
-  // ========================================
+  // 12. 驗證 RPC 回傳格式
 
   if (
     !bindingData ||
@@ -426,9 +356,9 @@ export async function verifiedIdentity(
   const binding =
     bindingData as IdentityBindingResult;
 
-  // ========================================
-  // 17. 處理統一身分驗證結果
-  // ========================================
+  let identityBound = false;
+
+  // 13. 處理統一身分驗證結果
 
   if (binding.success === true) {
     if (
@@ -444,12 +374,10 @@ export async function verifiedIdentity(
       );
     }
 
+    identityBound = true;
+
   } else {
     switch (binding.code) {
-      // ====================================
-      // 尚未啟用新身分綁定
-      // ====================================
-
       case "BINDING_NOT_ENABLED":
 
         if (REQUIRE_IDENTITY_BINDING) {
@@ -458,16 +386,9 @@ export async function verifiedIdentity(
           );
         }
 
-        // 安全遷移相容模式：
-        // 暫時允許既有雙重驗證使用者。
-        //
-        // 不新增、不修改任何身分綁定資料。
+        // 暫時保留遷移相容模式。
 
         break;
-
-      // ====================================
-      // LINE、信箱或 Auth 帳號發生衝突
-      // ====================================
 
       case "IDENTITY_CONFLICT":
 
@@ -479,10 +400,6 @@ export async function verifiedIdentity(
           "LINE 帳號與校園信箱的綁定身分不一致，請聯絡管理員"
         );
 
-      // ====================================
-      // 校園信箱尚未驗證
-      // ====================================
-
       case "EMAIL_NOT_VERIFIED":
 
       case "AUTH_USER_NOT_FOUND":
@@ -493,29 +410,17 @@ export async function verifiedIdentity(
           "請先完成學校信箱驗證"
         );
 
-      // ====================================
-      // LINE 身分資料異常
-      // ====================================
-
       case "INVALID_LINE_ID":
 
         throw new Error(
           "LINE 身分資料格式不正確"
         );
 
-      // ====================================
-      // 必要身分資料不完整
-      // ====================================
-
       case "INVALID_IDENTITY":
 
         throw new Error(
           "登入身分資料不完整，請重新登入"
         );
-
-      // ====================================
-      // 未知 RPC 回傳結果
-      // ====================================
 
       default:
 
@@ -529,16 +434,18 @@ export async function verifiedIdentity(
     }
   }
 
-  // ========================================
-  // 18. 回傳已驗證身分
-  //
-  // 完整保留原本 API 回傳格式，
-  // 避免影響其他既有 API。
-  // ========================================
+  // ==========================================
+  // 14. 回傳已驗證身分
+  // 保留原有欄位，新增管理員授權所需資訊
+  // ==========================================
 
   return {
     admin,
     email,
     lineUserId,
+
+    authUserId: user.id,
+
+    identityBound,
   };
 }
