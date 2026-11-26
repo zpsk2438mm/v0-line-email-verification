@@ -611,7 +611,7 @@ async function submitProduct(
         description, image_url: finalImageUrl,
       });
       const autoApproveEnabled =
-        (process.env.AI_AUTO_APPROVE ?? "").trim().toLowerCase() === "true";
+  (process.env.AI_AUTO_APPROVE ?? "true").trim().toLowerCase() === "true";
       const reviewPassed = result.status === "passed";
       const lowRisk = result.riskLevel === "low";
       const noFlags = Array.isArray(result.flags) && result.flags.length === 0;
