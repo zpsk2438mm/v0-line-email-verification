@@ -718,6 +718,8 @@ export default function MyListingsPage() {
                         <img
                           src={getCleanImageUrl(product)}
                           alt={product.name}
+                          loading="lazy"
+                          decoding="async"
                           className="h-full w-full object-cover"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
