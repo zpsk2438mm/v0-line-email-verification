@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { reviewProduct } from "@/lib/ai-review";
 import { verifiedIdentity } from "@/lib/contact-auth";
 import { verifyProductImageToken } from "@/lib/product-image-token";
 
@@ -601,8 +602,45 @@ async function submitProduct(
       }
     );
 
-    // 保留原本 Supabase LINE 通知觸發器
-    // 暫時不啟用 Gemini AI 自動核准
+    // AI 審核：預設人工審核，明確啟用才自動上架。
+    let finalStatus = "pending";
+    let finalReviewStatus = "pending";
+    try {
+      const result = await reviewProduct({
+        id: savedProductId, name, category, condition, price,
+        description, image_url: finalImageUrl,
+      });
+      const approved = process.env.AI_AUTO_APPROVE === "true" &&
+        result.status === "passed" && result.riskLevel === "low" &&
+        result.flags.length === 0;
+      const reviewStatus = result.status === "passed" && !approved
+        ? "manual_review" : result.status;
+      const { data, error } = await admin.from("products").update({
+        ai_review_status: reviewStatus,
+        ai_review_reason: result.reason,
+        ai_risk_level: result.riskLevel,
+        ai_review_flags: result.flags,
+        ai_review_model: result.model,
+        ai_reviewed_at: result.reviewedAt,
+        status: approved ? "approved" : "pending",
+        is_approved: approved,
+        approved_at: approved ? new Date().toISOString() : null,
+      }).eq("id", savedProductId)
+        .eq("line_user_id", lineUserId)
+        .eq("verified_email", email)
+        .eq("status", "pending")
+        .eq("ai_review_status", "pending")
+        .eq("ai_review_version", payload.ai_review_version)
+        .select("id").maybeSingle();
+      if (!error && data) {
+        finalStatus = approved ? "approved" : "pending";
+        finalReviewStatus = reviewStatus;
+      } else {
+        console.warn("[Product Submit] AI result not applied", error?.code);
+      }
+    } catch {
+      console.warn("[Product Submit] AI review unavailable; manual review retained");
+    }
 
     return NextResponse.json(
       {
@@ -610,11 +648,11 @@ async function submitProduct(
 
         productId: savedProductId,
 
-        status: "pending",
+        status: finalStatus,
 
-        aiReviewStatus: "pending",
+        aiReviewStatus: finalReviewStatus,
 
-        message: isEditing
+        message: finalStatus === "approved" ? "商品審核通過，已上架" : isEditing
           ? "商品修改成功，已重新送出審核"
           : "商品刊登成功，已送出審核",
       },
