@@ -82,7 +82,7 @@ const CONDITIONS = [
 
 async function compressImageForAI(blob: Blob): Promise<string> {
   const objectUrl = URL.createObjectURL(blob);
-  const maxBytes = 300 * 1024;
+  const maxBytes = 280 * 1024;
   try {
     const img = new window.Image();
     await new Promise<void>((resolve, reject) => {
@@ -110,7 +110,7 @@ async function compressImageForAI(blob: Blob): Promise<string> {
         if (base64 && atob(base64).length <= maxBytes) return base64;
       }
     }
-    throw new Error("圖片無法壓縮至 300 KiB 以下，請更換照片。");
+    throw new Error("圖片無法壓縮至 280 KiB 以下，請更換照片。");
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -470,14 +470,28 @@ export default function ListingForm({
 
       // 6. 呼叫安全圖片上傳 API
 
-      const result = await contactRequest(
-        "/api/product-image",
-        "POST",
-        {
-          image: compressedImage,
-          mimeType: "image/jpeg",
-        }
-      );
+      // 上傳前再次確認圖片實際容量
+
+if (
+  compressedFile.size === 0 ||
+  compressedFile.size > 300 * 1024 ||
+  binary.length !== compressedFile.size
+) {
+  throw new Error(
+    "商品照片容量驗證失敗，請重新選擇照片。"
+  );
+}
+
+console.log("[Product Image] 圖片壓縮結果", {
+  originalBytes: file.size,
+  compressedBytes: compressedFile.size,
+  compressedKiB: Number(
+    (compressedFile.size / 1024).toFixed(2)
+  ),
+  limitBytes: 300 * 1024,
+});
+
+// 6. 呼叫安全圖片上傳 API
 
       // 7. 驗證後端回傳的網址及憑證
 
