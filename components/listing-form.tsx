@@ -493,6 +493,15 @@ console.log("[Product Image] 圖片壓縮結果", {
 
 // 6. 呼叫安全圖片上傳 API
 
+      const result = await contactRequest(
+        "/api/product-image",
+        "POST",
+        {
+          image: compressedImage,
+          mimeType: "image/jpeg",
+        }
+      );
+
       // 7. 驗證後端回傳的網址及憑證
 
       if (
