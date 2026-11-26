@@ -1,7 +1,6 @@
 
 "use client";
 
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { FavoriteButton } from "@/components/favorite-button";
 
@@ -107,13 +106,19 @@ function getCategoryLabel(
 }
 
 // ==========================================
+// 預設商品圖片
+// ==========================================
+
+const FALLBACK_IMAGE = "/placeholder-logo.png";
+
+// ==========================================
 // 取得商品圖片
 // ==========================================
 
 function getDisplayImage(
   value: unknown
 ): string {
-  const fallback = "/placeholder-logo.png";
+  const fallback = FALLBACK_IMAGE;
 
   if (Array.isArray(value)) {
     return typeof value[0] === "string" &&
@@ -163,17 +168,22 @@ interface Product {
 // ==========================================
 // 商品卡片參數
 //
-// 新增 onFavoriteChange
-// 讓我的最愛頁面可以同步收藏狀態
+// onFavoriteChange：同步收藏狀態
 //
-// 使用選用參數，不影響原本市集頁面
+// priority：控制首屏商品圖片優先載入
+// 預設 false，保留延遲載入
+//
+// 使用選用參數，相容既有頁面
 // ==========================================
 
 interface ProductCardProps {
   product: Product;
+
   onFavoriteChange?: (
     isFavorite: boolean
   ) => void;
+
+  priority?: boolean;
 }
 
 // ==========================================
@@ -189,6 +199,7 @@ const PRODUCT_PAGE_VERSION = "20261119";
 export function ProductCard({
   product,
   onFavoriteChange,
+  priority = false,
 }: ProductCardProps) {
   if (!product?.id) return null;
 
@@ -225,27 +236,44 @@ export function ProductCard({
           className="flex h-full flex-col no-underline"
         >
 
-          {/* 商品圖片 */}
+          {/* ==================================
+              商品圖片載入優化
+
+              首屏圖片：優先載入
+              其他圖片：延遲載入
+              非同步解碼
+              保留固定正方形比例
+          ================================== */}
 
           <div className="relative aspect-square overflow-hidden bg-slate-50">
 
             <img
               src={imageUrl}
               alt={product.name || "商品圖片"}
-              loading="lazy"
+
+              loading={
+                priority ? "eager" : "lazy"
+              }
+
+              fetchPriority={
+                priority ? "high" : "auto"
+              }
+
               decoding="async"
+
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+
               onError={(event) => {
                 const img =
                   event.currentTarget;
 
                 if (
                   !img.src.endsWith(
-                    "/placeholder-logo.png"
+                    FALLBACK_IMAGE
                   )
                 ) {
                   img.src =
-                    "/placeholder-logo.png";
+                    FALLBACK_IMAGE;
                 }
               }}
             />
