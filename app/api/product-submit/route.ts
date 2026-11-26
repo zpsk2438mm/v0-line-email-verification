@@ -602,7 +602,7 @@ async function submitProduct(
       }
     );
 
-    // AI 審核：預設人工審核，明確啟用才自動上架。
+    // AI 審核：啟用低風險自動核准；AI_AUTO_APPROVE_PAUSED=true 可緊急停用。
     let finalStatus = "pending";
     let finalReviewStatus = "pending";
     try {
@@ -611,12 +611,12 @@ async function submitProduct(
         description, image_url: finalImageUrl,
       });
       const autoApproveEnabled =
-  (process.env.AI_AUTO_APPROVE ?? "true").trim().toLowerCase() === "true";
+        (process.env.AI_AUTO_APPROVE_PAUSED ?? "false").trim().toLowerCase() === "false";
       const reviewPassed = result.status === "passed";
       const lowRisk = result.riskLevel === "low";
       const noFlags = Array.isArray(result.flags) && result.flags.length === 0;
       const approved = autoApproveEnabled && reviewPassed && lowRisk && noFlags;
-      console.info("[AI Approval v2] decision", {
+      console.info("[AI Approval v4] decision", {
         productId: savedProductId,
         autoApproveEnabled,
         reviewPassed,
