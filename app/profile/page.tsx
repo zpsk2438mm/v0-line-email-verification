@@ -521,6 +521,7 @@ export default function ProfilePage() {
                   <img
                     src={userProfile.pictureUrl}
                     alt="LINE 頭像"
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -910,6 +911,8 @@ export default function ProfilePage() {
                       }
                       className="w-full h-full object-cover"
                       alt={p.name}
+                      loading="lazy"
+                      decoding="async"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
                         if (
