@@ -610,9 +610,21 @@ async function submitProduct(
         id: savedProductId, name, category, condition, price,
         description, image_url: finalImageUrl,
       });
-      const approved = process.env.AI_AUTO_APPROVE === "true" &&
-        result.status === "passed" && result.riskLevel === "low" &&
-        result.flags.length === 0;
+      const autoApproveEnabled =
+        (process.env.AI_AUTO_APPROVE ?? "").trim().toLowerCase() === "true";
+      const reviewPassed = result.status === "passed";
+      const lowRisk = result.riskLevel === "low";
+      const noFlags = Array.isArray(result.flags) && result.flags.length === 0;
+      const approved = autoApproveEnabled && reviewPassed && lowRisk && noFlags;
+      console.info("[AI Approval v2] decision", {
+        productId: savedProductId,
+        autoApproveEnabled,
+        reviewPassed,
+        lowRisk,
+        noFlags,
+        resultStatus: result.status,
+        approved,
+      });
       const reviewStatus = result.status === "passed" && !approved
         ? "manual_review" : result.status;
       const { data, error } = await admin.from("products").update({
