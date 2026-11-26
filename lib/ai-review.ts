@@ -463,7 +463,7 @@ export async function reviewProduct(
 
   try {
     // 6. 呼叫 Gemini API
-    const response = await fetch(
+    const requestGemini = () => fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
       {
         method: "POST",
@@ -514,9 +514,17 @@ export async function reviewProduct(
 
         cache: "no-store",
 
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(15000),
       }
     );
+
+    let response = await requestGemini();
+    if (response.status === 503) {
+      console.warn("[AI Review] Gemini 503; retrying once");
+      await response.body?.cancel().catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      response = await requestGemini();
+    }
 
     // 7. Gemini API 錯誤處理
     if (!response.ok) {
