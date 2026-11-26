@@ -1105,6 +1105,8 @@ export default function AdminPage() {
                         <div className="w-28 h-28 bg-gray-50 rounded-3xl overflow-hidden shrink-0 border border-gray-100">
 
                           <img
+                            loading="lazy"
+                            decoding="async"
                             src={getImageUrl(
                               product.image_url
                             )}
@@ -1315,6 +1317,8 @@ export default function AdminPage() {
                         <div className="w-24 h-24 shrink-0 rounded-2xl bg-gray-50 overflow-hidden border">
 
                           <img
+                            loading="lazy"
+                            decoding="async"
                             src={getImageUrl(
                               report.product
                                 ?.image_url
