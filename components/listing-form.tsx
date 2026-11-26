@@ -1,125 +1,113 @@
+          <div className="space-y-2">
+            <Label htmlFor="price">
+              預售價格 (NT$) *
+            </Label>
 
-async function compressImageForAI(blob: Blob): Promise<string> {
-  const MAX_IMAGE_BYTES = 300 * 1024;
-  const MAX_DIMENSION = 1200;
-  const objectUrl = URL.createObjectURL(blob);
+            <Input
+              id="price"
+              type="number"
+              min="0"
+              max="2147483647"
+              step="1"
+              inputMode="numeric"
+              placeholder="請輸入金額"
+              value={price}
+              onChange={(e) =>
+                setPrice(e.target.value)
+              }
+              disabled={isSubmitting}
+              required
+              className="h-12 rounded-xl"
+            />
+          </div>
 
-  try {
-    const img = new window.Image();
+          {/* LINE 聯絡方式 */}
 
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
 
-      img.onerror = () =>
-        reject(
-          new Error(
-            "無法讀取圖片，請使用 JPG、PNG 或 WebP 照片。"
-          )
-        );
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-emerald-800">
+                LINE 聯絡方式自動帶入
+              </p>
 
-      img.src = objectUrl;
-    });
+              <p className="text-xs leading-relaxed text-emerald-700">
+                系統會使用你在個人中心設定的私人
+                LINE 加好友連結，刊登時不需要重複輸入。
+              </p>
+            </div>
+          </div>
 
-    if (!img.width || !img.height) {
-      throw new Error("圖片尺寸不正確。");
-    }
+          {/* 商品詳情 */}
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+          <div className="space-y-2">
+            <Label htmlFor="description">
+              商品詳情
+            </Label>
 
-    if (!ctx) {
-      throw new Error("無法處理商品照片。");
-    }
+            <Textarea
+              id="description"
+              rows={4}
+              value={description}
+              onChange={(e) =>
+                setDescription(e.target.value)
+              }
+              placeholder="說明物品瑕疵、面交地點等"
+              disabled={aiLoading || isSubmitting}
+              maxLength={2000}
+              className="rounded-xl"
+            />
+          </div>
 
-    const qualities = [
-      0.88,
-      0.80,
-      0.72,
-      0.64,
-      0.56,
-      0.48,
-      0.40,
-    ];
+          {/* 商品儲存錯誤訊息 */}
 
-    let maxDimension = MAX_DIMENSION;
+          {submitError && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+            >
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
-    for (let attempt = 0; attempt < 7; attempt++) {
-      const scale = Math.min(
-        1,
-        maxDimension / Math.max(img.width, img.height)
-      );
+              <p className="whitespace-pre-wrap break-words">
+                {submitError}
+              </p>
+            </div>
+          )}
 
-      canvas.width = Math.max(
-        1,
-        Math.round(img.width * scale)
-      );
+          {/* 送出審核 */}
 
-      canvas.height = Math.max(
-        1,
-        Math.round(img.height * scale)
-      );
-
-      ctx.fillStyle = "#FFFFFF";
-
-      ctx.fillRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
-
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-
-      ctx.drawImage(
-        img,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
-
-      for (const quality of qualities) {
-        const result = canvas.toDataURL(
-          "image/jpeg",
-          quality
-        );
-
-        const prefix = "data:image/jpeg;base64,";
-
-        if (!result.startsWith(prefix)) {
-          continue;
-        }
-
-        const base64 = result.slice(prefix.length);
-
-        const padding = base64.endsWith("==")
-          ? 2
-          : base64.endsWith("=")
-            ? 1
-            : 0;
-
-        const byteLength =
-          Math.floor(base64.length * 3 / 4) - padding;
-
-        if (
-          byteLength > 0 &&
-          byteLength <= MAX_IMAGE_BYTES
-        ) {
-          return base64;
-        }
-      }
-
-      maxDimension = Math.max(
-        320,
-        Math.floor(maxDimension * 0.85)
-      );
-    }
-
-    throw new Error(
-      "圖片無法壓縮至 300 KiB 以下，請更換商品照片。"
-    );
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
+          <Button
+            type="submit"
+            className="w-full h-12 rounded-xl bg-[#D95300] hover:bg-[#B84600] text-white font-bold text-base"
+            disabled={
+              isSubmitting ||
+              uploadingImage ||
+              aiLoading
+            }
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                資料處理中...
+              </>
+            ) : uploadingImage ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                正在上傳照片...
+              </>
+            ) : aiLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                AI 正在辨識商品...
+              </>
+            ) : isEditing ? (
+              "確認修改並送出審核"
+            ) : (
+              "確認刊登並送出審核"
+            )}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
 }
