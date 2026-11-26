@@ -83,6 +83,15 @@ const PAGE_LIMIT = 100;
 const MAX_PAGES = 1000;
 
 // ==========================================
+// 商品圖片優先載入設定
+//
+// 第一張商品圖片優先載入
+// 其餘商品維持瀏覽器原生延遲載入
+// ==========================================
+
+const PRIORITY_IMAGE_COUNT = 1;
+
+// ==========================================
 // 公開市集頁面
 // ==========================================
 
@@ -206,6 +215,7 @@ export default function ExploreProductsPage() {
 
             // 額外防護：
             // 只顯示已核准且正常上架的商品
+
             if (
               product.status !== "approved" ||
               product.is_approved !== true
@@ -214,6 +224,7 @@ export default function ExploreProductsPage() {
             }
 
             // 使用商品 ID 去除重複資料
+
             allProducts.set(
               product.id,
               product
@@ -496,16 +507,27 @@ export default function ExploreProductsPage() {
 
         ) : (
 
-          /* 保留原本雙欄商品卡片 */
+          /* ==================================
+             保留原本雙欄商品卡片
+
+             第一張圖片優先載入
+             其餘圖片延遲載入
+
+             搜尋及分類後重新依照
+             顯示順序決定圖片優先權
+          ================================== */
 
           <div className="grid grid-cols-2 gap-4">
 
             {filteredProducts.map(
-              (product) => (
+              (product, index) => (
 
                 <ProductCard
                   key={product.id}
                   product={product}
+                  priority={
+                    index < PRIORITY_IMAGE_COUNT
+                  }
                 />
 
               )
