@@ -636,6 +636,14 @@ export default function AdminPage() {
       return;
     }
 
+    const reason = action === "reject"
+      ? window.prompt("請輸入退回原因（最多 500 字，將通知賣家）")
+      : "";
+    if (reason === null) return;
+    if (action === "reject" && (!reason.trim() || reason.trim().length > 500)) {
+      setErrorMessage("請輸入 1 至 500 字的退回原因。");
+      return;
+    }
     setProcessingId(product.id);
     setErrorMessage("");
     setSuccessMessage("");
@@ -647,6 +655,7 @@ export default function AdminPage() {
         {
           productId: product.id,
           action,
+          reason: reason.trim(),
           reviewVersion:
             product.ai_review_version,
         }
