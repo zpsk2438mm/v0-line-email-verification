@@ -9,7 +9,11 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Product = MatchingProduct;
+type Product = MatchingProduct & {
+  review_source: string | null;
+  admin_review_reason: string | null;
+  review_notification_event_id: string;
+};
 
 function jsonError(
   message: string,
@@ -116,9 +120,18 @@ function getImageUrl(
 function createFlexMessage(product: Product) {
   const status = getStatus(product);
 
-  const content = getNotificationContent(
-    status
-  );
+  const content = getNotificationContent(status);
+  if (content && status === "approved") {
+    content.message = product.review_source === "ai"
+      ? "您的商品已通過 AI 自動審核，現在已公開上架。"
+      : product.review_source === "report"
+        ? "您的商品已完成檢舉審查，恢復公開上架。"
+        : "您的商品已通過審核，現在已公開上架。";
+    if (product.review_source === "admin") content.message = "您的商品已通過管理員審核，現在已公開上架。";
+  }
+  if (content && ["rejected", "removed"].includes(status) && product.admin_review_reason) {
+    content.message += `\n審核原因：${product.admin_review_reason.slice(0, 500)}`;
+  }
 
   if (!content) {
     return null;
@@ -347,7 +360,7 @@ export async function POST(req: NextRequest) {
       await admin
         .from("products")
         .select(
-          "id, name, description, price, image_url, line_user_id, status, is_approved"
+          "id, name, description, price, image_url, line_user_id, status, is_approved, review_source, admin_review_reason, review_notification_event_id"
         )
         .eq("id", record.id)
         .single();
@@ -387,7 +400,8 @@ export async function POST(req: NextRequest) {
     // 避免延遲 Webhook 通知舊商品狀態
 
     if (
-      (record.status || "pending") !== status
+      (record.status || "pending") !== status ||
+      record.review_notification_event_id !== product.review_notification_event_id
     ) {
       return NextResponse.json({
         success: true,
@@ -402,7 +416,8 @@ export async function POST(req: NextRequest) {
       (
         eventType === "UPDATE" &&
         Boolean(oldRecord) &&
-        oldRecord.status !== status
+        (oldRecord.status !== status ||
+          (status === "pending" && oldRecord.review_notification_event_id !== record.review_notification_event_id))
       );
 
     // 是否需要執行智慧媒合
@@ -489,9 +504,8 @@ export async function POST(req: NextRequest) {
 
       // 保留原本的 LINE ID 相容方式
 
-      const recipientLineId =
-        binding?.messaging_user_id ||
-        sellerLoginId;
+      const recipientLineId = binding?.messaging_user_id;
+      if (!recipientLineId) return { success: true, skipped: "尚未綁定通知帳號" };
 
       const flexMessage =
         createFlexMessage(product);
@@ -503,6 +517,19 @@ export async function POST(req: NextRequest) {
         };
       }
 
+      const eventKey = `${product.id}:${product.review_notification_event_id}`;
+      const logs = admin.from("product_review_notification_logs");
+      const { error: insertError } = await logs.upsert({
+        event_key: eventKey, product_id: product.id, product_status: status,
+      }, { onConflict: "event_key", ignoreDuplicates: true });
+      if (insertError) throw new Error("建立通知紀錄失敗");
+      const { data: log, error: logError } = await admin.from("product_review_notification_logs")
+        .select("id,retry_key,delivery_status,created_at").eq("event_key", eventKey).single();
+      if (logError || !log) throw new Error("讀取通知紀錄失敗");
+      if (log.delivery_status === "sent") return { success: true, skipped: "已發送" };
+      if (Date.now() - Date.parse(log.created_at) >= 23 * 60 * 60 * 1000) {
+        throw new Error("通知重試期限已過，需人工確認");
+      }
       const response = await fetch(
         "https://api.line.me/v2/bot/message/push",
         {
@@ -510,6 +537,7 @@ export async function POST(req: NextRequest) {
 
           headers: {
             "Content-Type": "application/json",
+            "X-Line-Retry-Key": log.retry_key,
             Authorization:
               `Bearer ${channelAccessToken}`,
           },
@@ -523,7 +551,9 @@ export async function POST(req: NextRequest) {
         }
       );
 
-      if (!response.ok) {
+      const acceptedPreviously = response.status === 409 && Boolean(response.headers.get("x-line-accepted-request-id"));
+      if (!response.ok && !acceptedPreviously) {
+        await admin.from("product_review_notification_logs").update({ delivery_status: "failed", last_error: `LINE HTTP ${response.status}`, updated_at: new Date().toISOString() }).eq("id", log.id).neq("delivery_status", "sent");
         const errorText =
           await response.text();
 
@@ -538,6 +568,8 @@ export async function POST(req: NextRequest) {
         throw new Error("LINE 推播失敗");
       }
 
+      const { error: sentError } = await admin.from("product_review_notification_logs").update({ delivery_status: "sent", sent_at: new Date().toISOString(), updated_at: new Date().toISOString(), last_error: null }).eq("id", log.id);
+      if (sentError) throw new Error("LINE 已接受通知，但紀錄更新失敗");
       console.log(
         "LINE 商品審核通知已提交:",
         {
