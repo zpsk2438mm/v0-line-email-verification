@@ -472,6 +472,9 @@ async function submitProduct(
       is_approved: false,
 
       approved_at: null,
+      review_source: null,
+      admin_review_reason: null,
+      admin_reviewed_at: null,
 
       // 初始化 AI 審核狀態
 
@@ -635,6 +638,7 @@ async function submitProduct(
         ai_review_model: result.model,
         ai_reviewed_at: result.reviewedAt,
         status: approved ? "approved" : "pending",
+        review_source: approved ? "ai" : null,
         is_approved: approved,
         approved_at: approved ? new Date().toISOString() : null,
       }).eq("id", savedProductId)
