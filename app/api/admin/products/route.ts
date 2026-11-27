@@ -309,6 +309,11 @@ export async function POST(
       );
     }
 
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (reason.length > 500 || (action === "reject" && !reason)) {
+      return fail("退回商品必須填寫原因，最多 500 字");
+    }
+
     // 6. 確認商品目前狀態
 
     const {
@@ -382,6 +387,9 @@ export async function POST(
         : "rejected",
 
       is_approved: approved,
+      review_source: "admin",
+      admin_review_reason: reason || null,
+      admin_reviewed_at: now,
 
       approved_at: approved
         ? now
