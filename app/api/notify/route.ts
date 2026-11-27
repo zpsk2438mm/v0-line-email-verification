@@ -43,7 +43,7 @@ function getNotificationContent(status: string) {
         title: "🎉 商品審核通過！已成功上架",
         color: "#10B981",
         message:
-          "恭喜！您的二手寶貝已經通過管理員審核，現在已經在平台上公開展示，祝您順利成交！",
+          "恭喜！您的商品已通過審核，現在已公開上架，祝您順利成交！",
         footer:
           "請留意買家的 LINE 訊息與好友申請。",
       };
@@ -63,7 +63,7 @@ function getNotificationContent(status: string) {
         title: "⏳ 商品已送出審核",
         color: "#D35400",
         message:
-          "您的二手寶貝已成功送出審核，目前正在等待管理員審核。審核通過後，商品就會公開顯示在平台上。",
+          "您的商品已成功送出，系統將進行 AI 審核，必要時由管理員人工確認。審核通過後，商品將公開上架。",
         footer:
           "請稍後至「我的刊登」查看最新狀態。",
       };
@@ -502,7 +502,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // 保留原本的 LINE ID 相容方式
+      // 僅使用已綁定的 Messaging API User ID
 
       const recipientLineId = binding?.messaging_user_id;
       if (!recipientLineId) return { success: true, skipped: "尚未綁定通知帳號" };
@@ -524,13 +524,39 @@ export async function POST(req: NextRequest) {
       }, { onConflict: "event_key", ignoreDuplicates: true });
       if (insertError) throw new Error("建立通知紀錄失敗");
       const { data: log, error: logError } = await admin.from("product_review_notification_logs")
-        .select("id,retry_key,delivery_status,created_at").eq("event_key", eventKey).single();
+        .select("id,retry_key,delivery_status,created_at,attempt_count").eq("event_key", eventKey).single();
       if (logError || !log) throw new Error("讀取通知紀錄失敗");
       if (log.delivery_status === "sent") return { success: true, skipped: "已發送" };
       if (Date.now() - Date.parse(log.created_at) >= 23 * 60 * 60 * 1000) {
         throw new Error("通知重試期限已過，需人工確認");
       }
-      const response = await fetch(
+      // 原子式條件更新：避免並行事件覆蓋計數。
+      let claimed = false;
+      let current = log;
+      for (let i = 0; i < 5; i++) {
+        if (current.delivery_status === "sent") {
+          return { success: true, skipped: "已發送" };
+        }
+        const { data: claim, error: claimError } = await admin
+          .from("product_review_notification_logs")
+          .update({ attempt_count: current.attempt_count + 1, delivery_status: "sending", updated_at: new Date().toISOString() })
+          .eq("id", current.id)
+          .eq("attempt_count", current.attempt_count)
+          .neq("delivery_status", "sent")
+          .select("id").maybeSingle();
+        if (claimError) throw new Error("更新通知計數失敗");
+        if (claim) { claimed = true; break; }
+        const { data: fresh, error: freshError } = await admin
+          .from("product_review_notification_logs")
+          .select("id,retry_key,delivery_status,created_at,attempt_count")
+          .eq("id", log.id).single();
+        if (freshError || !fresh) throw new Error("重新讀取通知紀錄失敗");
+        current = fresh;
+      }
+      if (!claimed) throw new Error("通知計數競爭，請稍後重試");
+      let response: Response;
+      try {
+      response = await fetch(
         "https://api.line.me/v2/bot/message/push",
         {
           method: "POST",
@@ -551,6 +577,13 @@ export async function POST(req: NextRequest) {
         }
       );
 
+      } catch {
+        const { error: failureError } = await admin.from("product_review_notification_logs")
+          .update({ delivery_status: "failed", last_error: "LINE network error or timeout", updated_at: new Date().toISOString() })
+          .eq("id", log.id).neq("delivery_status", "sent");
+        if (failureError) console.error("[Notify] 更新失敗紀錄失敗", failureError.code);
+        throw new Error("LINE 推播網路錯誤或逾時");
+      }
       const acceptedPreviously = response.status === 409 && Boolean(response.headers.get("x-line-accepted-request-id"));
       if (!response.ok && !acceptedPreviously) {
         await admin.from("product_review_notification_logs").update({ delivery_status: "failed", last_error: `LINE HTTP ${response.status}`, updated_at: new Date().toISOString() }).eq("id", log.id).neq("delivery_status", "sent");
@@ -578,9 +611,7 @@ export async function POST(req: NextRequest) {
           eventType,
 
           recipientSource:
-            binding?.messaging_user_id
-              ? "line_notification_bindings"
-              : "product.line_user_id",
+            "line_notification_bindings",
         }
       );
 
